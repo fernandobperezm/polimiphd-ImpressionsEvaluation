@@ -1,0 +1,49 @@
+[tool.mypy]
+python_version = "~3.9"
+ignore_missing_imports = true
+
+[dask]
+use_processes = false
+dashboard_address = ":8787"
+scheduler_port = 8786
+num_workers = 1
+threads_per_worker = 32
+memory_limit = 0
+
+[logs]
+dir_name = "logs"
+file_name = "impressions_datasets.log"
+formatter = "%(process)d|%(asctime)s|%(levelname)s|%(module)s|%(funcName)s|%(lineno)d|%(message)s"
+
+[tool.poetry]
+name = "impressions_datasets"
+version = "1.0.0"
+description = ""
+authors = [
+    "Fernando Benjamín Pérez Maurera <fernandobenjamin.perez@polimi.it>"
+]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "~3.9"
+typed-argument-parser = "^1.7.1"
+recsys_framework = { path = "../recsys-framework/", develop = true }  # Use this when publishing the repo.
+#recsys_framework = { git = "https://github.com/fernandobperezm/recsys-framework-evaluation.git", branch = "impressions-datasets" }
+#recsys_framework = { git = "../recsys-framework/.git", branch = "impressions-datasets" }
+recsys-slates-dataset = "^1.0.0"
+numba = "^0.54.1"
+plotly = "^5.5.0"
+datashader = "^0.13.0"
+kaleido = "=0.2.1"
+
+[tool.poetry.dev-dependencies]
+mypy = "^0.910"
+black = "^21.11b1"
+pytest = "^6.2.4"
+memory-profiler = "^0.58.0"
+types-toml = "^0.10.0"
+pylint = "^2.12.2"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
