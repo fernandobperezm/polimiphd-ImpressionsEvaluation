@@ -11,6 +11,245 @@ logger = get_logger(
 T_KEEP = Literal["first", "last", False]
 
 
+def _compute_statistics(
+    func_name: str,
+    message: str,
+    df_orig: pd.DataFrame,
+    df_keep: pd.DataFrame,
+    df_removed: pd.DataFrame,
+    **func_kwargs
+) -> None:
+    num_total_users = df_orig["user_id"].nunique()
+    num_total_items = df_orig["item_id"].nunique()
+    num_total_records = df_orig.shape[0]
+
+    num_keep_users = df_keep["user_id"].nunique()
+    num_keep_items = df_keep["item_id"].nunique()
+    num_keep_records = df_keep.shape[0]
+
+    percentage_keep_users = (num_keep_users / num_total_users) * 100
+    percentage_keep_items = (num_keep_items / num_total_items) * 100
+    percentage_keep_records = (num_keep_records / num_total_records) * 100
+
+    num_users_with_repeated_interactions = df_removed["user_id"].nunique()
+    num_items_with_repeated_interactions = df_removed["item_id"].nunique()
+    num_records_with_repeated_interactions = df_removed.shape[0]
+
+    percentage_users_with_repeated_interactions = (num_users_with_repeated_interactions / num_total_users) * 100
+    percentage_items_with_repeated_interactions = (num_items_with_repeated_interactions / num_total_items) * 100
+    percentage_records_with_repeated_interactions = (num_records_with_repeated_interactions / num_total_records) * 100
+
+    num_removed_users = num_total_users - num_keep_users
+    num_removed_items = num_total_items - num_keep_items
+    num_removed_records = num_total_records - num_keep_records
+
+    percentage_removed_users = (num_removed_users / num_total_users) * 100
+    percentage_removed_items = (num_removed_items / num_total_items) * 100
+    percentage_removed_records = (num_removed_records / num_total_records) * 100
+
+    statistics_dict = dict(
+        **func_kwargs,
+        original_dataset=dict(
+            num_users=num_total_users,
+            num_items=num_total_items,
+            num_interactions=num_total_records,
+        ),
+        new_dataset=dict(
+            num_users=num_keep_users,
+            num_items=num_keep_items,
+            num_interactions=num_keep_records,
+            percentage_users=percentage_keep_users,
+            percentage_items=percentage_keep_items,
+            percentage_records=percentage_keep_records,
+        ),
+        other_dataset=dict(
+            num_users=num_users_with_repeated_interactions,
+            num_items=num_items_with_repeated_interactions,
+            num_interactions=num_records_with_repeated_interactions,
+            percentage_users=percentage_users_with_repeated_interactions,
+            percentage_items=percentage_items_with_repeated_interactions,
+            percentage_records=percentage_records_with_repeated_interactions,
+        ),
+        removed=dict(
+            num_users=num_removed_users,
+            num_items=num_removed_items,
+            num_interactions=num_removed_records,
+            percentage_users=percentage_removed_users,
+            percentage_items=percentage_removed_items,
+            percentage_records=percentage_removed_records,
+        ),
+    )
+
+    logger.warning(
+        f"Function {func_name}. "
+        f"Found {num_removed_records}/{num_total_records} ({percentage_removed_records:.2f}%) {message}. "
+        f"Function kwargs:"
+        f"\n\t* {func_kwargs}"
+        f"\nStatistics of the new dataset:"
+        f"\n\t* # Interactions: {num_keep_records}/{num_total_records} ({percentage_keep_records:.2f}%)"
+        f"\n\t* # Users: {num_keep_users}/{num_total_users} ({percentage_keep_users:.2f}%)"
+        f"\n\t* # Items: {num_keep_items}/{num_total_items} ({percentage_keep_items:.2f}%)"
+        f"\nStatistics of the other dataset:"
+        f"\n\t* # Interactions: {num_records_with_repeated_interactions}/{num_total_records} ({percentage_records_with_repeated_interactions:.2f}%)"
+        f"\n\t* # Users: {num_users_with_repeated_interactions}/{num_total_users} ({percentage_users_with_repeated_interactions:.2f}%)"
+        f"\n\t* # Items: {num_items_with_repeated_interactions}/{num_total_items} ({percentage_items_with_repeated_interactions:.2f}%)"
+        f"\nStatistics of the removed information:"
+        f"\n\t* # Interactions: {num_removed_records}/{num_total_records} ({percentage_removed_records:.2f}%)"
+        f"\n\t* # Users: {num_removed_users}/{num_total_users} ({percentage_removed_users:.2f}%)"
+        f"\n\t* # Items: {num_removed_items}/{num_total_items} ({percentage_removed_items:.2f}%)"
+        f"\nStatistics dict: "
+        f"\n\t* {statistics_dict}"
+    )
+
+
+def _compute_statistics_impressions(
+    func_name: str,
+    message: str,
+    df_orig: pd.DataFrame,
+    df_keep: pd.DataFrame,
+    df_removed: pd.DataFrame,
+    **func_kwargs
+) -> None:
+    num_total_impressions = df_orig["impression_id"].nunique()
+    num_total_records = df_orig.shape[0]
+
+    num_keep_impressions = df_keep["impression_id"].nunique()
+    num_keep_records = df_keep.shape[0]
+
+    percentage_keep_impressions = (num_keep_impressions / num_total_impressions) * 100
+    percentage_keep_records = (num_keep_records / num_total_records) * 100
+
+    num_impressions_with_repeated_interactions = df_removed["impression_id"].nunique()
+    num_records_with_repeated_interactions = df_removed.shape[0]
+
+    percentage_impressions_with_repeated_interactions = (num_impressions_with_repeated_interactions / num_total_impressions) * 100
+    percentage_records_with_repeated_interactions = (num_records_with_repeated_interactions / num_total_records) * 100
+
+    num_removed_impressions = num_total_impressions - num_keep_impressions
+    num_removed_records = num_total_records - num_keep_records
+
+    percentage_removed_impressions = (num_removed_impressions / num_total_impressions) * 100
+    percentage_removed_records = (num_removed_records / num_total_records) * 100
+
+    statistics_dict = dict(
+        **func_kwargs,
+        original_dataset=dict(
+            num_impressions=num_total_impressions,
+            num_records=num_total_records,
+        ),
+        new_dataset=dict(
+            num_impressions=num_keep_impressions,
+            num_records=num_keep_records,
+            percentage_impressions=percentage_keep_impressions,
+            percentage_records=percentage_keep_records,
+        ),
+        other_dataset=dict(
+            num_impressions=num_impressions_with_repeated_interactions,
+            num_records=num_records_with_repeated_interactions,
+            percentage_impressions=percentage_impressions_with_repeated_interactions,
+            percentage_records=percentage_records_with_repeated_interactions,
+        ),
+        removed=dict(
+            num_impressions=num_removed_impressions,
+            num_records=num_removed_records,
+            percentage_impressions=percentage_removed_impressions,
+            percentage_records=percentage_removed_records,
+        ),
+    )
+
+    logger.warning(
+        f"Function {func_name}. "
+        f"Found {num_removed_records}/{num_total_records} ({percentage_removed_records:.2f}%) {message}. "
+        f"Function kwargs:"
+        f"\n\t* {func_kwargs}"
+        f"\nStatistics of the new dataset:"
+        f"\n\t* # Records: {num_keep_records}/{num_total_records} ({percentage_keep_records:.2f}%)"
+        f"\n\t* # impressions: {num_keep_impressions}/{num_total_impressions} ({percentage_keep_impressions:.2f}%)"
+        f"\nStatistics of the other dataset:"
+        f"\n\t* # Records: {num_records_with_repeated_interactions}/{num_total_records} ({percentage_records_with_repeated_interactions:.2f}%)"
+        f"\n\t* # impressions: {num_impressions_with_repeated_interactions}/{num_total_impressions} ({percentage_impressions_with_repeated_interactions:.2f}%)"
+        f"\nStatistics of the removed information:"
+        f"\n\t* # Records: {num_removed_records}/{num_total_records} ({percentage_removed_records:.2f}%)"
+        f"\n\t* # impressions: {num_removed_impressions}/{num_total_impressions} ({percentage_removed_impressions:.2f}%)"
+        f"\nStatistics dict: "
+        f"\n\t* {statistics_dict}"
+    )
+
+
+def _compute_statistics_split(
+    func_name: str,
+    message: str,
+    df_orig: pd.DataFrame,
+    df_train: pd.DataFrame,
+    df_test: pd.DataFrame,
+    **func_kwargs
+) -> None:
+    num_total_impressions = df_orig["impression_id"].nunique()
+    num_total_records = df_orig.shape[0]
+
+    num_train_impressions = df_train["impression_id"].nunique()
+    num_train_records = df_train.shape[0]
+
+    percentage_train_impressions = (num_train_impressions / num_total_impressions) * 100
+    percentage_train_records = (num_train_records / num_total_records) * 100
+
+    num_impressions_with_repeated_interactions = df_test["impression_id"].nunique()
+    num_records_with_repeated_interactions = df_test.shape[0]
+
+    percentage_impressions_with_repeated_interactions = (num_impressions_with_repeated_interactions / num_total_impressions) * 100
+    percentage_records_with_repeated_interactions = (num_records_with_repeated_interactions / num_total_records) * 100
+
+    num_test_impressions = num_total_impressions - num_train_impressions
+    num_test_records = num_total_records - num_train_records
+
+    percentage_test_impressions = (num_test_impressions / num_total_impressions) * 100
+    percentage_test_records = (num_test_records / num_total_records) * 100
+
+    statistics_dict = dict(
+        **func_kwargs,
+        original_dataset=dict(
+            num_impressions=num_total_impressions,
+            num_records=num_total_records,
+        ),
+        new_dataset=dict(
+            num_impressions=num_train_impressions,
+            num_records=num_train_records,
+            percentage_impressions=percentage_train_impressions,
+            percentage_records=percentage_train_records,
+        ),
+        other_dataset=dict(
+            num_impressions=num_impressions_with_repeated_interactions,
+            num_records=num_records_with_repeated_interactions,
+            percentage_impressions=percentage_impressions_with_repeated_interactions,
+            percentage_records=percentage_records_with_repeated_interactions,
+        ),
+        test=dict(
+            num_impressions=num_test_impressions,
+            num_records=num_test_records,
+            percentage_impressions=percentage_test_impressions,
+            percentage_records=percentage_test_records,
+        ),
+    )
+
+    logger.warning(
+        f"Function {func_name}. "
+        f"Found {num_test_records}/{num_total_records} ({percentage_test_records:.2f}%) {message}. "
+        f"Function kwargs:"
+        f"\n\t* {func_kwargs}"
+        f"\nStatistics of the new dataset:"
+        f"\n\t* # Records: {num_train_records}/{num_total_records} ({percentage_train_records:.2f}%)"
+        f"\n\t* # impressions: {num_train_impressions}/{num_total_impressions} ({percentage_train_impressions:.2f}%)"
+        f"\nStatistics of the other dataset:"
+        f"\n\t* # Records: {num_records_with_repeated_interactions}/{num_total_records} ({percentage_records_with_repeated_interactions:.2f}%)"
+        f"\n\t* # impressions: {num_impressions_with_repeated_interactions}/{num_total_impressions} ({percentage_impressions_with_repeated_interactions:.2f}%)"
+        f"\nStatistics of the test information:"
+        f"\n\t* # Records: {num_test_records}/{num_total_records} ({percentage_test_records:.2f}%)"
+        f"\n\t* # impressions: {num_test_impressions}/{num_total_impressions} ({percentage_test_impressions:.2f}%)"
+        f"\nStatistics dict: "
+        f"\n\t* {statistics_dict}"
+    )
+
+
 def remove_duplicates_in_interactions(
     df: pd.DataFrame,
     columns_to_compare: list[str],
@@ -33,19 +272,37 @@ def remove_duplicates_in_interactions(
         or keep in ["first", "last"]
     )
 
+    num_unique_indices = df.index.nunique()
+    num_indices = df.index.shape[0]
+
+    if num_unique_indices != num_indices:
+        raise ValueError(
+            f"The function {remove_duplicates_in_interactions.__name__} needs the dataframe's index to not contain "
+            f"duplicates. Number of unique values in the index: {num_unique_indices}. Number of indices: {num_indices}"
+        )
+
     df_without_duplicates = df.drop_duplicates(
-        subset=[columns_to_compare],
+        subset=columns_to_compare,
         keep=keep,
         inplace=False,
         ignore_index=False,
     )
 
-    df_removed_records = df.drop(
+    df_duplicates = df.drop(
         df_without_duplicates.index,
         inplace=False,
     )
 
-    return df_without_duplicates, df_removed_records
+    _compute_statistics(
+        func_name="remove_duplicates_in_interactions",
+        message="repeated user-item interactions",
+        df_orig=df,
+        df_keep=df_without_duplicates,
+        df_removed=df_duplicates,
+        keep=keep,
+    )
+
+    return df_without_duplicates, df_duplicates
 
 
 def remove_users_without_min_number_of_interactions(
@@ -53,13 +310,35 @@ def remove_users_without_min_number_of_interactions(
     users_column: str,
     min_number_of_interactions: int,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """ Removes from a dataframe those users without a certain number of interactions.
+    """ Removes from a dataframe those users without a certain number of interactions_exploded.
 
     Returns
     -------
     A tuple. The first element is the dataframe with the records of selected users removed. The second element is a
     dataframe of the removed records.
     """
+    if min_number_of_interactions < 0:
+        raise ValueError(
+            f"min_number_of_interactions must be greater than zero. Value passed: {min_number_of_interactions}"
+        )
+
+    num_unique_indices = df.index.nunique()
+    num_indices = df.index.shape[0]
+
+    if num_unique_indices != num_indices:
+        raise ValueError(
+            f"The function {remove_users_without_min_number_of_interactions.__name__} needs the dataframe's index to "
+            f"not contain duplicates. Number of unique values in the index: {num_unique_indices}. "
+            f"Number of indices: {num_indices}"
+        )
+
+    # There are two ways to do this calculation.
+    # 1) df.groupby(by=user_column, as_index=False)[user_column].size()
+    # 2) df.value_counts(subset=["user_id"], normalize=False, sort=False, ascending=False, dropna=True).to_frame("size").reset_index(drop=False)
+    # In both cases we will have a DataFrame with a 0...N index, a column `user_column` with the unique user ids, and
+    # a column `size` containing the frequency of each user id in the dataset.
+    # 1) is slightly faster than 2), a jupyter-lab %%timeit yields (5.58 ms ± 144 µs per loop (mean ± std. dev.
+    # of 7 runs, 100 loops each) vs 6.55 ms ± 139 µs per loop (mean ± std. dev. of 7 runs, 100 loops each).
     grouped_df = df.groupby(
         by=users_column,
         as_index=False,
@@ -69,18 +348,64 @@ def remove_users_without_min_number_of_interactions(
         grouped_df["size"] >= min_number_of_interactions
     ][users_column]
 
-    df_users_to_keep = df[df[users_column].isin(users_to_keep)].copy()
-    df_removed_users = df.drop(df_users_to_keep.index)
+    df_users_to_keep = df[
+        df[users_column].isin(users_to_keep)
+    ].copy()
 
-    num_removed_users = df_removed_users[users_column].nunique()
-    num_removed_records = df_removed_users.shape[0]
+    df_removed_users = df.drop(
+        df_users_to_keep.index
+    )
 
-    logger.warning(
-        f"Found {num_removed_users} users without the desired minimum number of "
-        f"interactions ({min_number_of_interactions=}). Removed {num_removed_records} records."
+    _compute_statistics(
+        func_name="remove_users_without_min_number_of_interactions",
+        message="interactions of users without the minimum # of interactions",
+        df_orig=df,
+        df_keep=df_users_to_keep,
+        df_removed=df_removed_users,
+        min_number_of_interactions=min_number_of_interactions,
     )
 
     return df_users_to_keep, df_removed_users
+
+
+def filter_impressions_by_interactions_index(
+    df_impressions: pd.DataFrame,
+    df_interactions: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    indices_in_interactions_outside_impressions = set(df_interactions.index).difference(df_impressions.index)
+    if len(indices_in_interactions_outside_impressions) > 0:
+        raise AssertionError(
+            f"This function needs the interaction indices to be a subset of the impression indices, this is because "
+            f"the interactions set has been filtered. Found the following indices in the interactions that are not in "
+            f"the impressions ones: {indices_in_interactions_outside_impressions}."
+        )
+
+    # To create the UIM we need to have the (user_id, impressions) pair.
+    # Also, we need to filter the impressions by the same filters of the interactions.
+    # We do this by selecting from the impression set the remaining indices in the interactions after we've
+    # applied all filters.
+    # NOTE: be careful, this can be done with a join too
+    # (e.g., df_impressions_filtered.join(other=df_interactions_filtered)), but given that the interactions have
+    # several repeated indices (given that we exploded it before), then a join would create repeated impressions
+    # records.
+    df_impressions_keep = df_impressions[
+        df_impressions.index.isin(df_interactions.index)
+    ].copy()
+
+    df_impressions_removed = df_impressions.drop(
+        df_impressions_keep.index,
+        inplace=False,
+    )
+
+    _compute_statistics_impressions(
+        func_name="filter_impressions_by_interactions_index",
+        message="repeated user-item interactions",
+        df_orig=df_impressions,
+        df_keep=df_impressions_keep,
+        df_removed=df_impressions_removed,
+    )
+
+    return df_impressions_keep, df_impressions_removed
 
 
 def split_sequential_train_test_by_column_threshold(
@@ -106,6 +431,16 @@ def split_sequential_train_test_by_column_threshold(
     df_train = df[df_filter].copy()
     df_test = df[~df_filter].copy()
 
+    _compute_statistics(
+        func_name="split_sequential_train_test_by_column_threshold",
+        message="Split by threshold value",
+        df_orig=df,
+        df_keep=df_train,
+        df_removed=df_test,
+        column=column,
+        threshold=threshold,
+    )
+
     return df_train, df_test
 
 
@@ -119,8 +454,8 @@ def split_sequential_train_test_by_num_records_on_test(
     Notes
     -----
     This method creates *first* the test set and then the train set, due to the pandas API. Therefore, if any group has
-    less than (`num_records_in_test` + 1) interactions, these record will be sent to the test set instead of the train
-    set. Moreover, if this happens, the method will raise a ValueError instance.
+    less than (`num_records_in_test` + 1) interactions_exploded, these record will be sent to the test set instead of
+    the train set. Moreover, if this happens, the method will raise a ValueError instance.
 
     This method preserves the original indices.
 
@@ -132,30 +467,50 @@ def split_sequential_train_test_by_num_records_on_test(
     """
     assert num_records_in_test > 0
 
+    num_unique_indices = df.index.nunique()
+    num_indices = df.index.shape[0]
+
+    if num_unique_indices != num_indices:
+        raise ValueError(
+            f"The function {split_sequential_train_test_by_num_records_on_test.__name__} needs the dataframe's index to "
+            f"not contain duplicates. Number of unique values in the index: {num_unique_indices}. "
+            f"Number of indices: {num_indices}"
+        )
+
     # There are two ways to generate a leave-last-out strategy.
     # The first uses df.groupby(...).nth[-1].
     # The second uses df.reset_index(drop=False).groupby(...).last().set_index("index").
     # Both approaches take the last record of each group with their respective indices.
     # The training set is the resulting dataframe (named df_test)
     # The training set is then df.drop(test_set.index) (named df_train)
+    # NOTE: a groupby on a categorical column will have rows for categories not inside the dataframe, e.g.,
+    # if some users were removed from the interactions, the groupby will show their sizes as 0 because they're part
+    # of the category.
     grouped_df = df.groupby(
         by=group_by_column,
         as_index=False,
     )
 
-    # This variable tells the minimum size of each group so
+    # This variable tells the minimum size of each group.
     min_num_records_by_group = num_records_in_test + 1
     grouped_size_df = grouped_df[group_by_column].size()
-    non_valid_groups = grouped_size_df["size"] < min_num_records_by_group
+
+    # Given that the groupby counts for all user, even if they are not in the interactions, then we must filter the
+    # grouped dataframe by the actual users in the interactions dataframe.
+    users_in_df = grouped_size_df[
+        grouped_size_df[group_by_column].isin(df[group_by_column].unique())
+    ]
+
+    non_valid_groups = users_in_df["size"] < min_num_records_by_group
+
     if any(non_valid_groups):
-        logger.error(
-            f"Cannot partition the dataset given that the following groups do not have at least 2 interaction records:"
-            f"\n{grouped_size_df[non_valid_groups]}"
+        message = (
+            f"Cannot partition the dataset given that the following groups do not have at least "
+            f"{min_num_records_by_group} interaction records:"
+            f"\n{users_in_df[non_valid_groups]}"
         )
-        raise ValueError(
-            f"Cannot partition the dataset given that the following groups do not have at least 2 interaction records:"
-            f"\n{grouped_size_df[non_valid_groups]}"
-        )
+        logger.error(message)
+        raise ValueError(message)
 
     df_test = grouped_df.nth(
         np.arange(
@@ -170,80 +525,90 @@ def split_sequential_train_test_by_num_records_on_test(
         inplace=False
     ).copy()
 
+    _compute_statistics(
+        func_name="split_sequential_train_test_by_num_records_on_test",
+        message="Split by leave-last-k-out",
+        df_orig=df,
+        df_keep=df_train,
+        df_removed=df_test,
+        group_by_column=group_by_column,
+        num_records_in_test=num_records_in_test,
+    )
+
     return df_train, df_test
 
 
-if __name__ == "__main__":
-    test_df = pd.DataFrame(
-        data=dict(
-            a=[0, 1, 2, 3, 4, 5],
-            b=[3, 4, 5, 6, 7, 8],
-            group_id=[99, 100, 101, 101, 101, 100],
-        ),
-        index=[9, 10, 11, 12, 13, 14],
-    )
-
-    expected_df_train = pd.DataFrame(
-        data=dict(
-            a=[0, 1, 2, 3],
-            b=[3, 4, 5, 6],
-            group_id=[99, 100, 101, 101],
-        ),
-        index=[9, 10, 11, 12],
-    )
-    expected_df_validation = pd.DataFrame(
-        data=dict(
-            a=[4],
-            b=[7],
-            group_id=[101],
-        ),
-        index=[13],
-    )
-    expected_df_test = pd.DataFrame(
-        data=dict(
-            a=[5],
-            b=[8],
-            group_id=[100],
-        ),
-        index=[14],
-    )
-
-    df_keep, df_removed = remove_users_without_min_number_of_interactions(
-        df=test_df,
-        users_column="group_id",
-        min_number_of_interactions=3,
-    )
-
-    df_train, df_test = split_sequential_train_test_by_num_records_on_test(
-        df=df_keep,
-        group_by_column="group_id",
-        num_records_in_test=1,
-    )
-
-    df_train, df_validation = split_sequential_train_test_by_num_records_on_test(
-        df=df_train,
-        group_by_column="group_id",
-        num_records_in_test=1,
-    )
-
-    df_train, df_test = split_sequential_train_test_by_column_threshold(
-        df=test_df,
-        column="b",
-        threshold=7
-    )
-
-    df_train, df_validation = split_sequential_train_test_by_column_threshold(
-        df=df_train,
-        column="b",
-        threshold=6
-    )
-
-    assert expected_df_train.equals(
-        other=df_train,
-    )
-    assert expected_df_validation.equals(
-        other=df_validation,
-    )
-    assert expected_df_test.equals(
-        other=df_test,
-    )
+# if __name__ == "__main__":
+#     test_df = pd.DataFrame(
+#         data=dict(
+#             a=[0, 1, 2, 3, 4, 5],
+#             b=[3, 4, 5, 6, 7, 8],
+#             group_id=[99, 100, 101, 101, 101, 100],
+#         ),
+#         index=[9, 10, 11, 12, 13, 14],
+#     )
+#
+#     expected_df_train = pd.DataFrame(
+#         data=dict(
+#             a=[0, 1, 2, 3],
+#             b=[3, 4, 5, 6],
+#             group_id=[99, 100, 101, 101],
+#         ),
+#         index=[9, 10, 11, 12],
+#     )
+#     expected_df_validation = pd.DataFrame(
+#         data=dict(
+#             a=[4],
+#             b=[7],
+#             group_id=[101],
+#         ),
+#         index=[13],
+#     )
+#     expected_df_test = pd.DataFrame(
+#         data=dict(
+#             a=[5],
+#             b=[8],
+#             group_id=[100],
+#         ),
+#         index=[14],
+#     )
+#
+#     df_keep, df_removed = remove_users_without_min_number_of_interactions(
+#         df=test_df,
+#         users_column="group_id",
+#         min_number_of_interactions=3,
+#     )
+#
+#     df_train, df_test = split_sequential_train_test_by_num_records_on_test(
+#         df=df_keep,
+#         group_by_column="group_id",
+#         num_records_in_test=1,
+#     )
+#
+#     df_train, df_validation = split_sequential_train_test_by_num_records_on_test(
+#         df=df_train,
+#         group_by_column="group_id",
+#         num_records_in_test=1,
+#     )
+#
+#     df_train, df_test = split_sequential_train_test_by_column_threshold(
+#         df=test_df,
+#         column="b",
+#         threshold=7
+#     )
+#
+#     df_train, df_validation = split_sequential_train_test_by_column_threshold(
+#         df=df_train,
+#         column="b",
+#         threshold=6
+#     )
+#
+#     assert expected_df_train.equals(
+#         other=df_train,
+#     )
+#     assert expected_df_validation.equals(
+#         other=df_validation,
+#     )
+#     assert expected_df_test.equals(
+#         other=df_test,
+#     )
