@@ -234,7 +234,6 @@ def download_remote_file(
 class MINDVariant(Enum):
     SMALL = "SMALL"
     LARGE = "LARGE"
-    NA = "NA"
 
 
 @attr.frozen
@@ -269,7 +268,6 @@ class MINDSmallConfig:
             lambda _, att, val: not val
         ]
     )
-
 
 
 @attr.frozen
@@ -591,13 +589,6 @@ class MINDRawData:
                 os.remove(local_zip_path)
 
 
-class MINDDataFrames(Enum):
-    INTERACTIONS = "INTERACTIONS"
-    INTERACTIONS_EXPLODED = "INTERACTIONS_EXPLODED"
-    IMPRESSIONS = "IMPRESSIONS"
-    INTERACTIONS_IMPRESSIONS_METADATA = "INTERACTIONS_IMPRESSIONS_METADATA"
-
-
 class PandasMINDRawData:
     """A class that reads the MINDSmall data using Pandas Dataframes."""
 
@@ -856,13 +847,13 @@ class MINDReader(BaseDataReader):
     _NAME_TIMESTAMP_IMPRESSIONS_VALIDATION = "UIM_timestamp_validation"
     _NAME_TIMESTAMP_IMPRESSIONS_TEST = "UIM_timestamp_test"
 
-    _NAME_LEAVE_K_OUT_URM_TRAIN = "URM_leave_k_out_train"
-    _NAME_LEAVE_K_OUT_URM_VALIDATION = "URM_leave_k_out_validation"
-    _NAME_LEAVE_K_OUT_URM_TEST = "URM_leave_k_out_test"
+    _NAME_LEAVE_LAST_K_OUT_URM_TRAIN = "URM_leave_last_k_out_train"
+    _NAME_LEAVE_LAST_K_OUT_URM_VALIDATION = "URM_leave_last_k_out_validation"
+    _NAME_LEAVE_LAST_K_OUT_URM_TEST = "URM_leave_last_k_out_test"
 
-    _NAME_LEAVE_K_OUT_IMPRESSIONS_TRAIN = "UIM_leave_k_out_train"
-    _NAME_LEAVE_K_OUT_IMPRESSIONS_VALIDATION = "UIM_leave_k_out_validation"
-    _NAME_LEAVE_K_OUT_IMPRESSIONS_TEST = "UIM_leave_k_out_test"
+    _NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TRAIN = "UIM_leave_last_k_out_train"
+    _NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_VALIDATION = "UIM_leave_last_k_out_validation"
+    _NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TEST = "UIM_leave_last_k_out_test"
 
     def __init__(
         self,
@@ -1051,7 +1042,7 @@ class MINDReader(BaseDataReader):
 
     @property  # type: ignore
     @typed_cache
-    def _impressions_leave_k_out_split(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def _impressions_leave_last_k_out_split(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         interactions_train, interactions_validation, interactions_test = self._interactions_leave_last_k_out_split
 
         impressions_filtered = self._impressions_filtered
@@ -1084,8 +1075,8 @@ class MINDReader(BaseDataReader):
         self._calculate_urm_timestamp_splits()
         self._calculate_uim_timestamp_splits()
 
-        self._calculate_urm_leave_k_out_splits()
-        self._calculate_uim_leave_k_out_splits()
+        self._calculate_urm_leave_last_k_out_splits()
+        self._calculate_uim_leave_last_k_out_splits()
 
         return BinaryImplicitDataset(
             dataset_name="MINDSmall",
@@ -1160,13 +1151,13 @@ class MINDReader(BaseDataReader):
         self._user_id_to_index_mapper = builder_impressions_all.get_row_token_to_id_mapper()
         self._item_id_to_index_mapper = builder_impressions_all.get_column_token_to_id_mapper()
 
-    def _calculate_urm_leave_k_out_splits(self) -> None:
+    def _calculate_urm_leave_last_k_out_splits(self) -> None:
         df_train, df_validation, df_test = self._interactions_leave_last_k_out_split
 
         names = [
-            self._NAME_LEAVE_K_OUT_URM_TRAIN,
-            self._NAME_LEAVE_K_OUT_URM_VALIDATION,
-            self._NAME_LEAVE_K_OUT_URM_TEST
+            self._NAME_LEAVE_LAST_K_OUT_URM_TRAIN,
+            self._NAME_LEAVE_LAST_K_OUT_URM_VALIDATION,
+            self._NAME_LEAVE_LAST_K_OUT_URM_TEST
         ]
         splits = [
             df_train,
@@ -1197,13 +1188,13 @@ class MINDReader(BaseDataReader):
 
             self._urms[name] = builder_urm_split.get_SparseMatrix()
 
-    def _calculate_uim_leave_k_out_splits(self) -> None:
-        df_train, df_validation, df_test = self._impressions_leave_k_out_split
+    def _calculate_uim_leave_last_k_out_splits(self) -> None:
+        df_train, df_validation, df_test = self._impressions_leave_last_k_out_split
 
         names = [
-            self._NAME_LEAVE_K_OUT_IMPRESSIONS_TRAIN,
-            self._NAME_LEAVE_K_OUT_IMPRESSIONS_VALIDATION,
-            self._NAME_LEAVE_K_OUT_IMPRESSIONS_TEST
+            self._NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TRAIN,
+            self._NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_VALIDATION,
+            self._NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TEST
         ]
         splits = [
             df_train,
