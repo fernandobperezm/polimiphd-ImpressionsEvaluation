@@ -1,4 +1,4 @@
-from typing import Any, cast, Literal
+from typing import Any, cast, Literal, Optional, Union, Callable
 
 import numpy as np
 import pandas as pd
@@ -9,6 +9,7 @@ logger = get_logger(
 )
 
 T_KEEP = Literal["first", "last", False]
+T_AXIS = Literal["index", "columns"]
 
 
 def _compute_statistics(
@@ -110,49 +111,32 @@ def _compute_statistics_impressions(
     df_removed: pd.DataFrame,
     **func_kwargs
 ) -> None:
-    num_total_impressions = df_orig["impression_id"].nunique()
     num_total_records = df_orig.shape[0]
 
-    num_keep_impressions = df_keep["impression_id"].nunique()
     num_keep_records = df_keep.shape[0]
-
-    percentage_keep_impressions = (num_keep_impressions / num_total_impressions) * 100
     percentage_keep_records = (num_keep_records / num_total_records) * 100
 
-    num_impressions_with_repeated_interactions = df_removed["impression_id"].nunique()
     num_records_with_repeated_interactions = df_removed.shape[0]
-
-    percentage_impressions_with_repeated_interactions = (num_impressions_with_repeated_interactions / num_total_impressions) * 100
     percentage_records_with_repeated_interactions = (num_records_with_repeated_interactions / num_total_records) * 100
 
-    num_removed_impressions = num_total_impressions - num_keep_impressions
     num_removed_records = num_total_records - num_keep_records
-
-    percentage_removed_impressions = (num_removed_impressions / num_total_impressions) * 100
     percentage_removed_records = (num_removed_records / num_total_records) * 100
 
     statistics_dict = dict(
         **func_kwargs,
         original_dataset=dict(
-            num_impressions=num_total_impressions,
             num_records=num_total_records,
         ),
         new_dataset=dict(
-            num_impressions=num_keep_impressions,
             num_records=num_keep_records,
-            percentage_impressions=percentage_keep_impressions,
             percentage_records=percentage_keep_records,
         ),
         other_dataset=dict(
-            num_impressions=num_impressions_with_repeated_interactions,
             num_records=num_records_with_repeated_interactions,
-            percentage_impressions=percentage_impressions_with_repeated_interactions,
             percentage_records=percentage_records_with_repeated_interactions,
         ),
         removed=dict(
-            num_impressions=num_removed_impressions,
             num_records=num_removed_records,
-            percentage_impressions=percentage_removed_impressions,
             percentage_records=percentage_removed_records,
         ),
     )
@@ -164,87 +148,10 @@ def _compute_statistics_impressions(
         f"\n\t* {func_kwargs}"
         f"\nStatistics of the new dataset:"
         f"\n\t* # Records: {num_keep_records}/{num_total_records} ({percentage_keep_records:.2f}%)"
-        f"\n\t* # impressions: {num_keep_impressions}/{num_total_impressions} ({percentage_keep_impressions:.2f}%)"
         f"\nStatistics of the other dataset:"
         f"\n\t* # Records: {num_records_with_repeated_interactions}/{num_total_records} ({percentage_records_with_repeated_interactions:.2f}%)"
-        f"\n\t* # impressions: {num_impressions_with_repeated_interactions}/{num_total_impressions} ({percentage_impressions_with_repeated_interactions:.2f}%)"
         f"\nStatistics of the removed information:"
         f"\n\t* # Records: {num_removed_records}/{num_total_records} ({percentage_removed_records:.2f}%)"
-        f"\n\t* # impressions: {num_removed_impressions}/{num_total_impressions} ({percentage_removed_impressions:.2f}%)"
-        f"\nStatistics dict: "
-        f"\n\t* {statistics_dict}"
-    )
-
-
-def _compute_statistics_split(
-    func_name: str,
-    message: str,
-    df_orig: pd.DataFrame,
-    df_train: pd.DataFrame,
-    df_test: pd.DataFrame,
-    **func_kwargs
-) -> None:
-    num_total_impressions = df_orig["impression_id"].nunique()
-    num_total_records = df_orig.shape[0]
-
-    num_train_impressions = df_train["impression_id"].nunique()
-    num_train_records = df_train.shape[0]
-
-    percentage_train_impressions = (num_train_impressions / num_total_impressions) * 100
-    percentage_train_records = (num_train_records / num_total_records) * 100
-
-    num_impressions_with_repeated_interactions = df_test["impression_id"].nunique()
-    num_records_with_repeated_interactions = df_test.shape[0]
-
-    percentage_impressions_with_repeated_interactions = (num_impressions_with_repeated_interactions / num_total_impressions) * 100
-    percentage_records_with_repeated_interactions = (num_records_with_repeated_interactions / num_total_records) * 100
-
-    num_test_impressions = num_total_impressions - num_train_impressions
-    num_test_records = num_total_records - num_train_records
-
-    percentage_test_impressions = (num_test_impressions / num_total_impressions) * 100
-    percentage_test_records = (num_test_records / num_total_records) * 100
-
-    statistics_dict = dict(
-        **func_kwargs,
-        original_dataset=dict(
-            num_impressions=num_total_impressions,
-            num_records=num_total_records,
-        ),
-        new_dataset=dict(
-            num_impressions=num_train_impressions,
-            num_records=num_train_records,
-            percentage_impressions=percentage_train_impressions,
-            percentage_records=percentage_train_records,
-        ),
-        other_dataset=dict(
-            num_impressions=num_impressions_with_repeated_interactions,
-            num_records=num_records_with_repeated_interactions,
-            percentage_impressions=percentage_impressions_with_repeated_interactions,
-            percentage_records=percentage_records_with_repeated_interactions,
-        ),
-        test=dict(
-            num_impressions=num_test_impressions,
-            num_records=num_test_records,
-            percentage_impressions=percentage_test_impressions,
-            percentage_records=percentage_test_records,
-        ),
-    )
-
-    logger.warning(
-        f"Function {func_name}. "
-        f"Found {num_test_records}/{num_total_records} ({percentage_test_records:.2f}%) {message}. "
-        f"Function kwargs:"
-        f"\n\t* {func_kwargs}"
-        f"\nStatistics of the new dataset:"
-        f"\n\t* # Records: {num_train_records}/{num_total_records} ({percentage_train_records:.2f}%)"
-        f"\n\t* # impressions: {num_train_impressions}/{num_total_impressions} ({percentage_train_impressions:.2f}%)"
-        f"\nStatistics of the other dataset:"
-        f"\n\t* # Records: {num_records_with_repeated_interactions}/{num_total_records} ({percentage_records_with_repeated_interactions:.2f}%)"
-        f"\n\t* # impressions: {num_impressions_with_repeated_interactions}/{num_total_impressions} ({percentage_impressions_with_repeated_interactions:.2f}%)"
-        f"\nStatistics of the test information:"
-        f"\n\t* # Records: {num_test_records}/{num_total_records} ({percentage_test_records:.2f}%)"
-        f"\n\t* # impressions: {num_test_impressions}/{num_total_impressions} ({percentage_test_impressions:.2f}%)"
         f"\nStatistics dict: "
         f"\n\t* {statistics_dict}"
     )
@@ -399,13 +306,81 @@ def filter_impressions_by_interactions_index(
 
     _compute_statistics_impressions(
         func_name="filter_impressions_by_interactions_index",
-        message="repeated user-item interactions",
+        message="impressions inside the filtered interactions.",
         df_orig=df_impressions,
         df_keep=df_impressions_keep,
         df_removed=df_impressions_removed,
     )
 
     return df_impressions_keep, df_impressions_removed
+
+
+def remove_records_by_threshold(
+    df: pd.DataFrame,
+    column: str,
+    threshold: Any,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Filters the dataset on the column `column` using a threshold `threshold`.
+
+    In particular, this method keeps those records that are greater or equal than `threshold`. Therefore, discarding
+    those that are strictly less than `threshold`.
+
+    Notes
+    -----
+    This method preserves the original indices.
+    """
+    df_filter_to_keep = cast(
+        pd.Series,
+        df[column] >= threshold
+    )
+
+    df_keep = df[df_filter_to_keep].copy()
+    df_removed = df[~df_filter_to_keep].copy()
+
+    _compute_statistics(
+        func_name="remove_records_by_threshold",
+        message="Filter by threshold value",
+        df_orig=df,
+        df_keep=df_keep,
+        df_removed=df_removed,
+        column=column,
+        threshold=threshold,
+    )
+
+    return df_keep, df_removed
+
+
+def apply_custom_function(
+    df: pd.DataFrame,
+    column: str,
+    func: Callable[[], Any],
+    func_name: str,
+    axis: T_AXIS,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+
+    df_keep = df.copy()
+    df_keep[column] = df[column].apply(
+        func=func,
+    )
+
+    df_removed = df.drop(
+        df_keep.index,
+        inplace=False,
+    )
+
+    _compute_statistics_impressions(
+        func_name=func_name,
+        message=f"Applied {func_name}",
+        df_orig=df,
+        df_keep=df_keep,
+        df_removed=df_removed,
+        column=column,
+        custom_func_name=func_name,
+        axis=axis,
+    )
+
+    return df_keep, df_removed
+
 
 
 def split_sequential_train_test_by_column_threshold(
