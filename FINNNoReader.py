@@ -53,7 +53,7 @@ from tqdm import tqdm
 from data_splitter import filter_impressions_by_interactions_index, split_sequential_train_test_by_num_records_on_test, \
     split_sequential_train_test_by_column_threshold, remove_users_without_min_number_of_interactions, \
     remove_duplicates_in_interactions, T_KEEP, remove_records_by_threshold, apply_custom_function
-from mixins import BinaryImplicitDataset, ParquetDataMixin
+from mixins import BaseDataset, ParquetDataMixin
 from utils import typed_cache
 
 tqdm.pandas()
@@ -166,6 +166,7 @@ class FinnNoSlatesConfig:
 
     min_number_of_interactions = _MIN_ITEM_ID
     binarize_impressions = True
+    binarize_interactions = True
     keep_duplicates: T_KEEP = "first"
 
 
@@ -1049,25 +1050,6 @@ class PandasFinnNoSlateRawData(ParquetDataMixin):
 class FINNNoSlateReader(DataReader):
     IS_IMPLICIT = True
 
-    _NAME_URM_ALL = "URM_all"
-    _NAME_IMPRESSIONS_ALL = "UIM_all"
-
-    _NAME_TIME_STEP_URM_TRAIN = "URM_time_step_train"
-    _NAME_TIME_STEP_URM_VALIDATION = "URM_time_step_validation"
-    _NAME_TIME_STEP_URM_TEST = "URM_time_step_test"
-
-    _NAME_TIME_STEP_IMPRESSIONS_TRAIN = "UIM_time_step_train"
-    _NAME_TIME_STEP_IMPRESSIONS_VALIDATION = "UIM_time_step_validation"
-    _NAME_TIME_STEP_IMPRESSIONS_TEST = "UIM_time_step_test"
-
-    _NAME_LEAVE_LAST_K_OUT_URM_TRAIN = "URM_leave_last_k_out_train"
-    _NAME_LEAVE_LAST_K_OUT_URM_VALIDATION = "URM_leave_last_k_out_validation"
-    _NAME_LEAVE_LAST_K_OUT_URM_TEST = "URM_leave_last_k_out_test"
-
-    _NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TRAIN = "UIM_leave_last_k_out_train"
-    _NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_VALIDATION = "UIM_leave_last_k_out_validation"
-    _NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TEST = "UIM_leave_last_k_out_test"
-
     def __init__(
         self,
         config: FinnNoSlatesConfig,
@@ -1079,17 +1061,17 @@ class FINNNoSlateReader(DataReader):
         self.DATA_FOLDER = os.path.join(
             self.config.data_folder, "data_reader", "",
         )
-
         self.ORIGINAL_SPLIT_FOLDER = self.DATA_FOLDER
-
-        self._DATA_READER_NAME = "FINNNoSlateReader"
-
         self.DATASET_SUBFOLDER = "FINN-NO-SLATE/"
+        self.IS_IMPLICIT = self.config.binarize_interactions
+        self._DATA_READER_NAME = "FINNNoSlateReader"
 
         self._keep_duplicates = self.config.keep_duplicates
         self._min_number_of_interactions = self.config.min_number_of_interactions
         self._binarize_impressions = self.config.binarize_impressions
+        self._binarize_interactions = self.config.binarize_interactions
         self._num_parts_split_dataset = 500
+
         self._raw_data_loader = PandasFinnNoSlateRawData(
             config=config,
         )
@@ -1097,7 +1079,7 @@ class FINNNoSlateReader(DataReader):
         self._user_id_to_index_mapper: dict[int, int] = dict()
         self._item_id_to_index_mapper: dict[int, int] = dict()
 
-        self._urms: dict[str, sp.csr_matrix] = dict()
+        self._interactions: dict[str, sp.csr_matrix] = dict()
         self._impressions: dict[str, sp.csr_matrix] = dict()
 
         self._icms = None
@@ -1108,7 +1090,7 @@ class FINNNoSlateReader(DataReader):
 
     @property  # type: ignore
     @typed_cache
-    def dataset(self) -> BinaryImplicitDataset:
+    def dataset(self) -> BaseDataset:
         return self.load_data(
             save_folder_path=self.ORIGINAL_SPLIT_FOLDER,
         )
@@ -1303,28 +1285,30 @@ class FINNNoSlateReader(DataReader):
     def _get_dataset_name_root(self) -> str:
         return self.DATASET_SUBFOLDER
 
-    def _load_from_original_file(self) -> BinaryImplicitDataset:
+    def _load_from_original_file(self) -> BaseDataset:
         # IMPORTANT: calculate first the impressions, so we have all mappers created.
         self._calculate_uim_all()
         self._calculate_urm_all()
 
-        self._calculate_urm_time_step_splits()
-        self._calculate_uim_time_step_splits()
-
-        self._calculate_urm_leave_last_k_out_splits()
         self._calculate_uim_leave_last_k_out_splits()
+        self._calculate_urm_leave_last_k_out_splits()
 
-        return BinaryImplicitDataset(
+        self._calculate_uim_time_step_splits()
+        self._calculate_urm_time_step_splits()
+
+        return BaseDataset(
             dataset_name="FINNNoSlate",
             impressions=self._impressions,
-            interactions=self._urms,
+            interactions=self._interactions,
             mapper_item_original_id_to_index=self._item_id_to_index_mapper,
             mapper_user_original_id_to_index=self._user_id_to_index_mapper,
+            is_impressions_implicit=self._binarize_impressions,
+            is_interactions_implicit=self._binarize_interactions,
         )
 
     def _calculate_urm_all(self):
         logger.info(
-            f"Building URM with name {self._NAME_URM_ALL}."
+            f"Building URM with name {BaseDataset.NAME_URM_ALL}."
         )
         df_interactions_filtered, _, _ = self._data_filtered
 
@@ -1345,16 +1329,18 @@ class FINNNoSlateReader(DataReader):
             data_list_to_add=data,
         )
 
-        self._urms = {
-            **self._urms,
-            self._NAME_URM_ALL: builder_urm_all.get_SparseMatrix()
-        }
+        urm_all = builder_urm_all.get_SparseMatrix()
+        if self._binarize_interactions:
+            urm_all.data = np.ones_like(urm_all.data, dtype=np.int32)
+
+        self._interactions[BaseDataset.NAME_URM_ALL] = urm_all
+
         self._user_id_to_index_mapper = builder_urm_all.get_row_token_to_id_mapper()
         self._item_id_to_index_mapper = builder_urm_all.get_column_token_to_id_mapper()
 
     def _calculate_uim_all(self):
         logger.info(
-            f"Building UIM with name {self._NAME_IMPRESSIONS_ALL}."
+            f"Building UIM with name {BaseDataset.NAME_UIM_ALL}."
         )
         _, df_impressions_filtered, _ = self._data_filtered
 
@@ -1391,9 +1377,9 @@ class FINNNoSlateReader(DataReader):
 
         uim_all = builder_impressions_all.get_SparseMatrix()
         if self._binarize_impressions:
-            uim_all.data = np.ones_like(uim_all.data)
+            uim_all.data = np.ones_like(uim_all.data, dtype=np.int32)
 
-        self._impressions[self._NAME_IMPRESSIONS_ALL] = uim_all.copy()
+        self._impressions[BaseDataset.NAME_UIM_ALL] = uim_all.copy()
 
         self._user_id_to_index_mapper = builder_impressions_all.get_row_token_to_id_mapper()
         self._item_id_to_index_mapper = builder_impressions_all.get_column_token_to_id_mapper()
@@ -1402,9 +1388,9 @@ class FINNNoSlateReader(DataReader):
         df_train, df_validation, df_test, _, _, _, _, _, _ = self._data_leave_last_k_out_split
 
         names = [
-            self._NAME_LEAVE_LAST_K_OUT_URM_TRAIN,
-            self._NAME_LEAVE_LAST_K_OUT_URM_VALIDATION,
-            self._NAME_LEAVE_LAST_K_OUT_URM_TEST
+            BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TRAIN,
+            BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_VALIDATION,
+            BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TEST,
         ]
         splits = [
             df_train,
@@ -1433,15 +1419,19 @@ class FINNNoSlateReader(DataReader):
                 data_list_to_add=data,
             )
 
-            self._urms[name] = builder_urm_split.get_SparseMatrix()
+            urm_split = builder_urm_split.get_SparseMatrix()
+            if self._binarize_interactions:
+                urm_split.data = np.ones_like(urm_split.data, dtype=np.int32)
+
+            self._interactions[name] = urm_split.copy()
 
     def _calculate_uim_leave_last_k_out_splits(self) -> None:
         _, _, _, df_train, df_validation, df_test, _, _, _ = self._data_leave_last_k_out_split
 
         names = [
-            self._NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TRAIN,
-            self._NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_VALIDATION,
-            self._NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TEST
+            BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TRAIN,
+            BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_VALIDATION,
+            BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TEST,
         ]
         splits = [
             df_train,
@@ -1491,14 +1481,14 @@ class FINNNoSlateReader(DataReader):
         df_train, df_validation, df_test, _, _, _, _, _, _ = self._data_time_step_split
 
         names = [
-            self._NAME_TIME_STEP_URM_TRAIN,
-            self._NAME_TIME_STEP_URM_VALIDATION,
-            self._NAME_TIME_STEP_URM_TEST
+            BaseDataset.NAME_URM_TIMESTAMP_TRAIN,
+            BaseDataset.NAME_URM_TIMESTAMP_VALIDATION,
+            BaseDataset.NAME_URM_TIMESTAMP_TEST,
         ]
         splits = [
             df_train,
             df_validation,
-            df_test
+            df_test,
         ]
 
         logger.info(
@@ -1522,15 +1512,19 @@ class FINNNoSlateReader(DataReader):
                 data_list_to_add=data,
             )
 
-            self._urms[name] = builder_urm_split.get_SparseMatrix()
+            urm_split = builder_urm_split.get_SparseMatrix()
+            if self._binarize_interactions:
+                urm_split.data = np.ones_like(urm_split.data, dtype=np.int32)
+
+            self._interactions[name] = urm_split.copy()
 
     def _calculate_uim_time_step_splits(self) -> None:
         _, _, _, df_train, df_validation, df_test, _, _, _ = self._data_time_step_split
 
         names = [
-            self._NAME_TIME_STEP_IMPRESSIONS_TRAIN,
-            self._NAME_TIME_STEP_IMPRESSIONS_VALIDATION,
-            self._NAME_TIME_STEP_IMPRESSIONS_TEST
+            BaseDataset.NAME_UIM_TIMESTAMP_TRAIN,
+            BaseDataset.NAME_UIM_TIMESTAMP_VALIDATION,
+            BaseDataset.NAME_UIM_TIMESTAMP_TEST,
         ]
         splits = [
             df_train,
