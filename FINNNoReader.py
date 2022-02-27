@@ -1,32 +1,96 @@
+""" FINNNoReader.py
+
+This module holds the classes to read the FINN.NO Slates dataset.
+This dataset contains clicks and *no-actions* of users with items in a norwegian marketplace. In particular,
+the clicks and no-clicks are with items that may be recommended or searched. These interactions also contain their
+corresponding impression record (the list of items shown to the user).
+
+Notes
+-----
+Arrays of the dataset in its original form
+    userId
+        Identifier of the users (User ID).
+    click
+        Identifier of interacted items with two exceptions. click=0 means a filler item, it appears if the
+        recommendation list was empty for the user.
+    click_idx
+        The position where the interacted item was placed in the impression list.
+    slate
+        The impressions, a list of recommendations, searches, or unknown.
+    interaction_type
+        If the impression came from a recommendation, search, or unknown source.
+    slate_lengths
+        The number of items present in the recommendation list.
+"""
+
 import os
 from enum import Enum
-from typing import Optional, cast, Any, Literal
+from typing import cast, Any
+from memory_profiler import profile
 
-import dask.array as da
+import attr
 import dask.dataframe as dd
+import numba
 import numpy as np
 import pandas as pd
-import scipy.stats as st
 import scipy.sparse as sp
 from dask.delayed import delayed
-from numba import jit, prange
+from numba import jit
 from numpy.lib.npyio import NpzFile
 from recsys_framework.Data_manager.DataReader import DataReader
-from recsys_framework.Data_manager.DataSplitter_leave_k_out import DataSplitter_leave_k_out
-from recsys_framework.Data_manager.Dataset import Dataset, gini_index
-from recsys_framework.Data_manager.IncrementalSparseMatrix import IncrementalSparseMatrix_FilterIDs
+from recsys_framework.Data_manager.Dataset import gini_index
+from recsys_framework.Data_manager.IncrementalSparseMatrix import (
+    IncrementalSparseMatrix_FilterIDs,
+)
 from recsys_framework.Recommenders.DataIO import DataIO
-from recsys_framework.Utils.conf_dask import configure_dask_cluster
 from recsys_framework.Utils.conf_logging import get_logger
 from recsys_framework.Utils.decorators import timeit
-from recsys_slates_dataset.data_helper import download_data_files as download_finn_no_slate_files
-from scipy.stats.stats import DescribeResult
+from recsys_slates_dataset.data_helper import (
+    download_data_files as download_finn_no_slate_files,
+)
 from tqdm import tqdm
+
+from data_splitter import filter_impressions_by_interactions_index, split_sequential_train_test_by_num_records_on_test, \
+    split_sequential_train_test_by_column_threshold, remove_users_without_min_number_of_interactions, \
+    remove_duplicates_in_interactions, T_KEEP, remove_records_by_threshold, apply_custom_function
+from mixins import BinaryImplicitDataset, ParquetDataMixin
+from utils import typed_cache
 
 tqdm.pandas()
 
+
 logger = get_logger(
     logger_name=__file__,
+)
+
+
+_MIN_ITEM_ID = 3
+
+
+@jit(nopython=True, parallel=False)
+def remove_non_clicks_on_impressions(
+    impressions: np.ndarray,
+    min_item_id: int = _MIN_ITEM_ID,
+) -> np.ndarray:
+    assert len(impressions.shape) == 1
+    num_cols = impressions.shape[0]
+
+    return np.array(
+        [
+            impressions[col_idx]
+            for col_idx in numba.prange(num_cols)
+            if impressions[col_idx] >= min_item_id
+        ],
+        dtype=np.int32,
+    )
+
+map(
+    remove_non_clicks_on_impressions,
+    [
+        np.array([0, 1, 2, 0, 0], dtype=np.int32),
+        np.array([0, 0, 0, 0, 0], dtype=np.int32),
+        np.array([0, 1, 2, 3, 4], dtype=np.int32),
+    ],
 )
 
 
@@ -35,148 +99,215 @@ def is_item_in_impression(
     impressions: np.ndarray,
     item_ids: np.ndarray,
 ) -> np.ndarray:
+    """Numba-compiled-non-parallel function that calculates if an item is inside an impression.
+
+    This function iterates over the data points of both ndarrays and determines if each item in `item_ids` was
+    impressed in `impressions`.
+
+    Parameters
+    ----------
+    impressions
+        A (M, 25) matrix where rows represent data points and columns the position of each item in the impressions
+        list. `impressions[i,j]` returns the impressed item_id for the data point `i` in position `j`.
+    item_ids
+        A (M, ) vector where M represents data points. `item_ids[i]` returns the `item_id` for the data point `i`.
+
+    Returns
+    -------
+    np.ndarray
+        A (M, ) vector of booleans. `a[i] == True` means that `item_ids[i]` was impressed in `impressions[i,:]`
+    """
+
     assert impressions.shape[0] == item_ids.shape[0]
     assert impressions.shape[1] == 25
+
+    num_impressions: int = impressions.shape[0]
 
     return np.array(
         [
             item_ids[idx] in impressions[idx]
-            for idx in prange(impressions.shape[0])
+            for idx in range(num_impressions)
         ],
     )
 
 
 # Ensure `is_item_in_impression` is JIT-compiled with expected array type,
 # to avoid time in compiling.
-# JIT-compile numba functions
-is_item_in_impression(
-    impressions=np.array([range(25)]),
-    item_ids=np.array([1])
-)
-is_item_in_impression(
-    impressions=np.array([range(25)]),
-    item_ids=np.array([1])
-)
+is_item_in_impression(impressions=np.array([range(25)]), item_ids=np.array([1]))
+is_item_in_impression(impressions=np.array([range(25)]), item_ids=np.array([1]))
 
 
 @jit(nopython=True, parallel=False)
-def calculate_items_in_impressions(
+def compute_interaction_position_in_impression(
     impressions: np.ndarray,
-    item_ids: np.ndarray,
-) -> tuple[list[np.ndarray], np.ndarray]:
-    assert impressions.shape[0] == item_ids.shape[0]
-    assert impressions.shape[1] == 25
-
-    item_positions = []
-    num_items_in_impressions = np.empty(
-        shape=(impressions.shape[0], ),
-        dtype=np.int32,
-    )
-
-    for idx in range(impressions.shape[0]):
-        idx_positions = np.where(impressions[idx] == item_ids[idx])[0]
-
-        item_positions.append(idx_positions)
-        num_items_in_impressions[idx] = idx_positions.shape[0]
-
-    return item_positions, num_items_in_impressions
+    item_id: int,
+) -> np.ndarray:
+    # This returns a tuple of arrays. First one is row_indices and second position is column indices.
+    # given that impressions are 1D arrays, we only ened the first position of the tuple.
+    return np.asarray(impressions == item_id).nonzero()[0]
 
 
+@attr.frozen
 class FinnNoSlatesConfig:
+    """Configuration class used by data readers of the FINN.No dataset"""
     data_folder = os.path.join(
         ".",
         "data",
         "FINN-NO-SLATE",
     )
-    parquet_engine = "pyarrow"
-    parquet_use_nullable_dtypes = True
-    parquet_num_parts_by_user = 100
-    parquet_num_parts_by_time_step = 20
+
+    num_raw_data_points = 2_277_645
+    num_time_steps = 20
+    num_items_in_each_impression = 25
+    num_data_points = 45_552_900  # MUST BE NUM_RAW_DATA_POINTS * NUM_TIME_STEPS
+
+    # The dataset treats 0s and 1s as error, and no-clicks, respectively.
+    min_item_id = 3
+
+    min_number_of_interactions = _MIN_ITEM_ID
+    binarize_impressions = True
+    keep_duplicates: T_KEEP = "first"
 
 
 class FINNNoImpressionOrigin(Enum):
+    """Enum indicating the types of impressions present in the FINN.No dataset"""
     UNDEFINED = 0
     SEARCH = 1
     RECOMMENDATION = 2
 
 
-class FINNNoSlateRawData:
+class FINNNoSlateRawData(ParquetDataMixin):
+    """Class that reads the 'raw' FINN.No data from disk.
+
+    We refer to raw data as the original representation of the data,
+    without cleaning or much processing. The dataset originally has XYZ-fernando-debugger data points.
+    """
+
     def __init__(
         self,
+        config: FinnNoSlatesConfig,
     ):
-        self._config = FinnNoSlatesConfig
+        self._config = config
 
         self._original_dataset_folder = os.path.join(
-            self._config.data_folder,
-            "original",
+            self._config.data_folder, "original",
         )
         self._original_dataset_data_file = os.path.join(
-            self._original_dataset_folder,
-            "data.npz",
+            self._original_dataset_folder, "data.npz",
         )
         self._original_dataset_mapper_file = os.path.join(
-            self._original_dataset_folder,
-            "ind2val.json",
+            self._original_dataset_folder, "ind2val.json",
         )
         self._original_dataset_item_attr_file = os.path.join(
-            self._original_dataset_folder,
-            "itemattr.npz",
+            self._original_dataset_folder, "itemattr.npz",
         )
-        self.num_time_steps = 20
-        self.num_items_in_each_impression = 25
+
+        self._original_dataset_pandas_file = os.path.join(
+            self._original_dataset_folder, "raw_data.parquet"
+        )
+
+        self.num_raw_data_points = self._config.num_raw_data_points
+        self.num_time_steps = self._config.num_time_steps
+        self.num_items_in_each_impression = self._config.num_items_in_each_impression
+        self.num_data_points = self.num_raw_data_points * self.num_time_steps
+
         self._data_loaded = False
 
-    def load_data(self) -> None:
-        if self._data_loaded:
-            return
+    @property  # type: ignore
+    @typed_cache
+    def raw_data(self) -> pd.DataFrame:
+        return self.load_parquet(
+            file_path=self._original_dataset_pandas_file,
+            to_pandas_func=self._raw_data_to_pandas
+        )
 
+    def _raw_data_to_pandas(self):
         self._download_dataset()
 
         with cast(
-            NpzFile,
-            np.load(file=self._original_dataset_data_file)
+            NpzFile, np.load(file=self._original_dataset_data_file)
         ) as interactions:
             user_ids = cast(np.ndarray, interactions["userId"])
             item_ids = cast(np.ndarray, interactions["click"])
             click_indices_in_impressions = cast(np.ndarray, interactions["click_idx"])
             impressions = cast(np.ndarray, interactions["slate"])
-            impression_types = cast(np.ndarray, interactions["interaction_type"])
-            # Unreliable, not loaded
-            # self.impressions_length_list = cast(np.ndarray, interactions["slate_lengths"])
+            impression_origins = cast(np.ndarray, interactions["interaction_type"])
+            impressions_length_list = cast(np.ndarray, interactions["slate_lengths"])
 
-            self.num_points = user_ids.shape[0] * self.num_time_steps
-            self.user_id_arr = user_ids.repeat(
+            assert (self.num_raw_data_points,) == user_ids.shape
+            assert (self.num_raw_data_points, self.num_time_steps) == item_ids.shape
+            assert (self.num_raw_data_points, self.num_time_steps) == click_indices_in_impressions.shape
+            assert (self.num_raw_data_points, self.num_time_steps) == impression_origins.shape
+            assert (self.num_raw_data_points, self.num_time_steps) == impressions_length_list.shape
+            assert (self.num_raw_data_points, self.num_time_steps, self.num_items_in_each_impression) == \
+                   impressions.shape
+
+            user_id_arr = user_ids.repeat(
                 repeats=self.num_time_steps,
             )
-            self.item_id_arr = item_ids.reshape(
-                (self.num_points,)
+            item_id_arr = item_ids.reshape(
+                (self.num_data_points,)
             )
-            self.time_step_arr = np.array([range(20)] * user_ids.shape[0]).reshape(
-                (self.num_points,)
+            time_step_arr = np.array(
+                [range(self.num_time_steps)] * user_ids.shape[0]
+            ).reshape(
+                (self.num_data_points,)
             )
-            self.impression_type_arr = impression_types.reshape(
-                (self.num_points,)
+            impression_origin_arr = impression_origins.reshape(
+                (self.num_data_points,)
             )
-            self.click_idx_in_impression_arr = click_indices_in_impressions.reshape(
-                (self.num_points,)
+            position_interactions_arr = click_indices_in_impressions.reshape(
+                (self.num_data_points,)
             )
-            self.impressions_arr = impressions.reshape(
-                (self.num_points, self.num_items_in_each_impression)
+            impressions_arr = impressions.reshape(
+                (self.num_data_points, self.num_items_in_each_impression)
             )
-            self.item_in_impression_arr = timeit(is_item_in_impression)(
-                impressions=self.impressions_arr,
-                item_ids=self.item_id_arr,
+            num_impressions_arr = impressions_length_list.reshape(
+                (self.num_data_points, )
+            )
+            is_item_in_impression_arr = is_item_in_impression(
+                impressions=impressions_arr,
+                item_ids=item_id_arr,
             )
 
-            assert (self.num_points, ) == self.user_id_arr.shape
-            assert (self.num_points, ) == self.item_id_arr.shape
-            assert (self.num_points, ) == self.time_step_arr.shape
-            assert (self.num_points, ) == self.click_idx_in_impression_arr.shape
-            assert (self.num_points, ) == self.impression_type_arr.shape
-            assert (self.num_points, ) == self.item_in_impression_arr.shape
-            assert (self.num_points, 25) == self.impressions_arr.shape
+            assert (self.num_data_points,) == user_id_arr.shape
+            assert (self.num_data_points,) == item_id_arr.shape
+            assert (self.num_data_points,) == time_step_arr.shape
+            assert (self.num_data_points,) == position_interactions_arr.shape
+            assert (self.num_data_points,) == impression_origin_arr.shape
+            assert (self.num_data_points,) == num_impressions_arr.shape
+            assert (self.num_data_points,) == is_item_in_impression_arr.shape
+            assert (self.num_data_points, self.num_items_in_each_impression) == impressions_arr.shape
 
-        self._data_loaded = True
+            df_data = pd.DataFrame(
+                data={
+                    "user_id": user_id_arr,
+                    "item_id": item_id_arr,
+                    "time_step": time_step_arr,
+                    "impressions": list(impressions_arr),  # Needed to include a list of lists as a series of lists
+                    # into the dataframe.
+                    "position_interaction": position_interactions_arr,
+                    "impressions_origin": impression_origin_arr,
+                    "num_impressions": num_impressions_arr,
+                    "is_item_in_impression": is_item_in_impression_arr,
+                },
+            ).astype(
+                dtype={
+                    "user_id": "category",
+                    "item_id": "category",
+                    "time_step": "category",
+                    "impressions_origin": "category",
+                    "impressions": "object",
+                    "position_interaction": np.int32,
+                    "num_impressions": np.int32,
+                    "is_item_in_impression": pd.BooleanDtype(),
+                }
+            )
+
+            assert (self.num_data_points, 8) == df_data.shape
+            #assert (1000000, 8) == df_data.shape
+
+            return df_data
 
     def _download_dataset(self) -> None:
         os.makedirs(
@@ -200,223 +331,236 @@ class FINNNoSlateRawData:
                 use_int32=True,
             )
 
-    @staticmethod
-    def _clean_data(
-        user_id: int,
-        user_impression_list: np.ndarray,
-        user_interaction_type_list: np.ndarray,
-        user_clicked_list: np.ndarray,
-        user_clicked_index_list: np.ndarray,
-        time_step: int
-    ) -> dict[str, Any]:
-        item_id: Optional[int] = None
-        item_in_impressions: bool
-        item_interacted: bool
-        item_position: Optional[int] = None
 
-        # Originally all impressions have the "no-clicked" item in the first position
-        # and zeroes at the end if the number of items is lower than 25.
-        # We remove it alongside not need it.
-        impressions: pd.DataFrame = user_impression_list[time_step]
-        impressions = impressions[
-            (impressions > 1)
-        ]
-
-        # Originally all impressions are of size 25, we subtract one from the reported length given that we remove
-        # the "no-action" item from the impressions.
-        # The number of impressions in the dataset (reported as slate_lengths) seem unreliable, therefore we
-        # just calculate it again based on the length of the remaining impression.
-        # num_impressions = interactions_data["slate_lengths"][data_idx][time_step] - 1
-        impressions_length = impressions.shape[0]
-
-        # Impression type
-        impressions_type = user_interaction_type_list[time_step]
-
-        # If the user clicked an item, then item_id is an integer, else None.
-        click = cast(int, user_clicked_list[time_step])
-        if click > 1:
-            item_id = click
-
-        # Some items are not in the impressions
-        item_in_impressions = item_id in impressions
-
-        # Originally if the user did not click any interaction, then the index is 1, we use a boolean flag to indicate
-        # if the user interacted or not with any impression.
-        item_interacted = item_id is not None
-
-        # If this was a no-action, then it is None
-        # else the position on screen - 1 because the original data counts the no-action as being in the impression_list
-        if item_id is not None and item_in_impressions:
-            item_position = user_clicked_index_list[time_step] - 1
-
-        return {
-            "user_id": user_id,
-            "item_id": item_id,
-            "time_step": time_step,
-            "item_interacted": item_interacted,
-            "item_in_impressions": item_in_impressions,
-            "item_position": item_position,
-            "impressions": impressions,
-            "impressions_length": impressions_length,
-            "impressions_type": impressions_type,
-        }
+class FINNNoSlateDataFrames(Enum):
+    INTERACTIONS = "INTERACTIONS"
+    IMPRESSIONS = "IMPRESSIONS"
+    INTERACTIONS_IMPRESSIONS_METADATA = "INTERACTIONS_IMPRESSIONS_METADATA"
 
 
-class DaskFinnNoSlateRawData:
+# class DaskFinnNoSlateRawData:
+#     """A class that reads the FINN.No data using Dask Dataframes."""
+#
+#     def __init__(
+#         self,
+#     ):
+#         self.config = FinnNoSlatesConfig()
+#         self.raw_data_loader = FINNNoSlateRawData()
+#
+#         self._dataset_folder = os.path.join(
+#             self.config.data_folder, "dask", "original",
+#         )
+#
+#         self.folder_interactions = os.path.join(
+#             self._dataset_folder, "interactions_exploded", ""
+#         )
+#         self.folder_impressions = os.path.join(
+#             self._dataset_folder, "impressions", ""
+#         )
+#         self.folder_impressions_metadata = os.path.join(
+#             self._dataset_folder, "impressions_metadata", ""
+#         )
+#
+#
+#         self._interactions: Optional[dd.DataFrame] = None
+#         self._impressions: Optional[dd.DataFrame] = None
+#         self._interactions_impressions_metadata: Optional[dd.DataFrame] = None
+#
+#     @property
+#     def interactions(self) -> dd.DataFrame:
+#         """ Interactions Dask Dataframe.
+#
+#         The columns of the dataframe are:
+#
+#         user_id : np.int32
+#         time_step : np.int32
+#         item_id : np.int32
+#             A value of 1 indicates no interactions_exploded with any item in the list. A value of 0 indicates error.
+#         """
+#         if self._interactions is None:
+#             self._interactions = self.load(
+#                 df_name=FINNNoSlateDataFrames.INTERACTIONS
+#             )
+#
+#         return self._interactions
+#
+#     @property
+#     def impressions(self) -> dd.DataFrame:
+#         if self._impressions is None:
+#             self._impressions = self.load(
+#                 df_name=FINNNoSlateDataFrames.IMPRESSIONS
+#             )
+#
+#         return self._impressions
+#
+#     @property
+#     def interactions_impressions_metadata(self) -> dd.DataFrame:
+#         if self._interactions_impressions_metadata is None:
+#             self._interactions_impressions_metadata = self.load(
+#                 df_name=FINNNoSlateDataFrames.INTERACTIONS_IMPRESSIONS_METADATA
+#             )
+#
+#         return self._interactions_impressions_metadata
+#
+#     @timeit
+#     def load(self, df_name: FINNNoSlateDataFrames) -> dd.DataFrame:
+#         """Returns the Finn.NO data in three ~dask.DataFrame dataframes.
+#
+#         Parameters
+#         ----------
+#         df_name
+#             An member of the enum `FINNNoSlateDataFrames` indicating which dataframe to return.
+#
+#         Returns
+#         -------
+#         dask.DataFrame
+#             A dataframe containing the requested record by `df_name`.
+#
+#         Raises
+#         ------
+#         ValueError
+#             If parameter `df_name` is not a valid `FINNNoSlateDataFrames` member.
+#         """
+#
+#         self.to_dask()
+#
+#         if df_name == FINNNoSlateDataFrames.INTERACTIONS:
+#             return dd.read_parquet(
+#                 path=self.folder_interactions,
+#                 engine=FinnNoSlatesConfig.parquet_engine,
+#             )
+#
+#         elif df_name == FINNNoSlateDataFrames.IMPRESSIONS:
+#             dd.read_parquet(
+#                 path=self.folder_impressions,
+#                 engine=FinnNoSlatesConfig.parquet_engine,
+#             ),
+#
+#         elif df_name == FINNNoSlateDataFrames.IMPRESSIONS:
+#             dd.read_parquet(
+#                 path=self.folder_impressions_metadata,
+#                 engine=FinnNoSlatesConfig.parquet_engine,
+#             )
+#
+#         raise ValueError(
+#             f"{df_name=} not valid. Valid values are {list(FINNNoSlateDataFrames)}"
+#         )
+#
+#     @timeit
+#     def to_dask(self) -> None:
+#         if (
+#             os.path.exists(self.folder_interactions)
+#             and len(os.listdir(self.folder_interactions)) > 0
+#             and os.path.exists(self.folder_impressions)
+#             and len(os.listdir(self.folder_impressions)) > 0
+#             and os.path.exists(self.folder_impressions_metadata)
+#             and len(os.listdir(self.folder_impressions_metadata)) > 0
+#         ):
+#             return
+#
+#         self.raw_data_loader.load_data()
+#
+#         index_arr = np.arange(
+#             start=0,
+#             step=1,
+#             stop=self.raw_data_loader.num_data_points,
+#         )
+#
+#         @timeit
+#         def interactions_to_dask() -> None:
+#             dd.from_pandas(
+#                 data=pd.DataFrame(
+#                     data={
+#                         "user_id": self.raw_data_loader.user_id_arr,
+#                         "time_step": self.raw_data_loader.time_step_arr,
+#                         "item_id": self.raw_data_loader.item_id_arr,
+#                     },
+#                     index=index_arr,
+#                 ).astype(
+#                     dtype={
+#                         "user_id": np.int32,
+#                         "time_step": np.int32,
+#                         "item_id": np.int32,
+#                     },
+#                 ),
+#                 npartitions=100,
+#             ).to_parquet(
+#                 path=self.folder_interactions,
+#                 engine=self.config.parquet_engine,
+#             )
+#
+#         @timeit
+#         def impressions_to_dask() -> None:
+#             dd.from_pandas(
+#                 data=pd.DataFrame(
+#                     data=self.raw_data_loader.impressions_arr,
+#                     index=index_arr,
+#                     columns=[
+#                         f"pos_{i}"
+#                         for i in range(
+#                             self.raw_data_loader.num_items_in_each_impression
+#                         )
+#                     ],
+#                 ).astype(
+#                     np.int32,
+#                 ),
+#                 npartitions=100,
+#             ).to_parquet(
+#                 path=self.folder_impressions,
+#                 engine=self.config.parquet_engine,
+#             )
+#
+#         @timeit
+#         def impressions_metadata_to_dask() -> None:
+#             dd.from_pandas(
+#                 data=pd.DataFrame(
+#                     data={
+#                         "click_idx_in_impression": self.raw_data_loader.click_idx_in_impression_arr,
+#                         "impression_type": self.raw_data_loader.impression_type_arr,
+#                         "item_in_impression": self.raw_data_loader.item_in_impression_arr,
+#                     },
+#                     index=index_arr,
+#                 ).astype(
+#                     dtype={
+#                         "click_idx_in_impression": np.int32,
+#                         "impression_type": np.int32,
+#                         "item_in_impression": np.bool,
+#                     },
+#                 ),
+#                 npartitions=100,
+#             ).to_parquet(
+#                 path=self.folder_impressions_metadata,
+#                 engine=self.config.parquet_engine,
+#             )
+#
+#         interactions_to_dask()
+#         impressions_metadata_to_dask()
+#         impressions_to_dask()
+
+
+class PandasFinnNoSlateRawData(ParquetDataMixin):
+    """A class that reads the FINN.No data using Pandas Dataframes."""
+
     def __init__(
         self,
+        config: FinnNoSlatesConfig
     ):
-        self.config = FinnNoSlatesConfig()
-        self.raw_data_loader = FINNNoSlateRawData()
+        self.config = config
+        self.raw_data_loader = FINNNoSlateRawData(
+            config=config,
+        )
 
         self._dataset_folder = os.path.join(
-            self.config.data_folder,
-            "dask",
-            "original",
-        )
-
-        self.folder_interactions = os.path.join(
-            self._dataset_folder,
-            "interactions",
-            ""
-        )
-        self.folder_impressions = os.path.join(
-            self._dataset_folder,
-            "impressions",
-            ""
-        )
-        self.folder_impressions_metadata = os.path.join(
-            self._dataset_folder,
-            "impressions_metadata",
-            ""
-        )
-
-    @timeit
-    def load(self) -> tuple[dd.DataFrame, dd.DataFrame, dd.DataFrame]:
-        self.to_dask()
-
-        return (
-            dd.read_parquet(
-                path=self.folder_interactions,
-                engine=FinnNoSlatesConfig.parquet_engine,
-            ),
-            dd.read_parquet(
-                path=self.folder_impressions,
-                engine=FinnNoSlatesConfig.parquet_engine,
-            ),
-            dd.read_parquet(
-                path=self.folder_impressions_metadata,
-                engine=FinnNoSlatesConfig.parquet_engine,
-            ),
-        )
-
-    @timeit
-    def to_dask(self) -> None:
-        if (
-            os.path.exists(self.folder_interactions) and len(os.listdir(self.folder_interactions)) > 0
-            and os.path.exists(self.folder_impressions) and len(os.listdir(self.folder_impressions)) > 0
-            and os.path.exists(self.folder_impressions_metadata) and len(os.listdir(self.folder_impressions_metadata)) > 0
-        ):
-            return
-
-        self.raw_data_loader.load_data()
-
-        index_arr = np.arange(
-            start=0,
-            step=1,
-            stop=self.raw_data_loader.num_points,
-        )
-
-        @timeit
-        def interactions_to_dask() -> None:
-            dd.from_pandas(
-                data=pd.DataFrame(
-                    data={
-                        "user_id": self.raw_data_loader.user_id_arr,
-                        "time_step": self.raw_data_loader.time_step_arr,
-                        "item_id": self.raw_data_loader.item_id_arr,
-                    },
-                    index=index_arr,
-                ).astype(
-                    dtype={
-                        "user_id": np.int32,
-                        "time_step": np.int32,
-                        "item_id": np.int32,
-                    },
-                ),
-                npartitions=100,
-            ).to_parquet(
-                path=self.folder_interactions,
-                engine=self.config.parquet_engine,
-            )
-
-        @timeit
-        def impressions_to_dask() -> None:
-            dd.from_pandas(
-                data=pd.DataFrame(
-                    data=self.raw_data_loader.impressions_arr,
-                    index=index_arr,
-                    columns=[f"pos_{i}" for i in range(self.raw_data_loader.num_items_in_each_impression)]
-                ).astype(
-                    np.int32,
-                ),
-                npartitions=100,
-            ).to_parquet(
-                path=self.folder_impressions,
-                engine=self.config.parquet_engine,
-            )
-
-        @timeit
-        def impressions_metadata_to_dask() -> None:
-            dd.from_pandas(
-                data=pd.DataFrame(
-                    data={
-                        "click_idx_in_impression": self.raw_data_loader.click_idx_in_impression_arr,
-                        "impression_type": self.raw_data_loader.impression_type_arr,
-                        "item_in_impression": self.raw_data_loader.item_in_impression_arr,
-                    },
-                    index=index_arr,
-                ).astype(
-                    dtype={
-                        "click_idx_in_impression": np.int32,
-                        "impression_type": np.int32,
-                        "item_in_impression": np.bool,
-                    },
-                ),
-                npartitions=100,
-            ).to_parquet(
-                path=self.folder_impressions_metadata,
-                engine=self.config.parquet_engine,
-            )
-
-        interactions_to_dask()
-        impressions_metadata_to_dask()
-        impressions_to_dask()
-
-
-class PandasFinnNoSlateRawData:
-    def __init__(
-        self,
-    ):
-        self.config = FinnNoSlatesConfig()
-        self.raw_data_loader = FINNNoSlateRawData()
-
-        self._dataset_folder = os.path.join(
-            self.config.data_folder,
-            "pandas",
-            "original",
+            self.config.data_folder, "pandas", "original",
         )
         self.file_interactions = os.path.join(
-            self._dataset_folder,
-            "interactions.parquet"
+            self._dataset_folder, "interactions.parquet"
         )
         self.file_impressions = os.path.join(
-            self._dataset_folder,
-            "impressions.parquet"
+            self._dataset_folder, "impressions.parquet"
         )
         self.file_impressions_metadata = os.path.join(
-            self._dataset_folder,
-            "impressions_metadata.parquet"
+            self._dataset_folder, "impressions_metadata.parquet"
         )
 
         os.makedirs(
@@ -424,857 +568,530 @@ class PandasFinnNoSlateRawData:
             exist_ok=True,
         )
 
-    @timeit
-    def load(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-        self.to_pandas()
+    @property  # type: ignore
+    @typed_cache
+    def _df_train_and_validation(self) -> pd.DataFrame:
+        """
 
-        return (
-            pd.read_parquet(
-                path=self.file_interactions,
-                engine=self.config.parquet_engine,
-                use_nullable_dtypes=self.config.parquet_use_nullable_dtypes,
-            ),
-            pd.read_parquet(
-                path=self.file_impressions,
-                engine=self.config.parquet_engine,
-                use_nullable_dtypes=self.config.parquet_use_nullable_dtypes,
-            ),
-            pd.read_parquet(
-                path=self.file_impressions_metadata,
-                engine=self.config.parquet_engine,
-                use_nullable_dtypes=self.config.parquet_use_nullable_dtypes,
-            ),
+        Notes
+        -----
+        This reader may or not to load the `test` split from MIND-LARGE given that its impressions do not have
+        clicked/not-clicked information, i.e., we have impressions but not interactions for users.
+        """
+        return self.raw_data_loader.raw_data
+
+    @property  # type: ignore
+    @typed_cache
+    def interactions(self) -> pd.DataFrame:
+        """ Interactions Dask Dataframe.
+
+        The columns of the dataframe are:
+
+        user_id : np.int32
+        time_step : np.int32
+        item_id : np.int32
+            A value of 1 indicates no interactions_exploded with any item in the list. A value of 0 indicates error.
+        """
+        return self.load_parquet(
+            to_pandas_func=self._interactions_to_pandas,
+            file_path=self.file_interactions,
+        )
+
+    @property  # type: ignore
+    @typed_cache
+    def impressions(self) -> pd.DataFrame:
+        return self.load_parquet(
+            to_pandas_func=self._impressions_to_pandas,
+            file_path=self.file_impressions,
+        )
+
+    @property  # type: ignore
+    @typed_cache
+    def interactions_impressions_metadata(self) -> pd.DataFrame:
+        return self.load_parquet(
+            to_pandas_func=self._impressions_metadata_to_pandas,
+            file_path=self.file_impressions_metadata,
         )
 
     @timeit
-    def to_pandas(self) -> None:
-        if (
-            os.path.isfile(self.file_interactions)
-            and os.path.isfile(self.file_impressions)
-            and os.path.isfile(self.file_impressions_metadata)
-        ):
-            return
-
-        self.raw_data_loader.load_data()
-
-        index_arr = np.arange(
-            start=0,
-            step=1,
-            stop=self.raw_data_loader.num_points,
-        )
-
-        @timeit
-        def interactions_to_pandas() -> None:
-            pd.DataFrame(
-                data={
-                    "user_id": self.raw_data_loader.user_id_arr,
-                    "time_step": self.raw_data_loader.time_step_arr,
-                    "item_id": self.raw_data_loader.item_id_arr,
-                },
-                index=index_arr,
-            ).astype(
-                dtype={
-                    "user_id": np.int32,
-                    "time_step": np.int32,
-                    "item_id": np.int32,
-                },
-            ).to_parquet(
-                path=self.file_interactions,
-                engine=self.config.parquet_engine,
-            )
-
-        @timeit
-        def impressions_to_pandas() -> None:
-            pd.DataFrame(
-                data={"impression": list(self.raw_data_loader.impressions_arr)},
-                index=index_arr,
-                # columns=[f"pos_{i}" for i in range(self.raw_data_loader.num_impressions)]
-            ).astype(
-                {
-                    "impression": "object"
-                }  # np.int32,
-            ).to_parquet(
-                path=self.file_impressions,
-                engine=self.config.parquet_engine,
-            )
-
-        @timeit
-        def impressions_metadata_to_pandas() -> None:
-            pd.DataFrame(
-                data={
-                    "click_idx_in_impression": self.raw_data_loader.click_idx_in_impression_arr,
-                    "impression_type": self.raw_data_loader.impression_type_arr,
-                    "item_in_impression": self.raw_data_loader.item_in_impression_arr,
-                },
-                index=index_arr,
-            ).astype(
-                dtype={
-                    "click_idx_in_impression": np.int32,
-                    "impression_type": np.int32,
-                    "item_in_impression": np.bool,
-                },
-            ).to_parquet(
-                path=self.file_impressions_metadata,
-                engine=self.config.parquet_engine,
-            )
-
-        interactions_to_pandas()
-        impressions_metadata_to_pandas()
-        impressions_to_pandas()
-
-
-class StatisticsFinnNoSlate:
-    def __init__(self):
-        self.data_loader = DaskFinnNoSlateRawData()
-        # self.pd_interactions, self.pd_impressions, self.pd_impressions_metadata = PandasFinnNoSlateRawData().load()
-        self.dd_interactions, self.dd_impressions, self.dd_impressions_metadata = DaskFinnNoSlateRawData().load()
-
-        self.filters_boolean = [
-            ("full", slice(None)),
-            # ("no-data", self.dd_interactions["item_id"] == 0),
-            ("no-clicks", self.dd_interactions["item_id"] == 1),
-            ("interactions-&-no-clicks", self.dd_interactions["item_id"] > 0),
-            ("interactions", self.dd_interactions["item_id"] > 1),
-            # ("only-recommendations",
-            #  self.dd_impressions_metadata["impression_type"] == FINNNoImpressionOrigin.RECOMMENDATION.value),
-            # ("only-search", self.dd_impressions_metadata["impression_type"] == FINNNoImpressionOrigin.SEARCH.value),
-            # ("only-undefined", self.dd_impressions_metadata["impression_type"] == FINNNoImpressionOrigin.UNDEFINED.value),
+    def _interactions_to_pandas(self) -> None:
+        return self._df_train_and_validation[
+            ["user_id", "time_step", "item_id"]
         ]
 
-    def statistics_interactions(self) -> None:
-        # if os.path.exists("data/FINN-NO-SLATE/statistics/interactions.zip"):
-        #     return
-
-        interactions: dd.DataFrame = dd.concat(
-            [
-                self.dd_interactions,
-                self.dd_impressions_metadata
-            ],
-            axis="columns",
-        )
-
-        statistics_: dict[str, Any] = {}
-
-        datasets: list[tuple[str, dd.DataFrame]] = [
-            (name, interactions[filter_boolean])
-            for name, filter_boolean in self.filters_boolean
-        ] + [
-            (f"{name}_no_dup", interactions[filter_boolean].drop_duplicates(
-                subset=["user_id", "item_id"],
-                # keep="first",
-                ignore_index=False,
-            ))
-            for name, filter_boolean in self.filters_boolean
+    @timeit
+    def _impressions_to_pandas(self) -> None:
+        return self._df_train_and_validation[
+            ["user_id", "time_step", "impressions"]
         ]
 
-        columns_for_unique = [
-            "user_id",
-            "item_id",
-            "time_step",
-            "click_idx_in_impression",
-            "impression_type",
-            "item_in_impression",
+    @timeit
+    def _impressions_metadata_to_pandas(self) -> None:
+        return self._df_train_and_validation[
+            ["user_id", "time_step", "impressions_origin", "position_interaction", "num_impressions", "is_item_in_impression"]
         ]
 
-        columns_for_profile_length = [
-            "user_id",
-            "item_id",
-            "time_step",
-            "click_idx_in_impression",
-            "impression_type",
-            "item_in_impression",
-        ]
 
-        columns_for_gini = [
-            "user_id",
-            "item_id",
-            "time_step",
-            "click_idx_in_impression",
-            "impression_type",
-            "item_in_impression",
-        ]
-
-        columns_to_group_by = [
-            ("user_id", "item_id"),
-            ("item_id", "user_id"),
-            ("time_step", "user_id"),
-            ("click_idx_in_impression", "user_id"),
-            ("impression_type", "user_id"),
-            ("item_in_impression", "user_id"),
-        ]
-
-        logger.info(
-            f"Calculating statistics for several datasets."
-        )
-        name: str
-        dataset_: dd.DataFrame
-        series_column: dd.Series
-        for name, dataset_ in tqdm(datasets):
-            statistics_[name] = dict()
-
-            statistics_[name]["num_records"] = dataset_.shape[0]
-            # statistics_[name]["describe"] = delayed(
-            #     dataset_.astype({
-            #         "user_id": 'category',
-            #         "item_id": 'category',
-            #         "time_step": 'category',
-            #         "impression_type": 'category',
-            #         "click_idx_in_impression": 'category',
-            #     }).describe(
-            #         include="all"
-            #     ).astype({
-            #         # Given that this type is boolean, and the describe mixes ints with boolean values, then it must
-            #         # be parsed to either string or ints.
-            #         "item_in_impression": pd.StringDtype(),
-            #     })
-            # )
-
-            # for column in columns_for_unique:
-            #     if column not in statistics_[name]:
-            #         statistics_[name][column] = dict()
-            #
-            #     series_column = dataset_[column]
-            #
-            #     statistics_[name][column][f"num_unique"] = series_column.nunique()
-            #     statistics_[name][column][f"unique"] = series_column.unique()
-            #
-            for column in columns_for_profile_length:
-                if column not in statistics_[name]:
-                    statistics_[name][column] = dict()
-
-                series_column = dataset_[column]
-
-                statistics_[name][column][f"profile_length"] = series_column.value_counts(
-                    ascending=False,
-                    sort=False,
-                    normalize=False,
-                    dropna=True,
-                ).rename(
-                    "profile_length"
-                ).to_frame()
-
-                statistics_[name][column][f"profile_length_normalized"] = series_column.value_counts(
-                    ascending=False,
-                    sort=False,
-                    normalize=True,
-                    dropna=True,
-                ).rename(
-                    "profile_length_normalized"
-                ).to_frame()
-
-            # for column in columns_for_gini:
-            #     if column not in statistics_[name]:
-            #         statistics_[name][column] = dict()
-            #
-            #     series_column = dataset_[column]
-            #
-            #     # notna is there because columns might be NA.
-            #     statistics_[name][column]["gini_index_values_labels"] = delayed(
-            #         gini_index
-            #     )(array=series_column)
-            #     statistics_[name][column]["gini_index_values_counts"] = delayed(
-            #         gini_index
-            #     )(
-            #         array=series_column.value_counts(
-            #             dropna=True,
-            #             normalize=False,
-            #         ),
-            #     )
-            #
-            # for column_to_group_by, column_for_statistics in columns_to_group_by:
-            #     if column_to_group_by not in statistics_[name]:
-            #         statistics_[name][column_to_group_by] = dict()
-            #
-            #     df_group_by = dataset_.groupby(
-            #         by=[column_to_group_by],
-            #     )
-                #
-                # statistics_[name][column_to_group_by][f"group_by_profile_length"] = df_group_by[
-                #     column_for_statistics
-                # ].count()
-                # statistics_[name][column_to_group_by][f"group_by_describe"] = delayed(
-                #     df_group_by.agg([
-                #         "min",
-                #         "max",
-                #         "count",
-                #         "size",
-                #         "first",
-                #         "last",
-                #         # "var",
-                #         # "std",
-                #         # "mean",
-                #     ])
-                # )
-
-            # Create URM using original indices.
-            # num_users = dataset_["user_id"].max() + 1
-            # num_items = dataset_["item_id"].max() + 1
-            #
-            # row_indices = dataset_["user_id"]
-            # col_indices = dataset_["item_id"]
-            # data = delayed(np.ones_like)(
-            #     a=row_indices,
-            #     dtype=np.int32,
-            # )
-            # # assert row_indices.shape == col_indices.shape and row_indices.shape == data.shape
-            #
-            # urm_all_csr: sp.csr_matrix = delayed(sp.csr_matrix)(
-            #     (
-            #         data,
-            #         (row_indices, col_indices)
-            #     ),
-            #     shape=(num_users, num_items),
-            #     dtype=np.int32,
-            # )
-            #
-            # statistics_[name]["urm_all"] = dict()
-            # statistics_[name]["urm_all"]["matrix"] = urm_all_csr
-            #
-            # user_profile_length: np.ndarray = delayed(np.ediff1d)(urm_all_csr.indptr)
-            # user_profile_stats: DescribeResult = delayed(
-            #     st.describe
-            # )(
-            #     a=user_profile_length,
-            #     axis=0,
-            #     nan_policy="raise",
-            # )
-            # statistics_[name]["urm_all"]["interactions_by_users"] = {
-            #     "num_observations": user_profile_stats.nobs,
-            #     "min": user_profile_stats.minmax[0],
-            #     "max": user_profile_stats.minmax[1],
-            #     "mean": user_profile_stats.mean,
-            #     "variance": user_profile_stats.variance,
-            #     "skewness": user_profile_stats.skewness,
-            #     "kurtosis": user_profile_stats.kurtosis,
-            #     "gini_index": delayed(gini_index)(
-            #         array=user_profile_length,
-            #     ),
-            # }
-            #
-            # urm_all_csc: sp.csc_matrix = urm_all_csr.tocsc()
-            # item_profile_length: np.ndarray = delayed(np.ediff1d)(urm_all_csc.indptr)
-            # item_profile_stats: DescribeResult = delayed(
-            #     st.describe
-            # )(
-            #     a=item_profile_length,
-            #     axis=0,
-            #     nan_policy="omit",
-            # )
-            # statistics_[name]["urm_all"]["interactions_by_items"] = {
-            #     "num_observations": item_profile_stats.nobs,
-            #     "min": item_profile_stats.minmax[0],
-            #     "max": item_profile_stats.minmax[1],
-            #     "mean": item_profile_stats.mean,
-            #     "variance": item_profile_stats.variance,
-            #     "skewness": item_profile_stats.skewness,
-            #     "kurtosis": item_profile_stats.kurtosis,
-            #     "gini_index": delayed(gini_index)(
-            #         array=item_profile_length
-            #     ),
-            # }
-
-        logger.info(
-            "Sending compute to cluster."
-        )
-        computed_statistics = dask_interface._client.compute(
-            statistics_
-        ).result()
-
-        logger.info(
-            "Saving computed statistics."
-        )
-
-        print(computed_statistics["interactions"]["user_id"]["profile_length"], type(
-            computed_statistics["interactions"]["user_id"]["profile_length"]))
-        print(computed_statistics["interactions_no_dup"]["user_id"]["profile_length"], type(
-            computed_statistics["interactions_no_dup"]["user_id"]["profile_length"]))
-
-        print(
-            f'{np.array_equal(computed_statistics["interactions"]["user_id"]["profile_length"].index, computed_statistics["interactions_no_dup"]["user_id"]["profile_length"].index)=}'
-        )
-
-        import pdb
-        pdb.set_trace()
-
-        data_io = DataIO(
-            folder_path="data/FINN-NO-SLATE/statistics/"
-        )
-        data_io.save_data(
-            file_name="interactions.zip",
-            data_dict_to_save=computed_statistics,
-        )
-
-    def statistics_impressions(self):
-        impressions = self.impressions
-
-        datasets: list[tuple[str, dd.DataFrame]] = [
-            ("full", impressions),
-        ]
-
-        unique_items = np.unique(
-            impressions
-        )
-
-    def statistics_impressions_metadata(self):
-        # if os.path.exists("data/FINN-NO-SLATE/statistics/impressions_metadata.zip"):
-        #     return
-
-        interactions = dd.concat(
-            [self.dd_interactions, self.dd_impressions_metadata],
-            axis="columns",
-        )
-
-        statistics_: dict[str, Any] = {}
-
-        columns_to_calculate_normalizations = [
-            "click_idx_in_impression",
-            "impression_type",
-        ]
-
-        columns_for_gini = [
-            "impression_type",
-            "click_idx_in_impression",
-        ]
-
-        columns_to_compare = [
-            ("impression_type", "click_idx_in_impression"),
-            ("click_idx_in_impression", "impression_type"),
-        ]
-
-        columns_to_group_by = [
-            ("impression_type", "click_idx_in_impression"),
-            ("click_idx_in_impression", "impression_type"),
-        ]
-
-        name: str
-        dataset_: dd.DataFrame
-        series_column: dd.Series
-        for name, dataset_ in tqdm(datasets):
-            statistics_[name] = dict()
-
-            for column in columns_to_calculate_normalizations:
-                if column not in statistics_[name]:
-                    statistics_[name][column] = dict()
-
-                series_column = dataset_[column]
-
-                statistics_[name][column]["normalized"] = series_column.value_counts(
-                    dropna=False,
-                    normalize=True,
-                )
-                statistics_[name][column]["non-normalized"] = series_column.value_counts(
-                    dropna=False,
-                    normalize=False,
-                )
-
-            for column in columns_for_gini:
-                if column not in statistics_[name]:
-                    statistics_[name][column] = dict()
-
-                series_column = dataset_[column]
-
-                # notna is there because columns might be NA.
-                statistics_[name][column]["gini_index"] = delayed(gini_index)(
-                    array=delayed(series_column.values.compute)(),  # .to_numpy(copy=True)
-                )
-                # dropna needed because columns might be NA.
-                statistics_[name][column][f"unique_num_{column}"] = series_column.nunique(
-                    # dropna=True
-                )
-
-            for column, other_col in columns_to_compare:
-                # This might contain duplicates. Do not normalize it because we're interested in absolute counts.
-                series_column = dataset_[column]
-
-                statistics_[name][column][f"profile_length_{column}"] = series_column.value_counts(
-                    dropna=True,
-                    normalize=False,
-                )
-                # This might contain duplicates. Do not normalize it because we're interested in absolute counts.
-                statistics_[name][column][f"profile_length_{column}_without_duplicates"] = dataset_.drop_duplicates(
-                    subset=[column, other_col],
-                    # inplace=False,
-                )[
-                    column
-                ].value_counts(
-                    dropna=True,
-                    normalize=False,
-                )
-
-            for column_to_group_by, column_for_statistics in columns_to_group_by:
-                if column_to_group_by not in statistics_[name]:
-                    statistics_[name][column_to_group_by] = dict()
-
-                df_group_by = dataset_.groupby(
-                    by=[column_to_group_by],
-                )
-
-                profile_length = df_group_by[column_for_statistics].count()
-                statistics_[name][column_to_group_by][f"group_by_profile_length"] = profile_length
-                statistics_[name][column_to_group_by][f"group_by_describe"] = profile_length.describe()
-
-        computed_statistics = dask_interface._client.compute(
-            statistics_
-        ).result()
-
-        print(computed_statistics)
-
-        data_io = DataIO(
-            folder_path="data/FINN-NO-SLATE/statistics/"
-        )
-        data_io.save_data(
-            file_name="impressions_metadata.zip",
-            data_dict_to_save=computed_statistics,
-        )
-
-    def statistics(self) -> None:
-        # Ensure the dataset is loaded.
-        logger.debug(
-            f"Statistics"
-        )
-        interactions, impressions = self.data_loader.load()
-
-        interactions_impressions = self.load_dask().astype(
-            dtype={
-                "user_id": np.int32,
-                "item_id": np.int32,
-                "time_step": np.int32,
-                "impressions": "object",
-                "impressions_type": np.int32,
-            }
-        )
-
-        def get_item_positions(df_row: pd.DataFrame) -> Any:
-            item_positions = cast(
-                np.ndarray,
-                np.where(
-                    df_row["impressions"] == df_row["item_id"]
-                )[0]
-            )
-
-            return (
-                item_positions,
-                item_positions.shape[0],
-            )
-
-        interactions_impressions = cast(
-            dd.DataFrame,
-            interactions_impressions.sample(
-                frac=0.1,
-                replace=False,
-                # weights=None,
-                # ignore_index=True,
-            )
-        )
-
-        interactions_impressions[["item_positions", "num_item_in_impressions"]] = interactions_impressions.apply(
-            get_item_positions,
-            axis="columns",
-            result_type="expand",
-            meta=[
-                (0, "object"),
-                (1, np.int32)
-            ]
-        ).astype(
-            dtype={
-                0: "object",
-                1: np.int32,
-            }
-        )
-
-        logger.debug(
-            f"applied"
-        )
-
-        statistics_: dict[str, Any] = {}
-
-        datasets: list[tuple[str, dd.DataFrame]] = [
-            ("full", interactions_impressions),
-            ("no-data", interactions_impressions[
-                interactions_impressions["item_id"] == 0
-                ]),
-            ("non-interactions", interactions_impressions[
-                interactions_impressions["item_id"] == 1
-                ]),
-            ("interactions", interactions_impressions[
-                interactions_impressions["item_id"] > 1
-                ]),
-            ("only-recommendations", interactions_impressions[
-                interactions_impressions["impressions_type"] == FINNNoImpressionOrigin.RECOMMENDATION.value
-                ]),
-            ("only-search", interactions_impressions[
-                interactions_impressions["impressions_type"] == FINNNoImpressionOrigin.SEARCH.value
-                ]),
-        ]
-
-        columns_to_calculate_normalizations = [
-            "impressions_type",
-            "num_item_in_impressions",
-        ]
-
-        columns_to_explode = [
-            "impressions",
-            "item_positions",
-        ]
-
-        columns_for_gini = [
-            "user_id",
-            "item_id",
-            "time_step",
-        ]
-
-        columns_to_compare = [
-            ("user_id", "item_id"),
-            ("user_id", "time_step"),
-            ("item_id", "user_id"),
-            ("item_id", "time_step"),
-        ]
-
-        columns_to_group_by = [
-            ("user_id", "item_id"),
-            ("item_id", "user_id"),
-        ]
-
-        logger.info(
-            f"Calculating statistics for several datasets."
-        )
-        name: str
-        dataset_: dd.DataFrame
-        series_column: dd.Series
-        for name, dataset_ in tqdm(datasets):
-            statistics_[name] = dict()
-
-            for column in columns_to_calculate_normalizations:
-                if column not in statistics_[name]:
-                    statistics_[name][column] = dict()
-
-                series_column = dataset_[column]
-
-                statistics_[name][column]["normalized"] = series_column.value_counts(
-                    dropna=False,
-                    normalize=True,
-                )
-                statistics_[name][column]["non-normalized"] = series_column.value_counts(
-                    dropna=False,
-                    normalize=False,
-                )
-
-            for column in columns_for_gini:
-                if column not in statistics_[name]:
-                    statistics_[name][column] = dict()
-
-                series_column = dataset_[column]
-
-                # notna is there because columns might be NA.
-                statistics_[name][column]["gini_index"] = delayed(gini_index)(
-                    array=delayed(series_column.values.compute)(),  # .to_numpy(copy=True)
-                )
-                # dropna needed because columns might be NA.
-                statistics_[name][column][f"unique_num_{column}"] = series_column.nunique(
-                    # dropna=True
-                )
-
-            for column, other_col in columns_to_compare:
-                # This might contain duplicates. Do not normalize it because we're interested in absolute counts.
-                series_column = dataset_[column]
-
-                statistics_[name][column][f"profile_length_{column}"] = series_column.value_counts(
-                    dropna=True,
-                    normalize=False,
-                )
-                # This might contain duplicates. Do not normalize it because we're interested in absolute counts.
-                statistics_[name][column][f"profile_length_{column}_without_duplicates"] = dataset_.drop_duplicates(
-                    subset=[column, other_col],
-                    # inplace=False,
-                )[
-                    column
-                ].value_counts(
-                    dropna=True,
-                    normalize=False,
-                )
-
-            for column in columns_to_explode:
-                if column not in statistics_[name]:
-                    statistics_[name][column] = dict()
-
-                series_column = dataset_[column]
-
-                exploded_series = cast(
-                    dd.Series,
-                    series_column.explode(
-                        # ignore_index=True,
-                    )
-                )
-
-                statistics_[name][column]["normalized"] = exploded_series.value_counts(
-                    dropna=False,
-                    normalize=True,
-                )
-                statistics_[name][column]["non-normalized"] = exploded_series.value_counts(
-                    dropna=False,
-                    normalize=False,
-                )
-
-            for column_to_group_by, column_for_statistics in columns_to_group_by:
-                if column_to_group_by not in statistics_[name]:
-                    statistics_[name][column_to_group_by] = dict()
-
-                df_group_by = interactions_impressions.groupby(
-                    by=[column_to_group_by],
-                )
-
-                profile_length = df_group_by[column_for_statistics].count()
-                statistics_[name][column_to_group_by][f"group_by_profile_length"] = profile_length
-                statistics_[name][column_to_group_by][f"group_by_describe"] = profile_length.describe()
-
-            # Create URM using original indices.
-            num_users = dataset_["user_id"].max() + 1
-            num_items = dataset_["item_id"].max() + 1
-
-            row_indices = dataset_["user_id"]
-            col_indices = dataset_["item_id"]
-            data = delayed(np.ones_like)(
-                a=row_indices,
-                dtype=np.int32,
-            )
-            # assert row_indices.shape == col_indices.shape and row_indices.shape == data.shape
-
-            urm_all = delayed(sp.csr_matrix)(
-                (
-                    data,
-                    (row_indices, col_indices)
-                ),
-                shape=(num_users, num_items),
-                dtype=np.int32,
-            )
-
-            statistics_[name]["urm_all"] = dict()
-            statistics_[name]["urm_all"]["matrix"] = urm_all
-
-            user_profile_length = delayed(np.ediff1d)(urm_all.indptr)
-            statistics_[name]["urm_all"]["interactions_by_users"] = {
-                "max": user_profile_length.max(),
-                "mean": user_profile_length.mean(),
-                "min": user_profile_length.min(),
-                "gini_index": delayed(gini_index)(
-                    array=user_profile_length,
-                ),
-            }
-
-            urm_all = urm_all.tocsc()
-            item_profile_length = delayed(np.ediff1d)(urm_all.indptr)
-            statistics_[name]["urm_all"]["interactions_by_items"] = {
-                "max": item_profile_length.max(),
-                "mean": item_profile_length.mean(),
-                "min": item_profile_length.min(),
-                "gini_index": delayed(gini_index)(
-                    array=item_profile_length
-                ),
-            }
-
-        computed_statistics = dask_interface._client.compute(
-            statistics_
-        ).result()
-
-        data_io = DataIO(
-            folder_path="data/bk-FINN-NO-SLATE/statistics/"
-        )
-        data_io.save_data(
-            file_name="statistics.zip",
-            data_dict_to_save=computed_statistics,
-        )
-
-
-class DatasetWithImpressions(Dataset):  # type: ignore
-    DATASET_NAME: Optional[str] = None
-
-    def __init__(
-        self,
-        URM_dictionary=None,
-        ICM_dictionary=None,
-        ICM_feature_mapper_dictionary=None,
-        UCM_dictionary=None,
-        UCM_feature_mapper_dictionary=None,
-        user_original_ID_to_index=None,
-        item_original_ID_to_index=None,
-        is_implicit=False,
-        additional_data_mapper=None,
-        impressions_dictionary=None
-    ):
-        super().__init__(
-            self,
-            URM_dictionary=URM_dictionary,
-            ICM_dictionary=ICM_dictionary,
-            ICM_feature_mapper_dictionary=ICM_feature_mapper_dictionary,
-            UCM_dictionary=UCM_dictionary,
-            UCM_feature_mapper_dictionary=UCM_feature_mapper_dictionary,
-            user_original_ID_to_index=user_original_ID_to_index,
-            item_original_ID_to_index=item_original_ID_to_index,
-            is_implicit=is_implicit,
-            additional_data_mapper=additional_data_mapper,
-        )
-        self.impressions_dictionary = impressions_dictionary
-
-
-class FINNNoSlateDataset(Dataset):
-    DATASET_NAME = "FINNNoSlate"
-
-    def __init__(
-        self,
-        urms: dict[str, sp.csr_matrix],
-        # impressions: dict[str, sp.csr_matrix],
-        user_id_to_index_mapper: dict[int, int],
-        item_id_to_index_mapper: dict[int, int],
-        is_implicit: bool,
-    ):
-        super().__init__(
-            URM_dictionary=urms,
-            ICM_dictionary=None,
-            ICM_feature_mapper_dictionary=None,
-            UCM_dictionary=None,
-            UCM_feature_mapper_dictionary=None,
-            user_original_ID_to_index=user_id_to_index_mapper,
-            item_original_ID_to_index=item_id_to_index_mapper,
-            is_implicit=is_implicit,
-            # impressions_dictionary=impressions
-        )
+# class StatisticsFinnNoSlate:
+#     def __init__(self):
+#         self.data_loader = DaskFinnNoSlateRawData()
+#
+#         (
+#             self.dd_interactions,
+#             self.dd_impressions,
+#             self.dd_impressions_metadata,
+#         ) = (
+#             self.data_loader.interactions,
+#             self.data_loader.impressions,
+#             self.data_loader.interactions_impressions_metadata,
+#         )
+#
+#         self.filters_boolean = [
+#             ("full", slice(None)),
+#             # ("no-data", self.dd_interactions["item_id"] == 0),
+#             ("no-clicks", self.dd_interactions["item_id"] == 1),
+#             ("interactions_exploded-&-no-clicks", self.dd_interactions["item_id"] > 0),
+#             ("interactions_exploded", self.dd_interactions["item_id"] > 1),
+#             # ("only-recommendations",
+#             #  self.dd_impressions_metadata["impression_type"] == FINNNoImpressionOrigin.RECOMMENDATION.value),
+#             # ("only-search", self.dd_impressions_metadata["impression_type"] == FINNNoImpressionOrigin.SEARCH.value),
+#             # ("only-undefined", self.dd_impressions_metadata["impression_type"] == FINNNoImpressionOrigin.UNDEFINED.value),
+#         ]
+#
+#     def statistics_interactions(self) -> None:
+#         # if os.path.exists("data/FINN-NO-SLATE/statistics/interactions_exploded.zip"):
+#         #     return
+#
+#         interactions: dd.DataFrame = dd.concat(
+#             [self.dd_interactions, self.dd_impressions_metadata],
+#             axis="columns",
+#         )
+#
+#         statistics_: dict[str, Any] = {}
+#
+#         datasets: list[tuple[str, dd.DataFrame]] = [
+#             (name, interactions[filter_boolean])
+#             for name, filter_boolean in self.filters_boolean
+#         ] + [
+#             (
+#                 f"{name}_no_dup",
+#                 interactions[filter_boolean].drop_duplicates(
+#                     subset=["user_id", "item_id"],
+#                     # keep="first",
+#                     ignore_index=False,
+#                 ),
+#             )
+#             for name, filter_boolean in self.filters_boolean
+#         ]
+#
+#         columns_for_unique = [
+#             "user_id",
+#             "item_id",
+#             "time_step",
+#             "click_idx_in_impression",
+#             "impression_type",
+#             "item_in_impression",
+#         ]
+#
+#         columns_for_profile_length = [
+#             "user_id",
+#             "item_id",
+#             "time_step",
+#             "click_idx_in_impression",
+#             "impression_type",
+#             "item_in_impression",
+#         ]
+#
+#         columns_for_gini = [
+#             "user_id",
+#             "item_id",
+#             "time_step",
+#             "click_idx_in_impression",
+#             "impression_type",
+#             "item_in_impression",
+#         ]
+#
+#         columns_to_group_by = [
+#             ("user_id", "item_id"),
+#             ("item_id", "user_id"),
+#             ("time_step", "user_id"),
+#             ("click_idx_in_impression", "user_id"),
+#             ("impression_type", "user_id"),
+#             ("item_in_impression", "user_id"),
+#         ]
+#
+#         logger.info(f"Calculating statistics for several datasets.")
+#         name: str
+#         dataset_: dd.DataFrame
+#         series_column: dd.Series
+#         for name, dataset_ in tqdm(datasets):
+#             statistics_[name] = dict()
+#
+#             statistics_[name]["num_records"] = dataset_.shape[0]
+#             # statistics_[name]["describe"] = delayed(
+#             #     dataset_.astype({
+#             #         "user_id": 'category',
+#             #         "item_id": 'category',
+#             #         "time_step": 'category',
+#             #         "impression_type": 'category',
+#             #         "click_idx_in_impression": 'category',
+#             #     }).describe(
+#             #         include="all"
+#             #     ).astype({
+#             #         # Given that this type is boolean, and the describe mixes ints with boolean values, then it must
+#             #         # be parsed to either string or ints.
+#             #         "item_in_impression": pd.StringDtype(),
+#             #     })
+#             # )
+#
+#             # for column in columns_for_unique:
+#             #     if column not in statistics_[name]:
+#             #         statistics_[name][column] = dict()
+#             #
+#             #     series_column = dataset_[column]
+#             #
+#             #     statistics_[name][column][f"num_unique"] = series_column.nunique()
+#             #     statistics_[name][column][f"unique"] = series_column.unique()
+#             #
+#             for column in columns_for_profile_length:
+#                 if column not in statistics_[name]:
+#                     statistics_[name][column] = dict()
+#
+#                 series_column = dataset_[column]
+#
+#                 statistics_[name][column][f"profile_length"] = (
+#                     series_column.value_counts(
+#                         ascending=False,
+#                         sort=False,
+#                         normalize=False,
+#                         dropna=True,
+#                     )
+#                     .rename("profile_length")
+#                     .to_frame()
+#                 )
+#
+#                 statistics_[name][column][f"profile_length_normalized"] = (
+#                     series_column.value_counts(
+#                         ascending=False,
+#                         sort=False,
+#                         normalize=True,
+#                         dropna=True,
+#                     )
+#                     .rename("profile_length_normalized")
+#                     .to_frame()
+#                 )
+#
+#             # for column in columns_for_gini:
+#             #     if column not in statistics_[name]:
+#             #         statistics_[name][column] = dict()
+#             #
+#             #     series_column = dataset_[column]
+#             #
+#             #     # notna is there because columns might be NA.
+#             #     statistics_[name][column]["gini_index_values_labels"] = delayed(
+#             #         gini_index
+#             #     )(array=series_column)
+#             #     statistics_[name][column]["gini_index_values_counts"] = delayed(
+#             #         gini_index
+#             #     )(
+#             #         array=series_column.value_counts(
+#             #             dropna=True,
+#             #             normalize=False,
+#             #         ),
+#             #     )
+#             #
+#             # for column_to_group_by, column_for_statistics in columns_to_group_by:
+#             #     if column_to_group_by not in statistics_[name]:
+#             #         statistics_[name][column_to_group_by] = dict()
+#             #
+#             #     df_group_by = dataset_.groupby(
+#             #         by=[column_to_group_by],
+#             #     )
+#             #
+#             # statistics_[name][column_to_group_by][f"group_by_profile_length"] = df_group_by[
+#             #     column_for_statistics
+#             # ].count()
+#             # statistics_[name][column_to_group_by][f"group_by_describe"] = delayed(
+#             #     df_group_by.agg([
+#             #         "min",
+#             #         "max",
+#             #         "count",
+#             #         "size",
+#             #         "first",
+#             #         "last",
+#             #         # "var",
+#             #         # "std",
+#             #         # "mean",
+#             #     ])
+#             # )
+#
+#             # Create URM using original indices.
+#             # num_users = dataset_["user_id"].max() + 1
+#             # num_items = dataset_["item_id"].max() + 1
+#             #
+#             # row_indices = dataset_["user_id"]
+#             # col_indices = dataset_["item_id"]
+#             # data = delayed(np.ones_like)(
+#             #     a=row_indices,
+#             #     dtype=np.int32,
+#             # )
+#             # # assert row_indices.shape == col_indices.shape and row_indices.shape == data.shape
+#             #
+#             # urm_all_csr: sp.csr_matrix = delayed(sp.csr_matrix)(
+#             #     (
+#             #         data,
+#             #         (row_indices, col_indices)
+#             #     ),
+#             #     shape=(num_users, num_items),
+#             #     dtype=np.int32,
+#             # )
+#             #
+#             # statistics_[name]["urm_all"] = dict()
+#             # statistics_[name]["urm_all"]["matrix"] = urm_all_csr
+#             #
+#             # user_profile_length: np.ndarray = delayed(np.ediff1d)(urm_all_csr.indptr)
+#             # user_profile_stats: DescribeResult = delayed(
+#             #     st.describe
+#             # )(
+#             #     a=user_profile_length,
+#             #     axis=0,
+#             #     nan_policy="raise",
+#             # )
+#             # statistics_[name]["urm_all"]["interactions_by_users"] = {
+#             #     "num_observations": user_profile_stats.nobs,
+#             #     "min": user_profile_stats.minmax[0],
+#             #     "max": user_profile_stats.minmax[1],
+#             #     "mean": user_profile_stats.mean,
+#             #     "variance": user_profile_stats.variance,
+#             #     "skewness": user_profile_stats.skewness,
+#             #     "kurtosis": user_profile_stats.kurtosis,
+#             #     "gini_index": delayed(gini_index)(
+#             #         array=user_profile_length,
+#             #     ),
+#             # }
+#             #
+#             # urm_all_csc: sp.csc_matrix = urm_all_csr.tocsc()
+#             # item_profile_length: np.ndarray = delayed(np.ediff1d)(urm_all_csc.indptr)
+#             # item_profile_stats: DescribeResult = delayed(
+#             #     st.describe
+#             # )(
+#             #     a=item_profile_length,
+#             #     axis=0,
+#             #     nan_policy="omit",
+#             # )
+#             # statistics_[name]["urm_all"]["interactions_by_items"] = {
+#             #     "num_observations": item_profile_stats.nobs,
+#             #     "min": item_profile_stats.minmax[0],
+#             #     "max": item_profile_stats.minmax[1],
+#             #     "mean": item_profile_stats.mean,
+#             #     "variance": item_profile_stats.variance,
+#             #     "skewness": item_profile_stats.skewness,
+#             #     "kurtosis": item_profile_stats.kurtosis,
+#             #     "gini_index": delayed(gini_index)(
+#             #         array=item_profile_length
+#             #     ),
+#             # }
+#
+#         logger.info("Sending compute to cluster.")
+#         computed_statistics = dask_interface._client.compute(statistics_).result()
+#
+#         logger.info("Saving computed statistics.")
+#
+#         print(
+#             computed_statistics["interactions_exploded"]["user_id"]["profile_length"],
+#             type(computed_statistics["interactions_exploded"]["user_id"]["profile_length"]),
+#         )
+#         print(
+#             computed_statistics["interactions_no_dup"]["user_id"]["profile_length"],
+#             type(
+#                 computed_statistics["interactions_no_dup"]["user_id"]["profile_length"]
+#             ),
+#         )
+#
+#         print(
+#             f'{np.array_equal(computed_statistics["interactions_exploded"]["user_id"]["profile_length"].index, computed_statistics["interactions_no_dup"]["user_id"]["profile_length"].index)=}'
+#         )
+#
+#         import pdb
+##
+#         data_io = DataIO(folder_path="data/FINN-NO-SLATE/statistics/")
+#         data_io.save_data(
+#             file_name="interactions_exploded.zip",
+#             data_dict_to_save=computed_statistics,
+#         )
+#
+#     def statistics_impressions(self):
+#         pass
+#
+#     def statistics_impressions_metadata(self):
+#         # if os.path.exists("data/FINN-NO-SLATE/statistics/impressions_metadata.zip"):
+#         #     return
+#
+#         interactions = dd.concat(
+#             [self.dd_interactions, self.dd_impressions_metadata],
+#             axis="columns",
+#         )
+#
+#         statistics_: dict[str, Any] = {}
+#
+#         columns_to_calculate_normalizations = [
+#             "click_idx_in_impression",
+#             "impression_type",
+#         ]
+#
+#         columns_for_gini = [
+#             "impression_type",
+#             "click_idx_in_impression",
+#         ]
+#
+#         columns_to_compare = [
+#             ("impression_type", "click_idx_in_impression"),
+#             ("click_idx_in_impression", "impression_type"),
+#         ]
+#
+#         columns_to_group_by = [
+#             ("impression_type", "click_idx_in_impression"),
+#             ("click_idx_in_impression", "impression_type"),
+#         ]
+#
+#         name: str
+#         dataset_: dd.DataFrame
+#         series_column: dd.Series
+#         for name, dataset_ in tqdm(datasets):
+#             statistics_[name] = dict()
+#
+#             for column in columns_to_calculate_normalizations:
+#                 if column not in statistics_[name]:
+#                     statistics_[name][column] = dict()
+#
+#                 series_column = dataset_[column]
+#
+#                 statistics_[name][column]["normalized"] = series_column.value_counts(
+#                     dropna=False,
+#                     normalize=True,
+#                 )
+#                 statistics_[name][column][
+#                     "non-normalized"
+#                 ] = series_column.value_counts(
+#                     dropna=False,
+#                     normalize=False,
+#                 )
+#
+#             for column in columns_for_gini:
+#                 if column not in statistics_[name]:
+#                     statistics_[name][column] = dict()
+#
+#                 series_column = dataset_[column]
+#
+#                 # notna is there because columns might be NA.
+#                 statistics_[name][column]["gini_index"] = delayed(gini_index)(
+#                     array=delayed(
+#                         series_column.values.compute
+#                     )(),  # .to_numpy(copy=True)
+#                 )
+#                 # dropna needed because columns might be NA.
+#                 statistics_[name][column][
+#                     f"unique_num_{column}"
+#                 ] = series_column.nunique(
+#                     # dropna=True
+#                 )
+#
+#             for column, other_col in columns_to_compare:
+#                 # This might contain duplicates. Do not normalize it because we're interested in absolute counts.
+#                 series_column = dataset_[column]
+#
+#                 statistics_[name][column][
+#                     f"profile_length_{column}"
+#                 ] = series_column.value_counts(
+#                     dropna=True,
+#                     normalize=False,
+#                 )
+#                 # This might contain duplicates. Do not normalize it because we're interested in absolute counts.
+#                 statistics_[name][column][
+#                     f"profile_length_{column}_without_duplicates"
+#                 ] = dataset_.drop_duplicates(
+#                     subset=[column, other_col],
+#                     # inplace=False,
+#                 )[
+#                     column
+#                 ].value_counts(
+#                     dropna=True,
+#                     normalize=False,
+#                 )
+#
+#             for column_to_group_by, column_for_statistics in columns_to_group_by:
+#                 if column_to_group_by not in statistics_[name]:
+#                     statistics_[name][column_to_group_by] = dict()
+#
+#                 df_group_by = dataset_.groupby(
+#                     by=[column_to_group_by],
+#                 )
+#
+#                 profile_length = df_group_by[column_for_statistics].count()
+#                 statistics_[name][column_to_group_by][
+#                     f"group_by_profile_length"
+#                 ] = profile_length
+#                 statistics_[name][column_to_group_by][
+#                     f"group_by_describe"
+#                 ] = profile_length.describe()
+#
+#         computed_statistics = dask_interface._client.compute(statistics_).result()
+#
+#         print(computed_statistics)
+#
+#         data_io = DataIO(folder_path="data/FINN-NO-SLATE/statistics/")
+#         data_io.save_data(
+#             file_name="impressions_metadata.zip",
+#             data_dict_to_save=computed_statistics,
+#         )
 
 
 class FINNNoSlateReader(DataReader):
-    _DATA_READER_NAME = "FINNNoSlateReader"
-
-    DATASET_SUBFOLDER = "FINN-NO-SLATE/"
-
     IS_IMPLICIT = True
 
-    _NAME_URM_STEPS = "URM_steps"
     _NAME_URM_ALL = "URM_all"
-    _NAME_URM_ALL_BINARY = "URM_all"
+    _NAME_IMPRESSIONS_ALL = "UIM_all"
 
-    _NAME_RANDOM_URM_TRAIN = "URM_random_train"
-    _NAME_RANDOM_URM_VALIDATION = "URM_random_validation"
-    _NAME_RANDOM_URM_TEST = "URM_random_test"
+    _NAME_TIME_STEP_URM_TRAIN = "URM_time_step_train"
+    _NAME_TIME_STEP_URM_VALIDATION = "URM_time_step_validation"
+    _NAME_TIME_STEP_URM_TEST = "URM_time_step_test"
 
-    _NAME_SEQUENTIAL_URM_TRAIN = "URM_sequential_train"
-    _NAME_SEQUENTIAL_URM_VALIDATION = "URM_sequential_validation"
-    _NAME_SEQUENTIAL_URM_TEST = "URM_sequential_test"
+    _NAME_TIME_STEP_IMPRESSIONS_TRAIN = "UIM_time_step_train"
+    _NAME_TIME_STEP_IMPRESSIONS_VALIDATION = "UIM_time_step_validation"
+    _NAME_TIME_STEP_IMPRESSIONS_TEST = "UIM_time_step_test"
 
-    _NAME_IMPRESSIONS_ALL = "impressions_all"
-    _NAME_IMPRESSIONS_STEPS = "impressions_steps"
-    _NAME_SEQUENTIAL_IMPRESSIONS_TRAIN = "impressions_sequential_train"
-    _NAME_SEQUENTIAL_IMPRESSIONS_VALIDATION = "impressions_sequential_validation"
-    _NAME_SEQUENTIAL_IMPRESSIONS_TEST = "impressions_sequential_test"
+    _NAME_LEAVE_LAST_K_OUT_URM_TRAIN = "URM_leave_last_k_out_train"
+    _NAME_LEAVE_LAST_K_OUT_URM_VALIDATION = "URM_leave_last_k_out_validation"
+    _NAME_LEAVE_LAST_K_OUT_URM_TEST = "URM_leave_last_k_out_test"
+
+    _NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TRAIN = "UIM_leave_last_k_out_train"
+    _NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_VALIDATION = "UIM_leave_last_k_out_validation"
+    _NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TEST = "UIM_leave_last_k_out_test"
 
     def __init__(
         self,
+        config: FinnNoSlatesConfig,
     ):
         super().__init__()
 
-        self.config = FinnNoSlatesConfig()
-        self.ORIGINAL_SPLIT_FOLDER = os.path.join(
-            self.config.data_folder,
-            self._NAME_URM_ALL_BINARY,
-            ""
+        self.config = config
+
+        self.DATA_FOLDER = os.path.join(
+            self.config.data_folder, "data_reader", "",
+        )
+
+        self.ORIGINAL_SPLIT_FOLDER = self.DATA_FOLDER
+
+        self._DATA_READER_NAME = "FINNNoSlateReader"
+
+        self.DATASET_SUBFOLDER = "FINN-NO-SLATE/"
+
+        self._keep_duplicates = self.config.keep_duplicates
+        self._min_number_of_interactions = self.config.min_number_of_interactions
+        self._binarize_impressions = self.config.binarize_impressions
+        self._num_parts_split_dataset = 500
+        self._raw_data_loader = PandasFinnNoSlateRawData(
+            config=config,
         )
 
         self._user_id_to_index_mapper: dict[int, int] = dict()
@@ -1289,131 +1106,537 @@ class FINNNoSlateReader(DataReader):
         self._ucms = None
         self._ucms_mappers = None
 
-        self.finn_no_data_loader = DaskFinnNoSlateRawData()
+    @property  # type: ignore
+    @typed_cache
+    def dataset(self) -> BinaryImplicitDataset:
+        return self.load_data(
+            save_folder_path=self.ORIGINAL_SPLIT_FOLDER,
+        )
 
-        self._interactions_impressions: pd.DataFrame = pd.DataFrame()
-        """
-        Columns
-        -------
-            time_step: int
-            user_id int
-            item_id: Union[int, pd.NA]
-            interacted: bool
-            item_in_impressions: bool,
-            item_position: Union[int, pd.NA]
-            impressions: list[int], may contain repeated items
-            num_impressions: int, len(impressions)
-            impression_origin: IMPRESSION_ORIGIN
-       """
+    @property  # type: ignore
+    @typed_cache
+    def _data_filtered(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        logger.info(
+            f"Filtering data sources (interactions, impressions, metadata)."
+        )
 
-        self._dataset: Optional[FINNNoSlateDataset] = None
+        df_interactions = self._raw_data_loader.interactions.copy()
+        df_impressions = self._raw_data_loader.impressions.copy()
+        df_metadata = self._raw_data_loader.interactions_impressions_metadata.copy()
 
-    @property
-    def dataset(self) -> FINNNoSlateDataset:
-        if self._dataset is None:
-            self._dataset = self.load_data(
-                save_folder_path=self.ORIGINAL_SPLIT_FOLDER,
-            )
-        return self._dataset
+        # We don't need to reset the index first because this dataset does not have exploded values.
+        df_interactions = df_interactions.sort_values(
+            by=["time_step"],
+            ascending=True,
+            axis="index",
+            inplace=False,
+            ignore_index=False,
+        )
+
+        # This filter removes error logs and non-interactions of the dataset.
+        df_interactions, _ = remove_records_by_threshold(
+            df=df_interactions,
+            column="item_id",
+            threshold=self.config.min_item_id,
+        )
+
+        df_interactions, _ = remove_duplicates_in_interactions(
+            df=df_interactions,
+            columns_to_compare=["user_id", "item_id"],
+            keep=self._keep_duplicates,
+        )
+
+        df_interactions, _ = remove_users_without_min_number_of_interactions(
+            df=df_interactions,
+            users_column="user_id",
+            min_number_of_interactions=self._min_number_of_interactions,
+        )
+
+        df_impressions, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_impressions,
+            df_interactions=df_interactions,
+        )
+
+        # This filter removes error logs and non-interactions of the dataset.
+        df_impressions, _ = apply_custom_function(
+            df=df_impressions,
+            column="impressions",
+            func=remove_non_clicks_on_impressions,
+            func_name=remove_non_clicks_on_impressions.__name__,
+            axis="columns",
+        )
+
+        # Given that we removed the 0s and 1s in the impressions, then we must substract
+        df_metadata["position_interaction"] -= 1
+        df_metadata["num_impressions"] -= 1
+        # We don't have to process the column "is_item_in_impression" in the metadata because we already removed the
+        # non-clicks on the dataset interactions and impressions.
+
+        return df_interactions, df_impressions, df_metadata
+
+    @property  # type: ignore
+    @typed_cache
+    def _data_time_step_split(
+        self
+    ) -> tuple[
+        pd.DataFrame, pd.DataFrame, pd.DataFrame,
+        pd.DataFrame, pd.DataFrame, pd.DataFrame,
+        pd.DataFrame, pd.DataFrame, pd.DataFrame
+    ]:
+        df_interactions_filtered, df_impressions_filtered, df_metadata_filtered = self._data_filtered
+
+        described = df_interactions_filtered["time_step"].describe(
+            datetime_is_numeric=True,
+            percentiles=[0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+        )
+
+        validation_threshold = described["80%"]
+        test_threshold = described["90%"]
+
+        df_interactions_train, df_interactions_test = split_sequential_train_test_by_column_threshold(
+            df=df_interactions_filtered,
+            column="time_step",
+            threshold=test_threshold
+        )
+
+        df_interactions_train, df_interactions_validation = split_sequential_train_test_by_column_threshold(
+            df=df_interactions_train,
+            column="time_step",
+            threshold=validation_threshold
+        )
+
+        df_impressions_train, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_impressions_filtered,
+            df_interactions=df_interactions_train,
+        )
+
+        df_impressions_validation, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_impressions_filtered,
+            df_interactions=df_interactions_validation,
+        )
+
+        df_impressions_test, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_impressions_filtered,
+            df_interactions=df_interactions_test,
+        )
+
+        df_metadata_train, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_metadata_filtered,
+            df_interactions=df_interactions_train,
+        )
+
+        df_metadata_validation, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_metadata_filtered,
+            df_interactions=df_interactions_validation,
+        )
+
+        df_metadata_test, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_metadata_filtered,
+            df_interactions=df_interactions_test,
+        )
+
+        return (
+            df_interactions_train.copy(), df_interactions_validation.copy(), df_interactions_test.copy(),
+            df_impressions_train.copy(), df_impressions_validation.copy(), df_impressions_test.copy(),
+            df_metadata_train.copy(), df_metadata_validation.copy(), df_metadata_test.copy(),
+        )
+
+    @property  # type: ignore
+    @typed_cache
+    def _data_leave_last_k_out_split(
+        self
+    ) -> tuple[
+        pd.DataFrame, pd.DataFrame, pd.DataFrame,
+        pd.DataFrame, pd.DataFrame, pd.DataFrame,
+        pd.DataFrame, pd.DataFrame, pd.DataFrame
+    ]:
+        df_interactions_filtered, df_impressions_filtered, df_metadata_filtered = self._data_filtered
+
+        df_interactions_train, df_interactions_test = split_sequential_train_test_by_num_records_on_test(
+            df=df_interactions_filtered,
+            group_by_column="user_id",
+            num_records_in_test=1,
+        )
+
+        df_interactions_train, df_interactions_validation = split_sequential_train_test_by_num_records_on_test(
+            df=df_interactions_train,
+            group_by_column="user_id",
+            num_records_in_test=1,
+        )
+
+        df_impressions_train, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_impressions_filtered,
+            df_interactions=df_interactions_train,
+        )
+
+        df_impressions_validation, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_impressions_filtered,
+            df_interactions=df_interactions_validation,
+        )
+
+        df_impressions_test, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_impressions_filtered,
+            df_interactions=df_interactions_test,
+        )
+
+        df_metadata_train, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_metadata_filtered,
+            df_interactions=df_interactions_train,
+        )
+
+        df_metadata_validation, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_metadata_filtered,
+            df_interactions=df_interactions_validation,
+        )
+
+        df_metadata_test, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_metadata_filtered,
+            df_interactions=df_interactions_test,
+        )
+
+        return (
+            df_interactions_train.copy(), df_interactions_validation.copy(), df_interactions_test.copy(),
+            df_impressions_train.copy(), df_impressions_validation.copy(), df_impressions_test.copy(),
+            df_metadata_train.copy(), df_metadata_validation.copy(), df_metadata_test.copy(),
+        )
 
     def _get_dataset_name_root(self) -> str:
         return self.DATASET_SUBFOLDER
 
-    def _load_from_original_file(self) -> FINNNoSlateDataset:
-        interactions, impressions = self.finn_no_data_loader.load()
-        print(interactions, interactions.dtypes, interactions.shape, interactions.memory_usage().sum())
-        print(impressions, impressions.dtypes, impressions.shape, impressions.memory_usage().sum())
-        quit(255)
-        self.finn_no_raw_data.statistics()
-        self._create_urm_all_binary()
+    def _load_from_original_file(self) -> BinaryImplicitDataset:
+        # IMPORTANT: calculate first the impressions, so we have all mappers created.
+        self._calculate_uim_all()
+        self._calculate_urm_all()
 
-        return FINNNoSlateDataset(
-            urms=self._urms,
-            # impressions=self._impressions,
-            user_id_to_index_mapper=self._user_id_to_index_mapper,
-            item_id_to_index_mapper=self._item_id_to_index_mapper,
-            is_implicit=self.IS_IMPLICIT,
+        self._calculate_urm_time_step_splits()
+        self._calculate_uim_time_step_splits()
 
+        self._calculate_urm_leave_last_k_out_splits()
+        self._calculate_uim_leave_last_k_out_splits()
+
+        return BinaryImplicitDataset(
+            dataset_name="FINNNoSlate",
+            impressions=self._impressions,
+            interactions=self._urms,
+            mapper_item_original_id_to_index=self._item_id_to_index_mapper,
+            mapper_user_original_id_to_index=self._user_id_to_index_mapper,
         )
 
-    def _create_urm_all_binary(self) -> None:
-        """
-        This method creates a CSR matrix that contains all interactions found in the dataset as a binary (0: no
-        interaction, 1: 1 or more interactions) matrix. Duplicated interactions are removed and only one is kept.
-
-        Filters applied to the dataset:
-         - no clicks (item_id=1) are discarded
-         - no info (item_id=0) are discarded
-        """
-
+    def _calculate_urm_all(self):
         logger.info(
-            f"Building URMs:"
+            f"Building URM with name {self._NAME_URM_ALL}."
         )
-
-        ddf = self.finn_no_raw_data.load()
-
-        interactions = ddf[
-            ddf["item_id"] > 1
-        ][
-            ["user_id", "item_id"]
-        ]
+        df_interactions_filtered, _, _ = self._data_filtered
 
         builder_urm_all = IncrementalSparseMatrix_FilterIDs(
-            preinitialized_col_mapper=None,
+            preinitialized_col_mapper=self._item_id_to_index_mapper,
             on_new_col="add",
-            preinitialized_row_mapper=None,
+            preinitialized_row_mapper=self._user_id_to_index_mapper,
             on_new_row="add"
         )
 
+        users = df_interactions_filtered['user_id'].to_numpy()
+        items = df_interactions_filtered['item_id'].to_numpy()
+        data = np.ones_like(users, dtype=np.int32, )
+
         builder_urm_all.add_data_lists(
-            row_list_to_add=interactions['user_id'].values,
-            col_list_to_add=interactions['item_id'].values,
-            data_list_to_add=np.ones_like(interactions['item_id'].values),
+            row_list_to_add=users,
+            col_list_to_add=items,
+            data_list_to_add=data,
         )
 
-        urm_all = builder_urm_all.get_SparseMatrix()
-        urm_all.data = np.ones_like(urm_all.data)
-
-        self._urms[self._NAME_URM_ALL] = urm_all.copy()
-
-        logger.info(
-            f"URM ALL size: {urm_all.data.nbytes + urm_all.indptr.nbytes + urm_all.indices.nbytes}"
-        )
-
-        # Mappers are: {original_id => new_id}
+        self._urms = {
+            **self._urms,
+            self._NAME_URM_ALL: builder_urm_all.get_SparseMatrix()
+        }
         self._user_id_to_index_mapper = builder_urm_all.get_row_token_to_id_mapper()
         self._item_id_to_index_mapper = builder_urm_all.get_column_token_to_id_mapper()
 
+    def _calculate_uim_all(self):
+        logger.info(
+            f"Building UIM with name {self._NAME_IMPRESSIONS_ALL}."
+        )
+        _, df_impressions_filtered, _ = self._data_filtered
 
-def create_mapper(
-    values: pd.Series,
-    mapper_name: str,
-) -> pd.DataFrame:
-    original_column_name = f"original_{mapper_name}_indices"
-    mapped_column_name = f"mapped_{mapper_name}_indices"
+        builder_impressions_all = IncrementalSparseMatrix_FilterIDs(
+            preinitialized_col_mapper=self._item_id_to_index_mapper,
+            on_new_col="add",
+            preinitialized_row_mapper=self._user_id_to_index_mapper,
+            on_new_row="add",
+        )
 
-    return pd.DataFrame(
-        data={
-            original_column_name: values.unique(),
-        },
-    ).sort_values(
-        by=[original_column_name],
-        ascending=True,
-        inplace=False,
-        ignore_index=True,  # Sorting unique values in ascending order.
-    ).reset_index(
-        drop=False,
-        inplace=False,
-    ).rename(
-        columns={
-            "index": mapped_column_name
-        },
-        inplace=False,
-    )
+        df_split_chunk: pd.DataFrame
+        for df_split_chunk in tqdm(
+            np.array_split(df_impressions_filtered, indices_or_sections=self._num_parts_split_dataset)
+        ):
+            # Explosions of empty lists in impressions are transformed into NAs, NA values must be removed before
+            # being inserted into the csr_matrix.
+            df_split_chunk = df_split_chunk.explode(
+                column="impressions",
+                ignore_index=False,
+            )
+            df_split_chunk = df_split_chunk[
+                df_split_chunk["impressions"].notna()
+            ]
+
+            impressions = df_split_chunk["impressions"].to_numpy()
+            users = df_split_chunk["user_id"].to_numpy()
+            data = np.ones_like(impressions, dtype=np.int32)
+
+            builder_impressions_all.add_data_lists(
+                row_list_to_add=users,
+                col_list_to_add=impressions,
+                data_list_to_add=data,
+            )
+
+        uim_all = builder_impressions_all.get_SparseMatrix()
+        if self._binarize_impressions:
+            uim_all.data = np.ones_like(uim_all.data)
+
+        self._impressions[self._NAME_IMPRESSIONS_ALL] = uim_all.copy()
+
+        self._user_id_to_index_mapper = builder_impressions_all.get_row_token_to_id_mapper()
+        self._item_id_to_index_mapper = builder_impressions_all.get_column_token_to_id_mapper()
+
+    def _calculate_urm_leave_last_k_out_splits(self) -> None:
+        df_train, df_validation, df_test, _, _, _, _, _, _ = self._data_leave_last_k_out_split
+
+        names = [
+            self._NAME_LEAVE_LAST_K_OUT_URM_TRAIN,
+            self._NAME_LEAVE_LAST_K_OUT_URM_VALIDATION,
+            self._NAME_LEAVE_LAST_K_OUT_URM_TEST
+        ]
+        splits = [
+            df_train,
+            df_validation,
+            df_test
+        ]
+
+        logger.info(
+            f"Building URMs with name {names}."
+        )
+        for name, df_split in zip(names, splits):
+            builder_urm_split = IncrementalSparseMatrix_FilterIDs(
+                preinitialized_col_mapper=self._item_id_to_index_mapper,
+                on_new_col="ignore",
+                preinitialized_row_mapper=self._user_id_to_index_mapper,
+                on_new_row="ignore"
+            )
+
+            users = df_split['user_id'].to_numpy()
+            items = df_split['item_id'].to_numpy()
+            data = np.ones_like(users, dtype=np.int32, )
+
+            builder_urm_split.add_data_lists(
+                row_list_to_add=users,
+                col_list_to_add=items,
+                data_list_to_add=data,
+            )
+
+            self._urms[name] = builder_urm_split.get_SparseMatrix()
+
+    def _calculate_uim_leave_last_k_out_splits(self) -> None:
+        _, _, _, df_train, df_validation, df_test, _, _, _ = self._data_leave_last_k_out_split
+
+        names = [
+            self._NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TRAIN,
+            self._NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_VALIDATION,
+            self._NAME_LEAVE_LAST_K_OUT_IMPRESSIONS_TEST
+        ]
+        splits = [
+            df_train,
+            df_validation,
+            df_test,
+        ]
+
+        logger.info(
+            f"Building UIMs with name {names}."
+        )
+        for name, df_split in zip(names, splits):
+            builder_uim_split = IncrementalSparseMatrix_FilterIDs(
+                preinitialized_col_mapper=self._item_id_to_index_mapper,
+                on_new_col="ignore",
+                preinitialized_row_mapper=self._user_id_to_index_mapper,
+                on_new_row="ignore"
+            )
+
+            df_split_chunk: pd.DataFrame
+            for df_split_chunk in tqdm(
+                np.array_split(df_split, indices_or_sections=self._num_parts_split_dataset)
+            ):
+                df_split_chunk = df_split_chunk.explode(
+                    column="impressions",
+                    ignore_index=False,
+                )
+                df_split_chunk = df_split_chunk[
+                    df_split_chunk["impressions"].notna()
+                ]
+                impressions = df_split_chunk["impressions"].to_numpy()
+                users = df_split_chunk["user_id"].to_numpy()
+                data = np.ones_like(impressions, dtype=np.int32)
+
+                builder_uim_split.add_data_lists(
+                    row_list_to_add=users,
+                    col_list_to_add=impressions,
+                    data_list_to_add=data,
+                )
+
+            uim_split = builder_uim_split.get_SparseMatrix()
+            if self._binarize_impressions:
+                uim_split.data = np.ones_like(uim_split.data)
+
+            self._impressions[name] = uim_split.copy()
+
+    def _calculate_urm_time_step_splits(self) -> None:
+        df_train, df_validation, df_test, _, _, _, _, _, _ = self._data_time_step_split
+
+        names = [
+            self._NAME_TIME_STEP_URM_TRAIN,
+            self._NAME_TIME_STEP_URM_VALIDATION,
+            self._NAME_TIME_STEP_URM_TEST
+        ]
+        splits = [
+            df_train,
+            df_validation,
+            df_test
+        ]
+
+        logger.info(
+            f"Building URMs with name {names}."
+        )
+        for name, df_split in zip(names, splits):
+            builder_urm_split = IncrementalSparseMatrix_FilterIDs(
+                preinitialized_col_mapper=self._item_id_to_index_mapper,
+                on_new_col="ignore",
+                preinitialized_row_mapper=self._user_id_to_index_mapper,
+                on_new_row="ignore"
+            )
+
+            users = df_split['user_id'].to_numpy()
+            items = df_split['item_id'].to_numpy()
+            data = np.ones_like(users, dtype=np.int32, )
+
+            builder_urm_split.add_data_lists(
+                row_list_to_add=users,
+                col_list_to_add=items,
+                data_list_to_add=data,
+            )
+
+            self._urms[name] = builder_urm_split.get_SparseMatrix()
+
+    def _calculate_uim_time_step_splits(self) -> None:
+        _, _, _, df_train, df_validation, df_test, _, _, _ = self._data_time_step_split
+
+        names = [
+            self._NAME_TIME_STEP_IMPRESSIONS_TRAIN,
+            self._NAME_TIME_STEP_IMPRESSIONS_VALIDATION,
+            self._NAME_TIME_STEP_IMPRESSIONS_TEST
+        ]
+        splits = [
+            df_train,
+            df_validation,
+            df_test,
+        ]
+
+        logger.info(
+            f"Building UIMs with name {names}."
+        )
+
+        for name, df_split in zip(names, splits):
+            builder_uim_split = IncrementalSparseMatrix_FilterIDs(
+                preinitialized_col_mapper=self._item_id_to_index_mapper,
+                on_new_col="ignore",
+                preinitialized_row_mapper=self._user_id_to_index_mapper,
+                on_new_row="ignore"
+            )
+
+            for df_split_chunk in tqdm(
+                np.array_split(df_split, indices_or_sections=self._num_parts_split_dataset)
+            ):
+                # Explosions of empty lists in impressions are transformed into NAs, NA values must be removed before
+                # being inserted into the csr_matrix.
+                df_split_chunk = df_split_chunk.explode(
+                    column="impressions",
+                    ignore_index=False,
+                )
+                df_split_chunk = df_split_chunk[
+                    df_split_chunk["impressions"].notna()
+                ]
+                impressions = df_split_chunk["impressions"].to_numpy()
+                users = df_split_chunk["user_id"].to_numpy()
+                data = np.ones_like(impressions, dtype=np.int32)
+
+                builder_uim_split.add_data_lists(
+                    row_list_to_add=users,
+                    col_list_to_add=impressions,
+                    data_list_to_add=data,
+                )
+
+            uim_split = builder_uim_split.get_SparseMatrix()
+            if self._binarize_impressions:
+                uim_split.data = np.ones_like(uim_split.data)
+
+            self._impressions[name] = uim_split.copy()
+
+
+# def create_mapper(
+#     values: pd.Series,
+#     mapper_name: str,
+# ) -> pd.DataFrame:
+#     original_column_name = f"original_{mapper_name}_indices"
+#     mapped_column_name = f"mapped_{mapper_name}_indices"
+#
+#     return (
+#         pd.DataFrame(
+#             data={
+#                 original_column_name: values.unique(),
+#             },
+#         )
+#         .sort_values(
+#             by=[original_column_name],
+#             ascending=True,
+#             inplace=False,
+#             ignore_index=True,  # Sorting unique values in ascending order.
+#         )
+#         .reset_index(
+#             drop=False,
+#             inplace=False,
+#         )
+#         .rename(
+#             columns={"index": mapped_column_name},
+#             inplace=False,
+#         )
+#     )
 
 
 if __name__ == "__main__":
-    dask_interface = configure_dask_cluster()
+    # dask_interface = configure_dask_cluster()
+
+    config = FinnNoSlatesConfig()
+
+    raw_data_loader = FINNNoSlateRawData(
+        config=config,
+    )
+
+    pandas_data_loader = PandasFinnNoSlateRawData(
+        config=config,
+    )
+
+    print(pandas_data_loader._df_train_and_validation)
+
+    print(pandas_data_loader.interactions_impressions_metadata)
+    print(pandas_data_loader.interactions)
+    print(pandas_data_loader.impressions)
+
+    data_reader = FINNNoSlateReader(
+        config=config,
+    )
+
+    dataset = data_reader.dataset
+
+    print(dataset.get_loaded_UIM_names())
+    print(dataset.get_loaded_URM_names())
+    quit(255)
 
     # FINNNoSlateRawData().load_data()
     # quit(0)
@@ -1427,26 +1650,26 @@ if __name__ == "__main__":
     # finn_no_statistics.statistics_impressions_metadata()
     quit(0)
 
-    data_reader = FINNNoSlateReader()
+    # data_reader = FINNNoSlateReader()
     # dataset = data_reader.dataset
     # statistics = data_reader.statistics
 
     # Create a training-validation-test split, for example by leave-1-out
     # This splitter requires the DataReader object and the number of elements to holdout
-    data_splitter = DataSplitter_leave_k_out(
-        dataReader_object=data_reader,
-        k_out_value=1,
-        use_validation_set=True,
-        leave_random_out=True,
-    )
+    # data_splitter = DataSplitter_leave_k_out(
+    #     dataReader_object=data_reader,
+    #     k_out_value=1,
+    #     use_validation_set=True,
+    #     leave_random_out=True,
+    # )
 
     # The load_data function will split the data and save it in the desired folder.
     # Once the split is saved, further calls to the load_data will load the split data ensuring
     # you always use the same split
-    data_splitter.load_data(
-        save_folder_path="./result_experiments/FINN-NO-SLATE/data-leave-1-random-out/"
-        # save_folder_path="./result_experiments/FINN-NO-SLATE/data-leave-1-random/"
-    )
-
-    # We can access the three URMs.
-    urm_train, urm_validation, urm_test = data_splitter.get_holdout_split()
+    # data_splitter.load_data(
+    #     save_folder_path="./result_experiments/FINN-NO-SLATE/data-leave-1-random-out/"
+    #     # save_folder_path="./result_experiments/FINN-NO-SLATE/data-leave-1-random/"
+    # )
+    #
+    # # We can access the three URMs.
+    # urm_train, urm_validation, urm_test = data_splitter.get_holdout_split()
