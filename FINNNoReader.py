@@ -53,7 +53,7 @@ from tqdm import tqdm
 from data_splitter import filter_impressions_by_interactions_index, split_sequential_train_test_by_num_records_on_test, \
     split_sequential_train_test_by_column_threshold, remove_users_without_min_number_of_interactions, \
     remove_duplicates_in_interactions, T_KEEP, remove_records_by_threshold, apply_custom_function
-from mixins import BaseDataset, ParquetDataMixin
+from mixins import BaseDataset, ParquetDataMixin, BaseDataReader
 from utils import typed_cache
 
 tqdm.pandas()
@@ -135,16 +135,6 @@ def is_item_in_impression(
 # to avoid time in compiling.
 is_item_in_impression(impressions=np.array([range(25)]), item_ids=np.array([1]))
 is_item_in_impression(impressions=np.array([range(25)]), item_ids=np.array([1]))
-
-
-@jit(nopython=True, parallel=False)
-def compute_interaction_position_in_impression(
-    impressions: np.ndarray,
-    item_id: int,
-) -> np.ndarray:
-    # This returns a tuple of arrays. First one is row_indices and second position is column indices.
-    # given that impressions are 1D arrays, we only ened the first position of the tuple.
-    return np.asarray(impressions == item_id).nonzero()[0]
 
 
 @attr.frozen
@@ -1047,9 +1037,7 @@ class PandasFinnNoSlateRawData(ParquetDataMixin):
 #         )
 
 
-class FINNNoSlateReader(DataReader):
-    IS_IMPLICIT = True
-
+class FINNNoSlateReader(BaseDataReader):
     def __init__(
         self,
         config: FinnNoSlatesConfig,
@@ -1473,7 +1461,7 @@ class FINNNoSlateReader(DataReader):
 
             uim_split = builder_uim_split.get_SparseMatrix()
             if self._binarize_impressions:
-                uim_split.data = np.ones_like(uim_split.data)
+                uim_split.data = np.ones_like(uim_split.data, dtype=np.int32)
 
             self._impressions[name] = uim_split.copy()
 
@@ -1556,6 +1544,7 @@ class FINNNoSlateReader(DataReader):
                 df_split_chunk = df_split_chunk[
                     df_split_chunk["impressions"].notna()
                 ]
+
                 impressions = df_split_chunk["impressions"].to_numpy()
                 users = df_split_chunk["user_id"].to_numpy()
                 data = np.ones_like(impressions, dtype=np.int32)
@@ -1568,7 +1557,7 @@ class FINNNoSlateReader(DataReader):
 
             uim_split = builder_uim_split.get_SparseMatrix()
             if self._binarize_impressions:
-                uim_split.data = np.ones_like(uim_split.data)
+                uim_split.data = np.ones_like(uim_split.data, dtype=np.int32)
 
             self._impressions[name] = uim_split.copy()
 
