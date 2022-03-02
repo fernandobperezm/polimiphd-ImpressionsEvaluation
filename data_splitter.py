@@ -10,6 +10,7 @@ logger = get_logger(
 
 T_KEEP = Literal["first", "last", False]
 T_AXIS = Literal["index", "columns"]
+T_MERGE = Literal["left", "inner", "right"]
 
 
 def _compute_statistics(
@@ -315,6 +316,48 @@ def filter_impressions_by_interactions_index(
     return df_impressions_keep, df_impressions_removed
 
 
+def filter_dataframe_by_column(
+    df_to_filter: pd.DataFrame,
+    df_filterer: pd.DataFrame,
+    column: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    values_outside_filter = set(df_filterer[column]).difference(df_to_filter[column])
+    if len(values_outside_filter) > 0:
+        raise AssertionError(
+            f"This function needs the `df_filterer[column]` values to be a subset of `df_to_filter[column]`, "
+            f"due to the assumption that `df_filterer` has been filtered already and we want to apply the same filter "
+            f"to `df_to_filter`. Found the following values in the `df_filterer` that are not in `df_to_filter`: "
+            f"{values_outside_filter}."
+        )
+
+    # To create the UIM we need to have the (user_id, impressions) pair.
+    # Also, we need to filter the impressions by the same filters of the interactions.
+    # We do this by selecting from the impression set the remaining indices in the interactions after we've
+    # applied all filters.
+    # NOTE: be careful, this can be done with a join too
+    # (e.g., df_impressions_filtered.join(other=df_interactions_filtered)), but given that the interactions have
+    # several repeated indices (given that we exploded it before), then a join would create repeated impressions
+    # records.
+    df_keep = df_to_filter[
+        df_to_filter[column].isin(df_filterer[column])
+    ].copy()
+
+    df_removed = df_to_filter.drop(
+        df_keep.index,
+        inplace=False,
+    )
+
+    _compute_statistics_impressions(
+        func_name="filter_dataframe_by_column",
+        message="values inside the filter.",
+        df_orig=df_to_filter,
+        df_keep=df_keep,
+        df_removed=df_removed,
+    )
+
+    return df_keep, df_removed
+
+
 def remove_records_by_threshold(
     df: pd.DataFrame,
     column: str,
@@ -345,6 +388,39 @@ def remove_records_by_threshold(
         df_removed=df_removed,
         column=column,
         threshold=threshold,
+    )
+
+    return df_keep, df_removed
+
+
+def remove_records_na(
+    df: pd.DataFrame,
+    column: str,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Filters the dataset on the column `column` using a threshold `threshold`.
+
+    In particular, this method keeps those records that are greater or equal than `threshold`. Therefore, discarding
+    those that are strictly less than `threshold`.
+
+    Notes
+    -----
+    This method preserves the original indices.
+    """
+    df_filter_to_keep = cast(
+        pd.Series,
+        df[column].notna()
+    )
+
+    df_keep = df[df_filter_to_keep].copy()
+    df_removed = df[~df_filter_to_keep].copy()
+
+    _compute_statistics(
+        func_name="remove_records_na",
+        message="Filter by NA",
+        df_orig=df,
+        df_keep=df_keep,
+        df_removed=df_removed,
+        column=column,
     )
 
     return df_keep, df_removed
@@ -381,6 +457,49 @@ def apply_custom_function(
 
     return df_keep, df_removed
 
+
+def merge_two_dataframes(
+    df: pd.DataFrame,
+    other: pd.DataFrame,
+    how: T_MERGE,
+    left_on: Optional[str],
+    right_on: Optional[str],
+    left_index: bool,
+    right_index: bool,
+    suffixes: tuple[str, str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+
+    if left_on is None and right_on is None and not left_index and not right_index:
+        raise ValueError(
+            "At least two of 'left_on', 'right_on', 'left_index', or 'right_index' must be specified. Column names "
+            "for 'left_on' and 'right_on' or True for 'left_index' and 'right_index'."
+        )
+
+    df_keep = df.merge(
+        right=other,
+        how=how,
+        left_on=left_on,
+        right_on=right_on,
+        left_index=left_index,
+        right_index=right_index,
+        suffixes=suffixes,
+        sort=False,
+    )
+
+    df_removed = df.drop(
+        df_keep.index,
+    )
+
+    if "item_id" in df.columns:
+        _compute_statistics(
+
+        )
+    else:
+        _compute_statistics_impressions(
+
+        )
+
+    return df_keep, df_removed
 
 
 def split_sequential_train_test_by_column_threshold(
@@ -460,29 +579,31 @@ def split_sequential_train_test_by_num_records_on_test(
     # The training set is then df.drop(test_set.index) (named df_train)
     # NOTE: a groupby on a categorical column will have rows for categories not inside the dataframe, e.g.,
     # if some users were removed from the interactions, the groupby will show their sizes as 0 because they're part
-    # of the category.
+    # of the category. We avoid this by setting `observed=True`.
     grouped_df = df.groupby(
         by=group_by_column,
         as_index=False,
+        observed=True,
     )
 
     # This variable tells the minimum size of each group.
     min_num_records_by_group = num_records_in_test + 1
     grouped_size_df = grouped_df[group_by_column].size()
 
+    # NOTE: Not needed anymore given the `observed=True` in the GroupBy.
     # Given that the groupby counts for all user, even if they are not in the interactions, then we must filter the
     # grouped dataframe by the actual users in the interactions dataframe.
-    users_in_df = grouped_size_df[
-        grouped_size_df[group_by_column].isin(df[group_by_column].unique())
-    ]
+    # users_in_df = grouped_size_df[
+    #     grouped_size_df[group_by_column].isin(df[group_by_column].unique())
+    # ]
 
-    non_valid_groups = users_in_df["size"] < min_num_records_by_group
+    non_valid_groups = grouped_size_df["size"] < min_num_records_by_group
 
     if any(non_valid_groups):
         message = (
             f"Cannot partition the dataset given that the following groups do not have at least "
             f"{min_num_records_by_group} interaction records:"
-            f"\n{users_in_df[non_valid_groups]}"
+            f"\n{grouped_size_df[non_valid_groups]}"
         )
         logger.error(message)
         raise ValueError(message)
