@@ -4,13 +4,18 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any, Callable
 
+import dask.dataframe as dd
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+import scipy.stats as st
 from recsys_framework.Data_manager.DataReader import DataReader
 from recsys_framework.Data_manager.DataReader_utils import compute_density
 from recsys_framework.Data_manager.Dataset import gini_index
 from recsys_framework.Recommenders.DataIO import DataIO
+from recsys_framework.Utils.conf_dask import DaskInterface
+from scipy.stats._stats_py import DescribeResult
+from tqdm import tqdm
 
 
 class EvaluationStrategy(Enum):
@@ -47,6 +52,66 @@ class ParquetDataMixin:
             path=file_path,
             engine=self.engine,
             use_nullable_dtypes=self.use_nullable_dtypes,
+        )
+
+    def load_parquets(
+        self,
+        file_paths: list[str],
+        to_pandas_func: Callable[[], list[pd.DataFrame]],
+    ) -> list[pd.DataFrame]:
+        all_files_created = all(
+            os.path.exists(file_path)
+            for file_path in file_paths
+        )
+
+        if not all_files_created:
+            dataframes = to_pandas_func()
+
+            for file_path, df in zip(file_paths, dataframes):
+                self._to_parquet(
+                    df=df,
+                    file_path=file_path,
+                )
+
+        dataframes = [
+            pd.read_parquet(
+                path=file_path,
+                engine=self.engine,
+                use_nullable_dtypes=self.use_nullable_dtypes,
+            )
+            for file_path in file_paths
+        ]
+
+        return dataframes
+
+
+class DaskParquetDataMixin:
+    engine = "pyarrow"
+
+    def _to_parquet(
+        self,
+        df: dd.DataFrame,
+        folder_path: str,
+    ) -> None:
+        df.to_parquet(
+            path=folder_path,
+            engine=self.engine,
+        )
+
+    def load_parquet(
+        self,
+        folder_path: str,
+        to_dask_func: Callable[[], dd.DataFrame],
+    ) -> pd.DataFrame:
+        if not os.path.exists(folder_path):
+            self._to_parquet(
+                df=to_dask_func(),
+                folder_path=folder_path,
+            )
+
+        return dd.read_parquet(
+            path=folder_path,
+            engine=self.engine,
         )
 
 
@@ -277,6 +342,9 @@ class InteractionsMixin(CSRMatrixStatisticsMixin, BaseDataMixin):
     def get_loaded_URM_names(self):
         return list(self.interactions.keys())
 
+    def get_loaded_URM_items(self):
+        return self.interactions.items()
+
     def get_urm_by_name(self, name: str) -> sp.csr_matrix:
         return self.interactions[name].copy()
 
@@ -395,6 +463,9 @@ class ImpressionsMixin(CSRMatrixStatisticsMixin, BaseDataMixin):
 
     def get_loaded_UIM_names(self):
         return list(self.impressions.keys())
+
+    def get_loaded_UIM_items(self):
+        return self.impressions.items()
 
     def save_data(self, save_folder_path):
         super().save_data(
@@ -544,3 +615,520 @@ class BaseDataReader(DataReader, ABC):
 
         loaded_dataset.print_statistics()
         return loaded_dataset
+
+
+class DatasetStatisticsMixin:
+    # dask_interface: DaskInterface
+    statistics: dict[str, Any]
+    statistics_folder: str
+    statistics_file_name: str
+
+    def compute_statistics_df_on_csr_matrix(
+        self,
+        df: pd.DataFrame,
+        dataset_name: str,
+        user_column: str,
+        item_column: str
+    ) -> None:
+        user_codes, user_uniques = pd.factorize(
+            df[user_column]
+        )
+
+        item_codes, item_uniques = pd.factorize(
+            df[item_column]
+        )
+
+        num_users = user_uniques.shape[0]
+        num_items = item_uniques.shape[0]
+
+        row_indices = user_codes
+        col_indices = item_codes
+        data = np.ones_like(
+            a=row_indices,
+            dtype=np.int32,
+        )
+
+        assert df.shape[0] == row_indices.shape[0]
+        assert row_indices.shape == col_indices.shape
+        assert row_indices.shape == data.shape
+
+        matrix: sp.csr_matrix = sp.csr_matrix(
+            (
+                data,
+                (row_indices, col_indices)
+            ),
+            shape=(num_users, num_items),
+            dtype=np.int32,
+        )
+
+        self.compute_statistics_csr_matrix(matrix=matrix, dataset_name=dataset_name)
+
+    def compute_statistics_csr_matrix(
+        self,
+        matrix: sp.csr_matrix,
+        dataset_name: str,
+    ) -> None:
+        category_name = "sparse_matrix"
+
+        matrix_csc = matrix.tocsc(copy=True)
+
+        if dataset_name not in self.statistics:
+            self.statistics[dataset_name] = dict()
+
+        self.statistics[dataset_name][category_name] = dict()
+        self.statistics[dataset_name][category_name]["csr_matrix"] = matrix
+        self.statistics[dataset_name][category_name]["csc_matrix"] = matrix_csc
+
+        user_profile_length: np.ndarray = np.ediff1d(matrix.indptr)
+        user_profile_stats: DescribeResult = st.describe(
+            a=user_profile_length,
+            axis=0,
+            nan_policy="raise",
+        )
+        self.statistics[dataset_name][category_name]["interactions_by_users"] = {
+            "num_observations": user_profile_stats.nobs,
+            "min": user_profile_stats.minmax[0],
+            "max": user_profile_stats.minmax[1],
+            "mean": user_profile_stats.mean,
+            "variance": user_profile_stats.variance,
+            "skewness": user_profile_stats.skewness,
+            "kurtosis": user_profile_stats.kurtosis,
+            "gini_index": gini_index(
+                array=user_profile_length,
+            ),
+        }
+
+        item_profile_length: np.ndarray = np.ediff1d(matrix_csc.indptr)
+        item_profile_stats: DescribeResult = st.describe(
+            a=item_profile_length,
+            axis=0,
+            nan_policy="raise",
+        )
+        self.statistics[dataset_name][category_name]["interactions_by_items"] = {
+            "num_observations": item_profile_stats.nobs,
+            "min": item_profile_stats.minmax[0],
+            "max": item_profile_stats.minmax[1],
+            "mean": item_profile_stats.mean,
+            "variance": item_profile_stats.variance,
+            "skewness": item_profile_stats.skewness,
+            "kurtosis": item_profile_stats.kurtosis,
+            "gini_index": gini_index(
+                array=item_profile_length
+            ),
+        }
+
+    def compare_two_dataframes(
+        self,
+        df: pd.DataFrame,
+        df_name: str,
+        df_other: pd.DataFrame,
+        df_other_name: str,
+        columns_to_compare: list[str],
+    ) -> None:
+        dataset_name = f"{df_name}-{df_other_name}"
+        if dataset_name not in self.statistics:
+            self.statistics[dataset_name] = dict()
+
+        if df_name not in self.statistics[dataset_name]:
+            self.statistics[dataset_name][df_name] = dict()
+
+        if df_other_name not in self.statistics[dataset_name]:
+            self.statistics[dataset_name][df_other_name] = dict()
+
+        df_num_records = df.shape[0]
+        df_other_num_records = df_other.shape[0]
+
+        relative_difference_num_records = df_num_records - df_other_num_records
+        relative_percentage_num_records = (df_num_records - df_other_num_records) * 100 / df_num_records
+
+        self.statistics[dataset_name][df_name]["num_records"] = df_num_records
+        self.statistics[dataset_name][df_other_name]["num_records"] = df_other_num_records
+
+        self.statistics[dataset_name]["relative_difference_num_records"] = relative_difference_num_records
+        self.statistics[dataset_name]["relative_percentage_num_records"] = relative_percentage_num_records
+
+        for column in columns_to_compare:
+            df_num_uniques_column = df[column].nunique(dropna=True)
+            df_other_num_uniques_column = df_other[column].nunique(dropna=True)
+
+            relative_difference_num_uniques = df_num_uniques_column - df_other_num_uniques_column
+            relative_percentage_num_uniques = (df_num_uniques_column - df_other_num_uniques_column) * 100 / df_num_uniques_column
+
+            self.statistics[dataset_name][df_name][f"num_uniques_{column}"] = df_num_records
+            self.statistics[dataset_name][df_other_name][f"num_uniques_{column}"] = df_other_num_records
+
+            self.statistics[dataset_name]["relative_difference_num_uniques"] = relative_difference_num_uniques
+            self.statistics[dataset_name]["relative_percentage_num_uniques"] = relative_percentage_num_uniques
+
+    def compare_two_sparse_matrices(
+        self,
+        csr_matrix: sp.csr_matrix,
+        csr_matrix_name: str,
+        other_csr_matrix: sp.csr_matrix,
+        other_csr_matrix_name: str,
+    ) -> None:
+
+        dataset_name = f"{csr_matrix_name}-{other_csr_matrix_name}"
+        if dataset_name not in self.statistics:
+            self.statistics[dataset_name] = dict()
+
+        if csr_matrix_name not in self.statistics[dataset_name]:
+            self.statistics[dataset_name][csr_matrix_name] = dict()
+
+        if other_csr_matrix_name not in self.statistics[dataset_name]:
+            self.statistics[dataset_name][other_csr_matrix_name] = dict()
+
+        csr_matrix_num_records = csr_matrix.nnz
+        csr_matrix_other_num_records = other_csr_matrix.nnz
+
+        relative_difference_num_records = csr_matrix_num_records - csr_matrix_other_num_records
+        relative_percentage_num_records = (relative_difference_num_records) * 100 / csr_matrix_num_records
+
+        self.statistics[dataset_name][csr_matrix_name]["num_records"] = csr_matrix_num_records
+        self.statistics[dataset_name][other_csr_matrix_name]["num_records"] = csr_matrix_other_num_records
+
+        self.statistics[dataset_name]["relative_difference_num_records"] = relative_difference_num_records
+        self.statistics[dataset_name]["relative_percentage_num_records"] = relative_percentage_num_records
+
+        csr_matrix_profile_lengths = [
+            np.ediff1d(csr_matrix.indptr),
+            np.ediff1d(csr_matrix.tocsc(copy=True).indptr)
+        ]
+        other_csr_matrix_profile_lengths = [
+            np.ediff1d(other_csr_matrix.indptr),
+            np.ediff1d(other_csr_matrix.tocsc(copy=True).indptr)
+        ]
+        profile_length_types = [
+            "user",
+            "items",
+        ]
+
+        for pl, other_pl, pl_type in zip(
+            csr_matrix_profile_lengths,
+            other_csr_matrix_profile_lengths,
+            profile_length_types,
+        ):
+            pl_stats: DescribeResult = st.describe(
+                a=pl,
+                axis=0,
+                nan_policy="raise",
+            )
+            other_pl_stats: DescribeResult = st.describe(
+                a=other_pl,
+                axis=0,
+                nan_policy="raise",
+            )
+
+            self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"] = {
+                "num_observations": pl_stats.nobs,
+                "min": pl_stats.minmax[0],
+                "max": pl_stats.minmax[1],
+                "mean": pl_stats.mean,
+                "variance": pl_stats.variance,
+                "std": np.sqrt(pl_stats.variance),
+                "skewness": pl_stats.skewness,
+                "kurtosis": pl_stats.kurtosis,
+                "gini_index": gini_index(array=pl),
+            }
+
+            self.statistics[dataset_name][other_csr_matrix_name][f"interactions_by_{pl_type}"] = {
+                "num_observations": other_pl_stats.nobs,
+                "min": other_pl_stats.minmax[0],
+                "max": other_pl_stats.minmax[1],
+                "mean": other_pl_stats.mean,
+                "variance": other_pl_stats.variance,
+                "std": np.sqrt(other_pl_stats.variance),
+                "skewness": other_pl_stats.skewness,
+                "kurtosis": other_pl_stats.kurtosis,
+                "gini_index": gini_index(array=other_pl),
+            }
+
+            self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"] = {
+                "num_observations": (
+                    self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["num_observations"]
+                    - self.statistics[dataset_name][other_csr_matrix_name][f"interactions_by_{pl_type}"]["num_observations"]
+                ),
+                "min": (
+                    self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["min"]
+                    - self.statistics[dataset_name][other_csr_matrix_name][f"interactions_by_{pl_type}"]["min"]
+                ),
+                "max": (
+                    self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["max"]
+                    - self.statistics[dataset_name][other_csr_matrix_name][f"interactions_by_{pl_type}"]["max"]
+                ),
+                "mean": (
+                    self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["mean"]
+                    - self.statistics[dataset_name][other_csr_matrix_name][f"interactions_by_{pl_type}"]["mean"]
+                ),
+                "variance": (
+                    self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["variance"]
+                    - self.statistics[dataset_name][other_csr_matrix_name][f"interactions_by_{pl_type}"]["variance"]
+                ),
+                "std": (
+                    self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["std"]
+                    - self.statistics[dataset_name][other_csr_matrix_name][f"interactions_by_{pl_type}"]["std"]
+                ),
+                "skewness": (
+                    self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["skewness"]
+                    - self.statistics[dataset_name][other_csr_matrix_name][f"interactions_by_{pl_type}"]["skewness"]
+                ),
+                "kurtosis": (
+                    self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["kurtosis"]
+                    - self.statistics[dataset_name][other_csr_matrix_name][f"interactions_by_{pl_type}"]["kurtosis"]
+                ),
+            }
+
+            self.statistics[dataset_name][f"relative_percentage_interactions_by_{pl_type}"] = {
+                "num_observations": (
+                    self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["num_observations"] * 100
+                    / self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["num_observations"]
+                ),
+                "min": (
+                    self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["min"] * 100
+                    / self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["min"]
+                ),
+                "max": (
+                    self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["max"] * 100
+                    / self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["max"]
+                ),
+                "mean": (
+                    self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["mean"] * 100
+                    / self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["mean"]
+                ),
+                "variance": (
+                    self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["variance"] * 100
+                    / self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["variance"]
+                ),
+                "std": (
+                    self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["std"] * 100
+                    / self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["std"]
+                ),
+                "skewness": (
+                    self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["skewness"] * 100
+                    / self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["skewness"]
+                ),
+                "kurtosis": (
+                    self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["kurtosis"] * 100
+                    / self.statistics[dataset_name][csr_matrix_name][f"interactions_by_{pl_type}"]["kurtosis"]
+                ),
+            }
+
+        # csr_matrix_user_profile_length: np.ndarray = np.ediff1d(csr_matrix.indptr)
+        # csr_matrix_user_profile_stats: DescribeResult = st.describe(
+        #     a=csr_matrix_user_profile_length,
+        #     axis=0,
+        #     nan_policy="raise",
+        # )
+        #
+        # other_csr_matrix_user_profile_length: np.ndarray = np.ediff1d(other_csr_matrix.indptr)
+        # other_csr_matrix_user_profile_stats: DescribeResult = st.describe(
+        #     a=other_csr_matrix_user_profile_length,
+        #     axis=0,
+        #     nan_policy="raise",
+        # )
+        #
+        # self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"] = {
+        #     "num_observations": csr_matrix_user_profile_stats.nobs,
+        #     "min": csr_matrix_user_profile_stats.minmax[0],
+        #     "max": csr_matrix_user_profile_stats.minmax[1],
+        #     "mean": csr_matrix_user_profile_stats.mean,
+        #     "variance": csr_matrix_user_profile_stats.variance,
+        #     "std": np.sqrt(csr_matrix_user_profile_stats.variance),
+        #     "skewness": csr_matrix_user_profile_stats.skewness,
+        #     "kurtosis": csr_matrix_user_profile_stats.kurtosis,
+        #     "gini_index": gini_index(array=csr_matrix_user_profile_length,),
+        # }
+        #
+        # self.statistics[dataset_name][other_csr_matrix_name]["interactions_by_users"] = {
+        #     "num_observations": other_csr_matrix_user_profile_stats.nobs,
+        #     "min": other_csr_matrix_user_profile_stats.minmax[0],
+        #     "max": other_csr_matrix_user_profile_stats.minmax[1],
+        #     "mean": other_csr_matrix_user_profile_stats.mean,
+        #     "variance": other_csr_matrix_user_profile_stats.variance,
+        #     "std": np.sqrt(other_csr_matrix_user_profile_stats.variance),
+        #     "skewness": other_csr_matrix_user_profile_stats.skewness,
+        #     "kurtosis": other_csr_matrix_user_profile_stats.kurtosis,
+        #     "gini_index": gini_index(array=other_csr_matrix_user_profile_length),
+        # }
+        #
+        # self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"] = {
+        #     "num_observations": (
+        #         self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["num_observations"]
+        #         - self.statistics[dataset_name][other_csr_matrix_name]["interactions_by_users"]["num_observations"]
+        #     ),
+        #     "min": (
+        #         self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["min"]
+        #         - self.statistics[dataset_name][other_csr_matrix_name]["interactions_by_users"]["min"]
+        #     ),
+        #     "max": (
+        #         self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["max"]
+        #         - self.statistics[dataset_name][other_csr_matrix_name]["interactions_by_users"]["max"]
+        #     ),
+        #     "mean": (
+        #         self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["mean"]
+        #         - self.statistics[dataset_name][other_csr_matrix_name]["interactions_by_users"]["mean"]
+        #     ),
+        #     "variance": (
+        #         self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["variance"]
+        #         - self.statistics[dataset_name][other_csr_matrix_name]["interactions_by_users"]["variance"]
+        #     ),
+        #     "std": (
+        #         self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["std"]
+        #         - self.statistics[dataset_name][other_csr_matrix_name]["interactions_by_users"]["std"]
+        #     ),
+        #     "skewness": (
+        #         self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["skewness"]
+        #         - self.statistics[dataset_name][other_csr_matrix_name]["interactions_by_users"]["skewness"]
+        #     ),
+        #     "kurtosis": (
+        #         self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["kurtosis"]
+        #         - self.statistics[dataset_name][other_csr_matrix_name]["interactions_by_users"]["kurtosis"]
+        #     ),
+        #     "gini_index": gini_index(array=other_csr_matrix_user_profile_length),
+        # }
+        #
+        # self.statistics[dataset_name]["relative_percentage_interactions_by_users"] = {
+        #     "num_observations": (
+        #         self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["num_observations"] * 100
+        #         / self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["num_observations"]
+        #     ),
+        #     "min": (
+        #         self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["min"] * 100
+        #         / self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["min"]
+        #     ),
+        #     "max": (
+        #         self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["max"] * 100
+        #         / self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["max"]
+        #     ),
+        #     "mean": (
+        #         self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["mean"] * 100
+        #         / self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["mean"]
+        #     ),
+        #     "variance": (
+        #         self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["variance"] * 100
+        #         / self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["variance"]
+        #     ),
+        #     "std": (
+        #         self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["std"] * 100
+        #         / self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["std"]
+        #     ),
+        #     "skewness": (
+        #         self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["skewness"] * 100
+        #         / self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["skewness"]
+        #     ),
+        #     "kurtosis": (
+        #         self.statistics[dataset_name][f"relative_difference_interactions_by_{pl_type}"]["kurtosis"] * 100
+        #         / self.statistics[dataset_name][csr_matrix_name]["interactions_by_users"]["kurtosis"]
+        #     ),
+        #     "gini_index": gini_index(array=other_csr_matrix_user_profile_length),
+        # }
+
+    def compute_statistics(
+        self,
+        df: pd.DataFrame,
+        dataset_name: str,
+        columns_for_unique: list[str],
+        columns_for_profile_length: list[str],
+        columns_for_gini: list[str],
+        columns_to_group_by: list[str],
+    ) -> None:
+        if dataset_name not in self.statistics:
+            self.statistics[dataset_name] = dict()
+
+        self.statistics[dataset_name]["num_records"] = df.shape[0]
+        # self.statistics[dataset_name]["describe"] = df.describe(
+        #     include=[np.number, "category"],
+        #     exclude=[object],
+        #     datetime_is_numeric=True,
+        #     percentiles=[0.01, 0.05, 0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 0.95, 0.99]
+        # )
+
+        for column in tqdm(columns_for_unique):
+            if column not in self.statistics[dataset_name]:
+                self.statistics[dataset_name][column] = dict()
+
+            self.statistics[dataset_name][column]["num_unique"] = df[column].nunique()
+            self.statistics[dataset_name][column]["unique"] = df[column].unique()
+
+        for column in tqdm(columns_for_profile_length):
+            if column not in self.statistics[dataset_name]:
+                self.statistics[dataset_name][column] = dict()
+
+            self.statistics[dataset_name][column][f"profile_length"] = (
+                df[column].value_counts(
+                    ascending=False,
+                    sort=False,
+                    normalize=False,
+                    dropna=False,
+                ).rename(
+                    "profile_length"
+                ).to_frame()
+            )
+
+            self.statistics[dataset_name][column][f"profile_length_normalized"] = (
+                df[column].value_counts(
+                    ascending=False,
+                    sort=False,
+                    normalize=True,
+                    dropna=False,
+                ).rename(
+                    "profile_length_normalized"
+                ).to_frame()
+            )
+
+        for column in tqdm(columns_for_gini):
+            if column not in self.statistics[dataset_name]:
+                self.statistics[dataset_name][column] = dict()
+
+            # notna is there because columns might be NA.
+            self.statistics[dataset_name][column]["gini_index_values_labels"] = gini_index(
+                array=df[column]
+            )
+            self.statistics[dataset_name][column]["gini_index_values_counts"] = gini_index(
+                array=df[column].value_counts(
+                    dropna=True,
+                    normalize=False,
+                ),
+            )
+
+        # for column in tqdm(columns_to_group_by):
+        #     if column not in self.statistics[dataset_name]:
+        #         self.statistics[dataset_name][column] = dict()
+        #
+        #     # If the column is categorical, then a groupby will return for all categorical values,
+        #     df_group_by = df.groupby(
+        #         by=[column],
+        #         as_index=False,
+        #         observed=True,
+        #     )
+        #
+        #     self.statistics[dataset_name][column][f"group_by_profile_length"] = df_group_by[column].count()
+        #     self.statistics[dataset_name][column][f"group_by_describe"] = df_group_by[column].describe()
+        #     self.statistics[dataset_name][column][f"group_by_agg"] = df_group_by[column].agg([
+        #         "min",
+        #         "max",
+        #         "count",
+        #         "size",
+        #         "first",
+        #         "last",
+        #         "var",
+        #         "std",
+        #         "mean",
+        #     ])
+
+    def save_statistics(self):
+        data_io = DataIO(
+            folder_path=self.statistics_folder,
+        )
+        data_io.save_data(
+            file_name=self.statistics_file_name,
+            data_dict_to_save=self.statistics,
+        )
+
+    def load_statistics(self):
+        data_io = DataIO(
+            folder_path=self.statistics_folder,
+        )
+        self.statistics = data_io.load_data(
+            file_name=self.statistics_file_name,
+        )
