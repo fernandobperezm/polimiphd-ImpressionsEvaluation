@@ -1,49 +1,79 @@
 """ MINDSmallReader.py
 This module reads the small or the large version of the Microsoft News Dataset (MIND).
 
+The MIND datasets are a collection of users with their interactions and impressions on a News Aggregator Site (
+Microsoft News). In particular, the collection period was between October 12th, 2019 and November 22nd,
+2019, i.e., 6 weeks of data collection. In particular, this dataset is a collection of tuples of the form (User ID,
+Impression Timestamp, Click History, Impressions).
+
+The dataset already comes with three splits: train, validation, and test. These splits are time-dependent, i.e.,
+they are created based on the impression timestamp. Even though the data was collected during a period of 6 weeks,
+there are only impressions for the 5th (train and validation) and 6th week (test). For the training and validation
+splits, the first 4 weeks the dataset only contain interactions of users (no impression record occurs before the 5th
+week). These interactions are placed inside the Click History part of the tuple. For the test split, Click History
+contains all interactions that occurred before the 6th week, i.e., from week 1 to week 5 (this means that it covers
+the interactions but not the impressions of the training and validation sets).
+
+The original recommendation task is to compute which item the user will click based on any given impression. This
+task differs to top-N recommendation as the first can be seen as a classification problem, while the second is mostly
+a recommendation task.
+
 Notes
 -----
 Columns of the dataset
+    User ID
+        an anonymous ID used to identify and group all interactions and impressions of users in the dataset.
+    Impression Timestamp
+        is the timestamp in which the given tuple occurred, this is associated with the _impression_ and not the
+        interactions that occurred on the impression.
     Impression ID
         MIND Dataset identifier for the impression. THEY DO NOT COME IN ORDER, i.e., a higher impression ID
         does not mean that the impression occurred later. See user "U1000" where impression "86767" comes first than
-        impression "46640", so do not rely on impression reproducibility.pyid to partition the dataset. Also, partition id is shuffled
+        impression "46640", so do not rely on impression ids to partition the dataset. Also, partition id is shuffled
         across users, so two consecutive impression ids might refer to different users.
     History
-        A column telling the previous interactions_exploded of users before the collection of data, i.e.,
-        interactions_exploded that happened before the dataset was created and before the collection window for the
-        dataset. There is no way to match any interaction here with a timestamp or impression. The paper mentions the
-        history is sorted by order of interactions_exploded, i.e., the first element is the first click of the user,
-        the second element is the second, and so on.
+        is an ordered collection of interactions of users. In particular, these are the interactions that happened in
+        the first four weeks, but they have no impression associated with them. This collection is ordered, meaning
+        that the first element was clicked first than the second. Although an order for the collection is given,
+        is not possible to determine in which week these interactions happened.
     Impressions
-        A column telling the impressions and possible interactions_exploded that users had with that impression. A user
+        A column telling the impressions and possible interactions that users had with that impression. A user
         may have more than one interaction for a given impression. It is stored as a :class:`str` and with the following
-        format "NXXXX-Y" where XXXX are digits and represent the item id. Y is 0 or 1 and tells if the user interacted
-        or not with the item NXXXX in the impression.
+        format "NXXXX-Y" where NXXXX is the item id. Y is 0 or 1 and tells if the user interacted or not with the
+        item NXXXX in the impression. Differently from Click History, the train and validation splits only contains the
+        impressions of the 5th week. The test split only contains the impressions without interaction information (
+        i.e., no -Y part) of the 6th week.
 """
 import os
 import re
-import urllib.request
 import zipfile
 from enum import Enum
 from typing import Optional
 
-import attr
+import attrs  # Use the novel API for attrs package.
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-from recsys_framework.Data_manager.IncrementalSparseMatrix import IncrementalSparseMatrix_FilterIDs
-from recsys_framework.Utils.conf_logging import get_logger
-from recsys_framework.Utils.decorators import timeit
+from recsys_framework_extensions.data.dataset import BaseDataset
+from recsys_framework_extensions.data.mixins import ParquetDataMixin
+from recsys_framework_extensions.data.reader import DataReader
+from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe
+from recsys_framework_extensions.data.splitter import (
+    remove_duplicates_in_interactions,
+    remove_users_without_min_number_of_interactions,
+    E_KEEP,
+    filter_impressions_by_interactions_index,
+    split_sequential_train_test_by_num_records_on_test,
+)
+from recsys_framework_extensions.decorators import timeit
+from recsys_framework_extensions.decorators import typed_cache
+from recsys_framework_extensions.hashing import compute_sha256_hash_from_object_repr
+from recsys_framework_extensions.http import download_remote_file
+from recsys_framework_extensions.logging import get_logger
 from tqdm import tqdm
 
-from data_splitter import remove_duplicates_in_interactions, remove_users_without_min_number_of_interactions, \
-    split_sequential_train_test_by_column_threshold, T_KEEP, filter_impressions_by_interactions_index, \
-    split_sequential_train_test_by_num_records_on_test
-from mixins import BaseDataset, BaseDataReader, ParquetDataMixin
-from utils import typed_cache
-
 tqdm.pandas()
+
 
 logger = get_logger(
     logger_name=__file__,
@@ -194,54 +224,32 @@ def extract_interacted_item_in_impressions(
     return item_ids
 
 
-def download_remote_file(
-    url: str,
-    destination_filename: str,
-    force_download=False,
-):
-    """
-    Download a URL to a temporary file.
-    See: https://docs.microsoft.com/en-us/azure/open-datasets/dataset-microsoft-news?tabs=azureml-opendatasets#functions
-    """
-
-    if (
-        not force_download
-        and os.path.isfile(destination_filename)
-    ):
-        logger.info(
-            f'Bypassing download of already-downloaded file {os.path.basename(url)}'
-        )
-
-        return destination_filename
-
-    logger.info(
-        f'Downloading file {os.path.basename(url)} to {destination_filename}'
-    )
-
-    urllib.request.urlretrieve(
-        url=url,
-        filename=destination_filename,
-        reporthook=None,
-    )
-    assert os.path.isfile(destination_filename)
-
-    logger.info(
-        f'Downloaded file {os.path.basename(url)} to {destination_filename}, {os.path.getsize(destination_filename)} bytes.'
-    )
-    return destination_filename
-
-
 class MINDVariant(Enum):
     SMALL = "SMALL"
     LARGE = "LARGE"
 
 
-@attr.frozen
+@attrs.define(kw_only=True, frozen=True, slots=False)
 class MINDSmallConfig:
     data_folder = os.path.join(
         ".", "data", "MIND-SMALL",
     )
-    variant = MINDVariant.SMALL
+
+    first_str_timestamp_of_dataset_collection = "10/12/2019 12:00:01 AM"
+
+    pandas_to_datetime_kwargs = dict(
+        errors="raise",
+        dayfirst=False,  # The data is in MM/DD, so tell pandas to read dates in that way.
+        yearfirst=False,
+        utc=None,  # No information about dates being UTC or not.
+        format="%m/%d/%Y %I:%M:%S %p",  # Format: MM/dd/YYYY HH:mm:ss AM or MM/dd/YYYY HH:mm:ss PM
+        exact=True,
+        infer_datetime_format=False,  # Pandas get rids of the AM/PM if it tries to infer the format.
+    )
+
+    pandas_dtypes = {
+        "user_id": "category",
+    }
 
     num_train_data_points = 156_965
     num_validation_data_points = 73_152
@@ -253,30 +261,58 @@ class MINDSmallConfig:
     validation_remote_filename = 'MINDsmall_dev.zip'
     test_remote_filename = ''
 
-    parquet_engine = "pyarrow"
-    parquet_use_nullable_dtypes = True
-
-    min_number_of_interactions = 3
-    binarize_impressions = True
-    binarize_interactions = True
-    keep_duplicates: T_KEEP = "first"
-
+    min_number_of_interactions = attrs.field(
+        default=3,
+        validator=[
+            attrs.validators.gt(0),
+        ]
+    )
+    binarize_impressions = attrs.field(
+        default=True,
+        validator=[
+            attrs.validators.instance_of(bool),
+        ]
+    )
+    binarize_interactions = attrs.field(
+        default=True,
+        validator=[
+            attrs.validators.instance_of(bool),
+        ]
+    )
+    keep_duplicates: E_KEEP = attrs.field(
+        default=E_KEEP.FIRST,
+        validator=[
+            attrs.validators.in_(E_KEEP),  # type: ignore
+        ]
+    )
+    use_historical_interactions = attrs.field(
+        default=True,
+        validator=[
+            attrs.validators.instance_of(bool),
+        ]
+    )
     # The SMALL variant of the dataset has no test set, therefore it must always be false.
-    use_test_set = attr.field(
+    use_test_set = attrs.field(
         default=False,
         validator=[
-            attr.validators.instance_of(bool),
-            lambda _, att, val: not val
+            attrs.validators.instance_of(bool),
+            attrs.validators.in_([False]),
+        ]
+    )
+    variant = attrs.field(
+        default=MINDVariant.SMALL,
+        validator=[
+            attrs.validators.instance_of(MINDVariant),
+            attrs.validators.in_([MINDVariant.SMALL]),
         ]
     )
 
 
-@attr.frozen
+@attrs.define(kw_only=True, frozen=True, slots=False)
 class MINDLargeConfig(MINDSmallConfig):
     data_folder = os.path.join(
         ".", "data", "MIND-LARGE",
     )
-    variant = MINDVariant.LARGE
 
     num_train_data_points = 2_232_748
     num_validation_data_points = 376_471
@@ -287,10 +323,17 @@ class MINDLargeConfig(MINDSmallConfig):
     test_remote_filename = 'MINDlarge_test.zip'
 
     # The LARGE variant can use the test set.
-    use_test_set = attr.field(
+    variant = attrs.field(
+        default=MINDVariant.LARGE,
+        validator=[
+            attrs.validators.instance_of(MINDVariant),
+            attrs.validators.in_([MINDVariant.LARGE]),
+        ]
+    )
+    use_test_set = attrs.field(
         default=False,
         validator=[
-            attr.validators.instance_of(bool),
+            attrs.validators.instance_of(bool),
         ]
     )
 
@@ -350,16 +393,6 @@ class MINDRawData:
             sep="\t",
         )
 
-        self._pandas_to_datetime_kwargs = dict(
-            errors="raise",
-            dayfirst=False,  # The data is in MM/DD, so tell pandas to read dates in that way.
-            yearfirst=False,
-            utc=None,  # No information about dates being UTC or not.
-            format="%m/%d/%Y %I:%M:%S %p",  # Format: MM/dd/YYYY HH:mm:ss AM or MM/dd/YYYY HH:mm:ss PM
-            exact=True,
-            infer_datetime_format=False,  # Pandas get rids of the AM/PM if it tries to infer the format.
-        )
-
     @property  # type: ignore
     @typed_cache
     def train(self) -> pd.DataFrame:
@@ -388,18 +421,6 @@ class MINDRawData:
         df_train: pd.DataFrame = pd.read_csv(
             filepath_or_buffer=self._original_dataset_train_file,
             **self._pandas_read_csv_kwargs,
-        )
-        df_train["timestamp"] = pd.to_datetime(
-            arg=df_train.str_timestamp,
-            **self._pandas_to_datetime_kwargs
-        )
-        df_train["item_id"] = df_train.str_impressions.progress_map(
-            extract_interacted_item_in_impressions,
-            na_action=None,  # Our function handles NA, so better to send them to the function.
-        )
-        df_train["impressions"] = df_train.str_impressions.progress_map(
-            convert_impressions_str_to_array,
-            na_action=None,  # Our function handles NA, so better to send them to the function.
         )
 
         assert df_train.shape[0] == self.num_train_data_points
@@ -434,18 +455,6 @@ class MINDRawData:
         df_validation: pd.DataFrame = pd.read_csv(
             filepath_or_buffer=self._original_dataset_validation_file,
             **self._pandas_read_csv_kwargs
-        )
-        df_validation["timestamp"] = pd.to_datetime(
-            arg=df_validation.str_timestamp,
-            **self._pandas_to_datetime_kwargs
-        )
-        df_validation["item_id"] = df_validation["str_impressions"].progress_map(
-            extract_interacted_item_in_impressions,
-            na_action=None,  # Our function handles NA, so better to send them to the function.
-        )
-        df_validation["impressions"] = df_validation["str_impressions"].progress_map(
-            convert_impressions_str_to_array,
-            na_action=None,  # Our function handles NA, so better to send them to the function.
         )
 
         assert df_validation.shape[0] == self.num_validation_data_points
@@ -490,18 +499,6 @@ class MINDRawData:
         df_test: pd.DataFrame = pd.read_csv(
             filepath_or_buffer=self._original_dataset_test_file,
             **self._pandas_read_csv_kwargs
-        )
-        df_test["timestamp"] = pd.to_datetime(
-            arg=df_test.str_timestamp,
-            **self._pandas_to_datetime_kwargs
-        )
-        df_test["item_id"] = df_test["str_impressions"].progress_map(
-            extract_interacted_item_in_impressions,
-            na_action=None,  # Our function handles NA, so better to send them to the function.
-        )
-        df_test["impressions"] = df_test["str_impressions"].progress_map(
-            convert_impressions_str_to_array,
-            na_action=None,  # Our function handles NA, so better to send them to the function.
         )
 
         assert df_test.shape[0] == self.num_test_data_points
@@ -605,17 +602,11 @@ class PandasMINDRawData(ParquetDataMixin):
         self._dataset_folder = os.path.join(
             self.config.data_folder, "pandas", "original",
         )
-        self.file_interactions_condensed = os.path.join(
-            self._dataset_folder, "interactions_condensed.parquet"
+        self._file_data = os.path.join(
+            self._dataset_folder, "data.parquet"
         )
-        self.file_interactions = os.path.join(
-            self._dataset_folder, "interactions.parquet"
-        )
-        self.file_impressions = os.path.join(
-            self._dataset_folder, "impressions.parquet"
-        )
-        self.file_impressions_metadata = os.path.join(
-            self._dataset_folder, "impressions_metadata.parquet"
+        self._file_previous_interactions = os.path.join(
+            self._dataset_folder, "previous_interactions.parquet"
         )
 
         os.makedirs(
@@ -625,44 +616,54 @@ class PandasMINDRawData(ParquetDataMixin):
 
     @property  # type: ignore
     @typed_cache
-    def _df_train_and_validation(self) -> pd.DataFrame:
+    def data(self) -> pd.DataFrame:
+        """ Interactions Dask Dataframe.
+
+        The columns of the dataframe are:
+
+        user_id : np.int32
+        time_step : np.int32
+        item_id : np.int32
+            A value of 1 indicates no interactions_exploded with any item in the list. A value of 0 indicates error.
         """
+        return self.load_parquet(
+            to_pandas_func=self._data_to_pandas,
+            file_path=self._file_data,
+        )
 
-        Notes
-        -----
-        This reader may or not to load the `test` split from MIND-LARGE given that its impressions do not have
-        clicked/not-clicked information, i.e., we have impressions but not interactions for users.
+    @property  # type: ignore
+    @typed_cache
+    def previous_interactions(self) -> pd.DataFrame:
+        """ Interactions Dask Dataframe.
+
+        The columns of the dataframe are:
+
+        user_id : np.int32
+        time_step : np.int32
+        item_id : np.int32
+            A value of 1 indicates no interactions_exploded with any item in the list. A value of 0 indicates error.
         """
-
-        df_train = self.raw_data_loader.train.copy(
-            deep=True
-        )
-        df_validation = self.raw_data_loader.validation.copy(
-            deep=True
-        )
-        df_test = pd.DataFrame(
-            columns=df_train.columns
+        return self.load_parquet(
+            to_pandas_func=self._previous_interactions_to_pandas,
+            file_path=self._file_previous_interactions,
         )
 
-        # We have to update the impression_id values, as they are a RangeIndex for each dataset (i.e., they go from 1
-        # to num_records). If we join both datasets, we must have a way to discern the impressions. We do this by
-        # shifting the values of the "validation" impressions to higher values (specifically, they begin just after
-        # the last record in the interactions_exploded).
-        df_validation["impression_id"] += self.config.num_train_data_points
+    @timeit
+    def _data_to_pandas(self) -> pd.DataFrame:
+        # Impression_id is just an index to refer to any row, even if there were repeated impressions, these are not
+        # identified by impression_id, as this is merely an index for the dataframe. To ease working with the dataset
+        # later, we set the index momentarily and then reset it again.
+        df_train = self.raw_data_loader.train.set_index(
+            "impression_id",
+        )
+        df_validation = self.raw_data_loader.validation.set_index(
+            "impression_id",
+        )
+        df_test = self.raw_data_loader.test.set_index(
+            "impression_id",
+        )
 
-        # Only recreate the impression_id on the LARGE variant of the dataset, as the small one does not have
-        # test dataset.
-        if self.config.use_test_set:
-            df_test = self.raw_data_loader.test.copy(
-                deep=True,
-            )
-            if self.config.variant == MINDVariant.LARGE:
-                df_test["impression_id"] += (
-                    self.config.num_train_data_points
-                    + self.config.num_validation_data_points
-                )
-
-        return pd.concat(
+        df_data = pd.concat(
             objs=[
                 df_train,
                 df_validation,
@@ -673,169 +674,198 @@ class PandasMINDRawData(ParquetDataMixin):
             sort=False,
         )
 
-    @property  # type: ignore
-    @typed_cache
-    def interactions_condensed(self) -> pd.DataFrame:
-        """ Interactions Dask Dataframe.
-
-        The columns of the dataframe are:
-
-        user_id : np.int32
-        time_step : np.int32
-        item_id : np.int32
-            A value of 1 indicates no interactions_exploded with any item in the list. A value of 0 indicates error.
-        """
-        return self.load_parquet(
-            to_pandas_func=self._interactions_condensed_to_pandas,
-            file_path=self.file_interactions_condensed,
+        df_data["timestamp"] = pd.to_datetime(
+            arg=df_data.str_timestamp,
+            **self.config.pandas_to_datetime_kwargs,
         )
-
-    @property  # type: ignore
-    @typed_cache
-    def interactions(self) -> pd.DataFrame:
-        """ Interactions Dask Dataframe.
-
-        The columns of the dataframe are:
-
-        user_id : np.int32
-        time_step : np.int32
-        item_id : np.int32
-            A value of 1 indicates no interactions_exploded with any item in the list. A value of 0 indicates error.
-        """
-        return self.load_parquet(
-            to_pandas_func=self._interactions_to_pandas,
-            file_path=self.file_interactions,
+        df_data["item_ids"] = df_data["str_impressions"].progress_map(
+            extract_interacted_item_in_impressions,
+            na_action=None,  # Our function handles NA, so better to send them to the function.
         )
-
-    @property  # type: ignore
-    @typed_cache
-    def impressions(self) -> pd.DataFrame:
-        return self.load_parquet(
-            to_pandas_func=self._impressions_to_pandas,
-            file_path=self.file_impressions,
+        df_data["impressions"] = df_data["str_impressions"].progress_map(
+            convert_impressions_str_to_array,
+            na_action=None,  # Our function handles NA, so better to send them to the function.
         )
-
-    @property  # type: ignore
-    @typed_cache
-    def interactions_impressions_metadata(self) -> pd.DataFrame:
-        return self.load_parquet(
-            to_pandas_func=self._impressions_metadata_to_pandas,
-            file_path=self.file_impressions_metadata,
+        df_data["num_interacted_items"] = df_data["item_ids"].progress_apply(
+            len
         )
-
-    @timeit
-    def _interactions_condensed_to_pandas(self) -> None:
-        return self._df_train_and_validation[
-            ["impression_id", "user_id", "timestamp", "item_id"]
-        ].astype(
-            {
-                "user_id": "category",
-            }
+        df_data["num_impressions"] = df_data["impressions"].progress_apply(
+            len
         )
-
-    @timeit
-    def _interactions_to_pandas(self) -> None:
-        return self._df_train_and_validation[
-            ["impression_id", "user_id", "timestamp", "item_id"]
-        ].explode(
-            column="item_id"
-        ).astype(
-            {
-                "user_id": "category",
-                "item_id": "category",
-            }
-        )
-
-    @timeit
-    def _impressions_to_pandas(self) -> None:
-        return self._df_train_and_validation[
-            ["impression_id", "user_id", "impressions"]
-        ].astype(
-            {
-                "user_id": "category",
-            }
-        )
-
-    @timeit
-    def _impressions_metadata_to_pandas(self) -> None:
-        metadata = self._df_train_and_validation[
-            ["impression_id", "user_id"]
-        ].astype(
-            {
-                "user_id": "category",
-            }
-        ).copy()
-
-        metadata["num_interacted_items"] = self._df_train_and_validation["item_id"].progress_apply(len)
-        metadata["num_impressions"] = self._df_train_and_validation["impressions"].progress_apply(len)
-        metadata["position_interactions"] = self._df_train_and_validation["str_impressions"].progress_apply(
+        df_data["position_interactions"] = df_data["str_impressions"].progress_apply(
             extract_item_positions_in_impressions
         )
 
-        return metadata
+        return df_data[
+            ["timestamp", "user_id", "item_ids", "impressions", "num_interacted_items", "num_impressions", "position_interactions"]
+        ]
+
+    @timeit
+    def _previous_interactions_to_pandas(self) -> pd.DataFrame:
+        # Impression_id is just an index to refer to any row, even if there were repeated impressions, these are not
+        # identified by impression_id, as this is merely an index for the dataframe. To ease working with the dataset
+        # later, we set the index momentarily and then reset it again.
+        df_train = self.raw_data_loader.train.set_index(
+            "impression_id",
+        )[["user_id", "str_history"]]
+
+        df_validation = self.raw_data_loader.validation.set_index(
+            "impression_id",
+        )[["user_id", "str_history"]]
+
+        # The historical interactions are unique for the train and validation splits. The train splits contains
+        # impressions from week 5 of the dataset (Saturday to Thursday), and the validation contains the impressions
+        # of the last day of week 5 (Friday).
+        #
+        # This code reads the historical interactions, asserts that they are unique, and places them in condensed
+        # form in the dataset at the beginning of it, with the timestamp of the first day of the dataset (week 1
+        # at 0:00:00).
+        #
+        # Notes: If you decide to load the test set from MIND Large, then the assertion will fail, given that the
+        # click history in the test split contains the interactions happened between week 1 and week 5 in the
+        # dataset, opposed to the train/validation splits which only contain interactions between weeks 1 to 4.
+
+        # This dataframe contains the counts of user-str_history pairs and how many times they appear in the
+        # dataset. In particular, we're interested to verify that the dataset that every user has only one
+        # str_history associated with them, as per the description of the dataset in the paper.
+        historical_data_per_user = pd.concat(
+            objs=[
+                df_train,
+                df_validation,
+            ],
+            axis="index",
+            ignore_index=True,  # Re-create the index.
+            sort=False,
+        )
+
+        previous_history = historical_data_per_user.value_counts(
+            subset=["user_id", "str_history"],
+            sort=False,
+            ascending=False,
+        ).to_frame(
+
+        ).reset_index(
+            drop=False
+        )
+
+        num_unique_previous_interactions_per_user = previous_history.value_counts(
+            subset=["user_id"],
+            sort=False,
+            ascending=False,
+        )
+
+        # This assertion ensures that all users only have 1 record of str_history.
+        all_users_have_unique_previous_interactions = np.all(num_unique_previous_interactions_per_user == 1)
+        if not all_users_have_unique_previous_interactions:
+            raise ValueError(
+                f"Not all users have unique historical interactions, this probably means that you included the "
+                f"test set of the MIND Large dataset. Be aware that the test set contains the historical "
+                f"interactions between weeks 1 to 5 of the dataset. The train/validation splits only contain "
+                f"historical interactions between weeks 1 to 4."
+                f"\n If this is expected, then comment this if clause."
+            )
+
+        df_historical_interactions = pd.DataFrame(
+            data=None,
+        )
+        df_historical_interactions["user_id"] = previous_history["user_id"].astype(dtype=pd.StringDtype())
+        df_historical_interactions["timestamp"] = pd.to_datetime(
+            arg=self.config.first_str_timestamp_of_dataset_collection,
+            **self.config.pandas_to_datetime_kwargs,
+        )
+        df_historical_interactions["item_ids"] = previous_history["str_history"].progress_map(
+            convert_impressions_str_to_array,
+            na_action=None,  # Our function handles NA, so better to send them to the function.
+        )
+        df_historical_interactions["num_interacted_items"] = df_historical_interactions["item_ids"].progress_apply(
+            len
+        )
+
+        return df_historical_interactions
 
 
-class MINDReader(BaseDataReader):
+class PandasMINDProcessedData(ParquetDataMixin):
     def __init__(
         self,
         config: MINDSmallConfig,
     ):
-        super().__init__()
-
         self.config = config
-
-        self.DATA_FOLDER = os.path.join(
-            self.config.data_folder, "data_reader", "",
+        self.config_hash = compute_sha256_hash_from_object_repr(
+            obj=config
         )
 
-        self.ORIGINAL_SPLIT_FOLDER = self.DATA_FOLDER
-
-        self._DATA_READER_NAME = (
-            "MINDSmallReader"
-            if self.config.variant == MINDVariant.SMALL
-            else "MINDLargeReader"
-        )
-
-        self.DATASET_SUBFOLDER = (
-            "MIND-SMALL"
-            if self.config.variant == MINDVariant.SMALL
-            else "MIND-LARGE"
-        )
-
-        self.IS_IMPLICIT = self.config.binarize_interactions
-
-        self._keep_duplicates = self.config.keep_duplicates
-        self._min_number_of_interactions = self.config.min_number_of_interactions
-        self._binarize_impressions = self.config.binarize_impressions
-        self._binarize_interactions = self.config.binarize_interactions
-        self._num_parts_split_dataset = 100
-
-        self._raw_data_loader = PandasMINDRawData(
+        self.pandas_raw_data = PandasMINDRawData(
             config=config,
         )
 
-        self._user_id_to_index_mapper: dict[int, int] = dict()
-        self._item_id_to_index_mapper: dict[int, int] = dict()
+        self._folder_dataset = os.path.join(
+            self.config.data_folder, "data-processing", self.config_hash, ""
+        )
 
-        self._interactions: dict[str, sp.csr_matrix] = dict()
-        self._impressions: dict[str, sp.csr_matrix] = dict()
+        self._folder_leave_last_out = os.path.join(
+            self._folder_dataset, "leave-last-out", ""
+        )
 
-        self._icms = None
-        self._icm_mappers = None
+        self._folder_timestamp = os.path.join(
+            self._folder_dataset, "timestamp", ""
+        )
 
-        self._ucms = None
-        self._ucms_mappers = None
+        self._file_path_filtered_data = os.path.join(
+            self._folder_dataset, "filter_data.parquet"
+        )
 
-    @property  # type: ignore
-    @typed_cache
-    def dataset(self) -> BaseDataset:
-        return self.load_data(
-            save_folder_path=self.ORIGINAL_SPLIT_FOLDER,
+        self._filename_train = "train.parquet"
+        self._filename_validation = "validation.parquet"
+        self._filename_test = "test.parquet"
+
+        os.makedirs(
+            name=self._folder_dataset,
+            exist_ok=True,
+        )
+        os.makedirs(
+            name=self._folder_leave_last_out,
+            exist_ok=True,
+        )
+        os.makedirs(
+            name=self._folder_timestamp,
+            exist_ok=True,
         )
 
     @property  # type: ignore
     @typed_cache
-    def _data_filtered(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def filtered(self) -> pd.DataFrame:
+        return self.load_parquet(
+            file_path=self._file_path_filtered_data,
+            to_pandas_func=self._filtered_to_pandas,
+        ).astype(
+            dtype=self.config.pandas_dtypes,
+        )
+
+    @property  # type: ignore
+    @typed_cache
+    def leave_last_out_splits(
+        self
+    ) -> tuple[
+        pd.DataFrame, pd.DataFrame, pd.DataFrame,
+    ]:
+        file_paths = [
+            os.path.join(self._folder_leave_last_out, self._filename_train),
+            os.path.join(self._folder_leave_last_out, self._filename_validation),
+            os.path.join(self._folder_leave_last_out, self._filename_test),
+        ]
+
+        df_train, df_validation, df_test = self.load_parquets(
+            file_paths=file_paths,
+            to_pandas_func=self._leave_last_out_splits_to_pandas,
+        )
+
+        df_train = df_train.astype(dtype=self.config.pandas_dtypes)
+        df_validation = df_validation.astype(dtype=self.config.pandas_dtypes)
+        df_test = df_test.astype(dtype=self.config.pandas_dtypes)
+
+        return df_train, df_validation, df_test
+
+    def _filtered_to_pandas(self) -> pd.DataFrame:
         """
 
         Notes
@@ -859,19 +889,21 @@ class MINDReader(BaseDataReader):
             f"Filtering data sources (interactions, impressions, metadata)."
         )
 
-        df_interactions_condensed = self._raw_data_loader.interactions_condensed.copy()
-        df_interactions = self._raw_data_loader.interactions.copy()
-        df_impressions = self._raw_data_loader.impressions.copy()
-        df_metadata = self._raw_data_loader.interactions_impressions_metadata.copy()
+        df_data = self.pandas_raw_data.data
 
-        # We place the index as part of the dataframe momentarily. All these functions need unique values in the index.
-        # Our dataframes do not have unique values in the indices due that they are used as foreign keys/ids for the
-        # dataframes.
-        df_interactions = df_interactions.reset_index(
-            drop=False,
-        )
+        if self.config.use_historical_interactions:
+            df_previous_interactions = self.pandas_raw_data.previous_interactions
+            df_data = pd.concat(
+                objs=[
+                    df_previous_interactions,
+                    df_data,
+                ],
+                axis="index",
+                sort=False,
+                ignore_index=True,
+            )
 
-        df_interactions = df_interactions.sort_values(
+        df_data = df_data.sort_values(
             by=["timestamp"],
             ascending=True,
             axis="index",
@@ -879,223 +911,153 @@ class MINDReader(BaseDataReader):
             ignore_index=False,
         )
 
-        df_interactions, _ = remove_duplicates_in_interactions(
-            df=df_interactions,
-            columns_to_compare=["user_id", "item_id"],
-            keep=self._keep_duplicates,
+        df_exploded_interactions = df_data[
+            ["timestamp", "user_id", "item_ids"]
+        ].explode(
+            column="item_ids",
+            ignore_index=False,
+        ).dropna(
+            axis="index",
+            how="any",
+            inplace=False,
+        ).reset_index(
+            drop=False,
         )
 
-        df_interactions, _ = remove_users_without_min_number_of_interactions(
-            df=df_interactions,
+        df_exploded_interactions, _ = remove_duplicates_in_interactions(
+            df=df_exploded_interactions,
+            columns_to_compare=["user_id", "item_ids"],
+            keep=self.config.keep_duplicates,
+        )
+
+        df_exploded_interactions, _ = remove_users_without_min_number_of_interactions(
+            df=df_exploded_interactions,
             users_column="user_id",
-            min_number_of_interactions=self._min_number_of_interactions,
+            min_number_of_interactions=self.config.min_number_of_interactions,
         )
 
-        # We return the index to its place.
-        df_interactions = df_interactions.set_index(
+        df_exploded_interactions = df_exploded_interactions.set_index(
             "index",
         )
 
-        df_interactions_condensed, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_interactions_condensed,
-            df_interactions=df_interactions,
+        df_data, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_data,
+            df_interactions=df_exploded_interactions,
         )
 
-        df_impressions, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_impressions,
-            df_interactions=df_interactions,
-        )
+        return df_data
 
-        df_metadata, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_metadata,
-            df_interactions=df_interactions,
-        )
+    def _leave_last_out_splits_to_pandas(self) -> list[pd.DataFrame]:
+        df_data_filtered = self.filtered
 
-        return df_interactions_condensed, df_interactions, df_impressions, df_metadata
-
-    @property  # type: ignore
-    @typed_cache
-    def _data_timestamp_split(
-        self
-    ) -> tuple[
-        pd.DataFrame, pd.DataFrame, pd.DataFrame,
-        pd.DataFrame, pd.DataFrame, pd.DataFrame,
-        pd.DataFrame, pd.DataFrame, pd.DataFrame,
-        pd.DataFrame, pd.DataFrame, pd.DataFrame,
-    ]:
-        df_interactions_condensed_filtered, df_interactions_filtered, df_impressions_filtered, df_metadata_filtered = \
-            self._data_filtered
-
-        # The timestamp in the dataset represents the timestamp of the impression, not the interactions, therefore,
-        # we must use the condensed version to compute the 80% and the 90% of timestamps in the dataset. Using
-        # `df_interactions` may shift the value of the timestamp, specially if there are several popular users.
-        described = df_interactions_condensed_filtered["timestamp"].describe(
-            datetime_is_numeric=True,
-            percentiles=[0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-        )
-
-        validation_threshold = described["80%"]
-        test_threshold = described["90%"]
-
-        # Reset index to avoid messing up with updates based on indices.
-        df_interactions_filtered = df_interactions_filtered.reset_index(
+        df_data_exploded_filtered = df_data_filtered[
+            ["timestamp", "user_id", "item_ids"]
+        ].explode(
+            column="item_ids",
+            ignore_index=False,
+        ).dropna(
+            axis="index",
+            how="any",
+            inplace=False,
+        ).reset_index(
             drop=False,
         )
 
-        df_interactions_train, df_interactions_test = split_sequential_train_test_by_column_threshold(
-            df=df_interactions_filtered,
-            column="timestamp",
-            threshold=test_threshold
-        )
-
-        df_interactions_train, df_interactions_validation = split_sequential_train_test_by_column_threshold(
-            df=df_interactions_train,
-            column="timestamp",
-            threshold=validation_threshold
-        )
-
-        # Return the index to its place, so we can filter the impressions out.
-        df_interactions_train = df_interactions_train.set_index("index")
-        df_interactions_validation = df_interactions_validation.set_index("index")
-        df_interactions_test = df_interactions_test.set_index("index")
-
-        df_interactions_condensed_train, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_interactions_condensed_filtered,
-            df_interactions=df_interactions_train,
-        )
-
-        df_interactions_condensed_validation, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_interactions_condensed_filtered,
-            df_interactions=df_interactions_validation,
-        )
-
-        df_interactions_condensed_test, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_interactions_condensed_filtered,
-            df_interactions=df_interactions_test,
-        )
-
-        df_impressions_train, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_impressions_filtered,
-            df_interactions=df_interactions_train,
-        )
-
-        df_impressions_validation, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_impressions_filtered,
-            df_interactions=df_interactions_validation,
-        )
-
-        df_impressions_test, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_impressions_filtered,
-            df_interactions=df_interactions_test,
-        )
-
-        df_metadata_train, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_metadata_filtered,
-            df_interactions=df_interactions_train,
-        )
-
-        df_metadata_validation, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_metadata_filtered,
-            df_interactions=df_interactions_validation,
-        )
-
-        df_metadata_test, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_metadata_filtered,
-            df_interactions=df_interactions_test,
-        )
-
-        return (
-            df_interactions_condensed_train.copy(), df_interactions_condensed_validation.copy(), df_interactions_condensed_test.copy(),
-            df_interactions_train.copy(), df_interactions_validation.copy(), df_interactions_test.copy(),
-            df_impressions_train.copy(), df_impressions_validation.copy(), df_impressions_test.copy(),
-            df_metadata_train.copy(), df_metadata_validation.copy(), df_metadata_test.copy(),
-        )
-
-    @property  # type: ignore
-    @typed_cache
-    def _data_leave_last_k_out_split(
-        self
-    ) -> tuple[
-        pd.DataFrame, pd.DataFrame, pd.DataFrame,
-        pd.DataFrame, pd.DataFrame, pd.DataFrame,
-        pd.DataFrame, pd.DataFrame, pd.DataFrame,
-        pd.DataFrame, pd.DataFrame, pd.DataFrame,
-    ]:
-        df_interactions_condensed_filtered, df_interactions_filtered, df_impressions_filtered, df_metadata_filtered = \
-            self._data_filtered
-
-        # Reset index to avoid messing up with updates based on indices.
-        df_interactions_filtered = df_interactions_filtered.reset_index(
-            drop=False,
-        )
-
-        df_interactions_train, df_interactions_test = split_sequential_train_test_by_num_records_on_test(
-            df=df_interactions_filtered,
+        df_data_train, df_data_test = split_sequential_train_test_by_num_records_on_test(
+            df=df_data_exploded_filtered,
             group_by_column="user_id",
             num_records_in_test=1,
         )
 
-        df_interactions_train, df_interactions_validation = split_sequential_train_test_by_num_records_on_test(
-            df=df_interactions_train,
+        df_data_train, df_data_validation = split_sequential_train_test_by_num_records_on_test(
+            df=df_data_train,
             group_by_column="user_id",
             num_records_in_test=1,
         )
 
-        # Return the index to its place, so we can filter the impressions out.
-        df_interactions_train = df_interactions_train.set_index("index")
-        df_interactions_validation = df_interactions_validation.set_index("index")
-        df_interactions_test = df_interactions_test.set_index("index")
-
-        df_interactions_condensed_train, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_interactions_condensed_filtered,
-            df_interactions=df_interactions_train,
+        df_data_train = df_data_train.set_index(
+            "index",
+        )
+        df_data_validation = df_data_validation.set_index(
+            "index",
+        )
+        df_data_test = df_data_test.set_index(
+            "index",
         )
 
-        df_interactions_condensed_validation, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_interactions_condensed_filtered,
-            df_interactions=df_interactions_validation,
+        df_data_train, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_data_filtered,
+            df_interactions=df_data_train,
+        )
+        df_data_validation, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_data_filtered,
+            df_interactions=df_data_validation,
+        )
+        df_data_test, _ = filter_impressions_by_interactions_index(
+            df_impressions=df_data_filtered,
+            df_interactions=df_data_test,
         )
 
-        df_interactions_condensed_test, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_interactions_condensed_filtered,
-            df_interactions=df_interactions_test,
+        return [df_data_train, df_data_validation, df_data_test]
+
+
+class MINDReader(DataReader):
+    def __init__(
+        self,
+        config: MINDSmallConfig,
+    ):
+        super().__init__()
+
+        self.config = config
+        self.config_hash = compute_sha256_hash_from_object_repr(
+            obj=config
+        )
+        self.processed_data_loader = PandasMINDProcessedData(
+            config=config,
         )
 
-        df_impressions_train, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_impressions_filtered,
-            df_interactions=df_interactions_train,
+        self.DATA_FOLDER = os.path.join(
+            self.config.data_folder, "data_reader", self.config_hash, "",
         )
 
-        df_impressions_validation, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_impressions_filtered,
-            df_interactions=df_interactions_validation,
+        self.ORIGINAL_SPLIT_FOLDER = self.DATA_FOLDER
+
+        self._DATA_READER_NAME = (
+            "MINDSmallReader"
+            if self.config.variant == MINDVariant.SMALL
+            else "MINDLargeReader"
         )
 
-        df_impressions_test, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_impressions_filtered,
-            df_interactions=df_interactions_test,
+        self.DATASET_SUBFOLDER = (
+            "MIND-SMALL"
+            if self.config.variant == MINDVariant.SMALL
+            else "MIND-LARGE"
         )
 
-        df_metadata_train, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_metadata_filtered,
-            df_interactions=df_interactions_train,
-        )
+        self.IS_IMPLICIT = self.config.binarize_interactions
 
-        df_metadata_validation, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_metadata_filtered,
-            df_interactions=df_interactions_validation,
-        )
+        self.users_column = "user_id"
+        self.items_column = "item_ids"
+        self.impressions_column = "impressions"
 
-        df_metadata_test, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_metadata_filtered,
-            df_interactions=df_interactions_test,
-        )
+        self._user_id_to_index_mapper: dict[str, int] = dict()
+        self._item_id_to_index_mapper: dict[str, int] = dict()
 
-        return (
-            df_interactions_condensed_train.copy(), df_interactions_condensed_validation.copy(), df_interactions_condensed_test.copy(),
-            df_interactions_train.copy(), df_interactions_validation.copy(), df_interactions_test.copy(),
-            df_impressions_train.copy(), df_impressions_validation.copy(), df_impressions_test.copy(),
-            df_metadata_train.copy(), df_metadata_validation.copy(), df_metadata_test.copy(),
+        self._interactions: dict[str, sp.csr_matrix] = dict()
+        self._impressions: dict[str, sp.csr_matrix] = dict()
+        self._dataframes: dict[str, pd.DataFrame] = dict()
+
+        self._icms = None
+        self._icm_mappers = None
+
+        self._ucms = None
+        self._ucms_mappers = None
+
+    @property  # type: ignore
+    @typed_cache
+    def dataset(self) -> BaseDataset:
+        return self.load_data(
+            save_folder_path=self.ORIGINAL_SPLIT_FOLDER,
         )
 
     def _get_dataset_name_root(self) -> str:
@@ -1103,107 +1065,196 @@ class MINDReader(BaseDataReader):
 
     def _load_from_original_file(self) -> BaseDataset:
         # IMPORTANT: calculate first the impressions, so we have all mappers created.
+        self._calculate_dataframes()
+
+        self._compute_user_mappers()
+        self._compute_item_mappers()
+
         self._calculate_uim_all()
         self._calculate_urm_all()
 
         self._calculate_uim_leave_last_k_out_splits()
         self._calculate_urm_leave_last_k_out_splits()
 
-        self._calculate_uim_timestamp_splits()
-        self._calculate_urm_timestamp_splits()
-
         return BaseDataset(
-            dataset_name="MINDSmall",
+            dataset_name=self.DATASET_SUBFOLDER,
             impressions=self._impressions,
             interactions=self._interactions,
+            dataframes=self._dataframes,
             mapper_item_original_id_to_index=self._item_id_to_index_mapper,
             mapper_user_original_id_to_index=self._user_id_to_index_mapper,
             is_impressions_implicit=self.config.binarize_impressions,
             is_interactions_implicit=self.config.binarize_interactions,
         )
 
+    def _calculate_dataframes(self) -> None:
+        self._dataframes[BaseDataset.NAME_DF_FILTERED] = self.processed_data_loader.filtered
+
+        self._dataframes[BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TRAIN] = \
+            self.processed_data_loader.leave_last_out_splits[0]
+        self._dataframes[BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_VALIDATION] = \
+            self.processed_data_loader.leave_last_out_splits[1]
+        self._dataframes[BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TEST] = \
+            self.processed_data_loader.leave_last_out_splits[2]
+
+        # self._dataframes[BaseDataset.NAME_DF_TIMESTAMP_TRAIN] = \
+        #     self.processed_data_loader.timestamp_splits[0]
+        # self._dataframes[BaseDataset.NAME_DF_TIMESTAMP_VALIDATION] = \
+        #     self.processed_data_loader.timestamp_splits[1]
+        # self._dataframes[BaseDataset.NAME_DF_TIMESTAMP_TEST] = \
+        #     self.processed_data_loader.timestamp_splits[2]
+
+    def _compute_item_mappers(self) -> None:
+        df_data_filtered = self.processed_data_loader.filtered[
+            [self.items_column, self.impressions_column]
+        ]
+
+        non_na_exploded_items = df_data_filtered[self.items_column].explode(
+            ignore_index=True,
+        ).dropna(
+            inplace=False,
+        )
+
+        non_na_exploded_impressions = df_data_filtered[self.impressions_column].explode(
+            ignore_index=True,
+        ).dropna(
+            inplace=False,
+        )
+
+        unique_items = set(non_na_exploded_items).union(non_na_exploded_impressions)
+
+        # Original values in this dataset are strings.
+        self._item_id_to_index_mapper = {
+            str(orig_value): int(mapped_value)
+            for mapped_value, orig_value in enumerate(unique_items)
+        }
+
+    def _compute_user_mappers(self) -> None:
+        df_data_filtered = self.processed_data_loader.filtered
+
+        non_na_users = df_data_filtered[self.users_column].dropna(
+            inplace=False,
+        )
+
+        unique_users = set(non_na_users)
+
+        self._user_id_to_index_mapper = {
+            str(orig_value): int(mapped_value)
+            for mapped_value, orig_value in enumerate(unique_users)
+        }
+
     def _calculate_urm_all(self):
         logger.info(
             f"Building URM with name {BaseDataset.NAME_URM_ALL}."
         )
 
-        _, df_interactions_filtered, _, _ = self._data_filtered
+        df_data_filtered = self.processed_data_loader.filtered[
+            [self.users_column, self.items_column]
+        ]
 
-        builder_urm_all = IncrementalSparseMatrix_FilterIDs(
-            preinitialized_col_mapper=self._item_id_to_index_mapper,
-            on_new_col="add",
-            preinitialized_row_mapper=self._user_id_to_index_mapper,
-            on_new_row="add"
+        urm_all = create_sparse_matrix_from_dataframe(
+            df=df_data_filtered,
+            users_column=self.users_column,
+            items_column=self.items_column,
+            binarize_interactions=self.config.binarize_interactions,
+            mapper_user_id_to_index=self._user_id_to_index_mapper,
+            mapper_item_id_to_index=self._item_id_to_index_mapper,
         )
-
-        users = df_interactions_filtered['user_id'].to_numpy()
-        items = df_interactions_filtered['item_id'].to_numpy()
-        data = np.ones_like(users, dtype=np.int32,)
-
-        builder_urm_all.add_data_lists(
-            row_list_to_add=users,
-            col_list_to_add=items,
-            data_list_to_add=data,
-        )
-
-        urm_all = builder_urm_all.get_SparseMatrix()
-        if self._binarize_interactions:
-            urm_all.data = np.ones_like(urm_all.data, dtype=np.int32)
 
         self._interactions[BaseDataset.NAME_URM_ALL] = urm_all
 
-        self._user_id_to_index_mapper = builder_urm_all.get_row_token_to_id_mapper()
-        self._item_id_to_index_mapper = builder_urm_all.get_column_token_to_id_mapper()
+        # _, df_interactions_filtered, _, _ = self._data_filtered
+        #
+        # builder_urm_all = IncrementalSparseMatrix_FilterIDs(
+        #     preinitialized_col_mapper=self._item_id_to_index_mapper,
+        #     on_new_col="add",
+        #     preinitialized_row_mapper=self._user_id_to_index_mapper,
+        #     on_new_row="add"
+        # )
+        #
+        # users = df_interactions_filtered['user_id'].to_numpy()
+        # items = df_interactions_filtered['item_id'].to_numpy()
+        # data = np.ones_like(users, dtype=np.int32,)
+        #
+        # builder_urm_all.add_data_lists(
+        #     row_list_to_add=users,
+        #     col_list_to_add=items,
+        #     data_list_to_add=data,
+        # )
+        #
+        # urm_all = builder_urm_all.get_SparseMatrix()
+        # if self._binarize_interactions:
+        #     urm_all.data = np.ones_like(urm_all.data, dtype=np.int32)
+        #
+        # self._interactions[BaseDataset.NAME_URM_ALL] = urm_all
+        #
+        # self._user_id_to_index_mapper = builder_urm_all.get_row_token_to_id_mapper()
+        # self._item_id_to_index_mapper = builder_urm_all.get_column_token_to_id_mapper()
 
     def _calculate_uim_all(self):
         logger.info(
             f"Building UIM with name {BaseDataset.NAME_UIM_ALL}."
         )
 
-        _, _, df_impressions_filtered, _ = self._data_filtered
-
-        builder_impressions_all = IncrementalSparseMatrix_FilterIDs(
-            preinitialized_col_mapper=self._item_id_to_index_mapper,
-            on_new_col="add",
-            preinitialized_row_mapper=self._user_id_to_index_mapper,
-            on_new_row="add",
+        uim_all = create_sparse_matrix_from_dataframe(
+            df=self.processed_data_loader.filtered,
+            users_column=self.users_column,
+            items_column=self.impressions_column,
+            binarize_interactions=self.config.binarize_interactions,
+            mapper_user_id_to_index=self._user_id_to_index_mapper,
+            mapper_item_id_to_index=self._item_id_to_index_mapper,
         )
-
-        df_split_chunk: pd.DataFrame
-        for df_split_chunk in tqdm(
-            np.array_split(df_impressions_filtered, indices_or_sections=self._num_parts_split_dataset)
-        ):
-            # Explosions of empty lists in impressions are transformed into NAs, NA values must be removed before
-            # being inserted into the csr_matrix.
-            df_split_chunk = df_split_chunk.explode(
-                column="impressions",
-                ignore_index=False,
-            )
-            df_split_chunk = df_split_chunk[
-                df_split_chunk["impressions"].notna()
-            ]
-
-            impressions = df_split_chunk["impressions"].to_numpy()
-            users = df_split_chunk["user_id"].to_numpy()
-            data = np.ones_like(impressions, dtype=np.int32)
-
-            builder_impressions_all.add_data_lists(
-                row_list_to_add=users,
-                col_list_to_add=impressions,
-                data_list_to_add=data,
-            )
-
-        uim_all = builder_impressions_all.get_SparseMatrix()
-        if self._binarize_impressions:
-            uim_all.data = np.ones_like(uim_all.data, dtype=np.int32)
 
         self._impressions[BaseDataset.NAME_UIM_ALL] = uim_all.copy()
 
-        self._user_id_to_index_mapper = builder_impressions_all.get_row_token_to_id_mapper()
-        self._item_id_to_index_mapper = builder_impressions_all.get_column_token_to_id_mapper()
+        # logger.info(
+        #     f"Building UIM with name {BaseDataset.NAME_UIM_ALL}."
+        # )
+        #
+        # _, _, df_impressions_filtered, _ = self._data_filtered
+        #
+        # builder_impressions_all = IncrementalSparseMatrix_FilterIDs(
+        #     preinitialized_col_mapper=self._item_id_to_index_mapper,
+        #     on_new_col="add",
+        #     preinitialized_row_mapper=self._user_id_to_index_mapper,
+        #     on_new_row="add",
+        # )
+        #
+        # df_split_chunk: pd.DataFrame
+        # for df_split_chunk in tqdm(
+        #     np.array_split(df_impressions_filtered, indices_or_sections=self._num_parts_split_dataset)
+        # ):
+        #     # Explosions of empty lists in impressions are transformed into NAs, NA values must be removed before
+        #     # being inserted into the csr_matrix.
+        #     df_split_chunk = df_split_chunk.explode(
+        #         column="impressions",
+        #         ignore_index=False,
+        #     )
+        #     df_split_chunk = df_split_chunk[
+        #         df_split_chunk["impressions"].notna()
+        #     ]
+        #
+        #     impressions = df_split_chunk["impressions"].to_numpy()
+        #     users = df_split_chunk["user_id"].to_numpy()
+        #     data = np.ones_like(impressions, dtype=np.int32)
+        #
+        #     builder_impressions_all.add_data_lists(
+        #         row_list_to_add=users,
+        #         col_list_to_add=impressions,
+        #         data_list_to_add=data,
+        #     )
+        #
+        # uim_all = builder_impressions_all.get_SparseMatrix()
+        # if self._binarize_impressions:
+        #     uim_all.data = np.ones_like(uim_all.data, dtype=np.int32)
+        #
+        # self._impressions[BaseDataset.NAME_UIM_ALL] = uim_all.copy()
+        #
+        # self._user_id_to_index_mapper = builder_impressions_all.get_row_token_to_id_mapper()
+        # self._item_id_to_index_mapper = builder_impressions_all.get_column_token_to_id_mapper()
 
     def _calculate_urm_leave_last_k_out_splits(self) -> None:
-        _, _, _, df_train, df_validation, df_test, _, _, _, _, _, _ = self._data_leave_last_k_out_split
+        df_train, df_validation, df_test = self.processed_data_loader.leave_last_out_splits
 
         names = [
             BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TRAIN,
@@ -1213,38 +1264,66 @@ class MINDReader(BaseDataReader):
         splits = [
             df_train,
             df_validation,
-            df_test
+            df_test,
         ]
 
         logger.info(
             f"Building URMs with name {names}."
         )
         for name, df_split in zip(names, splits):
-            builder_urm_split = IncrementalSparseMatrix_FilterIDs(
-                preinitialized_col_mapper=self._item_id_to_index_mapper,
-                on_new_col="ignore",
-                preinitialized_row_mapper=self._user_id_to_index_mapper,
-                on_new_row="ignore"
+            urm_split = create_sparse_matrix_from_dataframe(
+                df=df_split,
+                users_column=self.users_column,
+                items_column=self.items_column,
+                binarize_interactions=self.config.binarize_interactions,
+                mapper_user_id_to_index=self._user_id_to_index_mapper,
+                mapper_item_id_to_index=self._item_id_to_index_mapper,
             )
-
-            users = df_split['user_id'].to_numpy()
-            items = df_split['item_id'].to_numpy()
-            data = np.ones_like(users, dtype=np.int32, )
-
-            builder_urm_split.add_data_lists(
-                row_list_to_add=users,
-                col_list_to_add=items,
-                data_list_to_add=data,
-            )
-
-            urm_split = builder_urm_split.get_SparseMatrix()
-            if self._binarize_interactions:
-                urm_split.data = np.ones_like(urm_split.data, dtype=np.int32)
 
             self._interactions[name] = urm_split.copy()
 
+        # _, _, _, df_train, df_validation, df_test, _, _, _, _, _, _ = self._data_leave_last_k_out_split
+        #
+        # names = [
+        #     BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TRAIN,
+        #     BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_VALIDATION,
+        #     BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TEST,
+        # ]
+        # splits = [
+        #     df_train,
+        #     df_validation,
+        #     df_test
+        # ]
+        #
+        # logger.info(
+        #     f"Building URMs with name {names}."
+        # )
+        # for name, df_split in zip(names, splits):
+        #     builder_urm_split = IncrementalSparseMatrix_FilterIDs(
+        #         preinitialized_col_mapper=self._item_id_to_index_mapper,
+        #         on_new_col="ignore",
+        #         preinitialized_row_mapper=self._user_id_to_index_mapper,
+        #         on_new_row="ignore"
+        #     )
+        #
+        #     users = df_split['user_id'].to_numpy()
+        #     items = df_split['item_id'].to_numpy()
+        #     data = np.ones_like(users, dtype=np.int32, )
+        #
+        #     builder_urm_split.add_data_lists(
+        #         row_list_to_add=users,
+        #         col_list_to_add=items,
+        #         data_list_to_add=data,
+        #     )
+        #
+        #     urm_split = builder_urm_split.get_SparseMatrix()
+        #     if self._binarize_interactions:
+        #         urm_split.data = np.ones_like(urm_split.data, dtype=np.int32)
+        #
+        #     self._interactions[name] = urm_split.copy()
+
     def _calculate_uim_leave_last_k_out_splits(self) -> None:
-        _, _, _, _, _, _, df_train, df_validation, df_test, _, _, _ = self._data_leave_last_k_out_split
+        df_train, df_validation, df_test = self.processed_data_loader.leave_last_out_splits
 
         names = [
             BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TRAIN,
@@ -1261,163 +1340,82 @@ class MINDReader(BaseDataReader):
             f"Building UIMs with name {names}."
         )
         for name, df_split in zip(names, splits):
-            builder_uim_split = IncrementalSparseMatrix_FilterIDs(
-                preinitialized_col_mapper=self._item_id_to_index_mapper,
-                on_new_col="ignore",
-                preinitialized_row_mapper=self._user_id_to_index_mapper,
-                on_new_row="ignore"
+            uim_split = create_sparse_matrix_from_dataframe(
+                df=df_split,
+                users_column=self.users_column,
+                items_column=self.impressions_column,
+                binarize_interactions=self.config.binarize_interactions,
+                mapper_user_id_to_index=self._user_id_to_index_mapper,
+                mapper_item_id_to_index=self._item_id_to_index_mapper,
             )
-
-            # for _, df_row in tqdm(df_split.iterrows(), total=df_split.shape[0]):
-            #     impressions = np.array(df_row["impressions"], dtype="object")
-            #     users = np.array([df_row["user_id"]] * len(impressions), dtype="object")
-            #     data = np.ones_like(impressions, dtype=np.int32)
-
-            for df_split_chunk in tqdm(
-                np.array_split(df_split, indices_or_sections=self._num_parts_split_dataset)
-            ):
-                # Explosions of empty lists in impressions are transformed into NAs, NA values must be removed before
-                # being inserted into the csr_matrix.
-                df_split_chunk = df_split_chunk.explode(
-                    column="impressions",
-                    ignore_index=False,
-                )
-                df_split_chunk = df_split_chunk[
-                    df_split_chunk["impressions"].notna()
-                ]
-
-                impressions = df_split_chunk["impressions"].to_numpy()
-                users = df_split_chunk["user_id"].to_numpy()
-                data = np.ones_like(impressions, dtype=np.int32)
-
-                builder_uim_split.add_data_lists(
-                    row_list_to_add=users,
-                    col_list_to_add=impressions,
-                    data_list_to_add=data,
-                )
-
-            uim_split = builder_uim_split.get_SparseMatrix()
-            if self._binarize_impressions:
-                uim_split.data = np.ones_like(uim_split.data, dtype=np.int32)
 
             self._impressions[name] = uim_split.copy()
-
-    def _calculate_urm_timestamp_splits(self) -> None:
-        _, _, _, df_train, df_validation, df_test, _, _, _, _, _, _ = self._data_timestamp_split
-
-        names = [
-            BaseDataset.NAME_URM_TIMESTAMP_TRAIN,
-            BaseDataset.NAME_URM_TIMESTAMP_VALIDATION,
-            BaseDataset.NAME_URM_TIMESTAMP_TEST,
-        ]
-        splits = [
-            df_train,
-            df_validation,
-            df_test
-        ]
-
-        logger.info(
-            f"Building URMs with name {names}."
-        )
-        for name, df_split in zip(names, splits):
-
-            builder_urm_split = IncrementalSparseMatrix_FilterIDs(
-                preinitialized_col_mapper=self._item_id_to_index_mapper,
-                on_new_col="ignore",
-                preinitialized_row_mapper=self._user_id_to_index_mapper,
-                on_new_row="ignore"
-            )
-
-            users = df_split['user_id'].to_numpy()
-            items = df_split['item_id'].to_numpy()
-            data = np.ones_like(users, dtype=np.int32,)
-
-            builder_urm_split.add_data_lists(
-                row_list_to_add=users,
-                col_list_to_add=items,
-                data_list_to_add=data,
-            )
-
-            urm_split = builder_urm_split.get_SparseMatrix()
-            if self._binarize_interactions:
-                urm_split.data = np.ones_like(urm_split.data, dtype=np.int32)
-
-            self._interactions[name] = urm_split.copy()
-
-    def _calculate_uim_timestamp_splits(self) -> None:
-        _, _, _, _, _, _, df_train, df_validation, df_test, _, _, _ = self._data_timestamp_split
-
-        names = [
-            BaseDataset.NAME_UIM_TIMESTAMP_TRAIN,
-            BaseDataset.NAME_UIM_TIMESTAMP_VALIDATION,
-            BaseDataset.NAME_UIM_TIMESTAMP_TEST,
-        ]
-        splits = [
-            df_train,
-            df_validation,
-            df_test,
-        ]
-
-        logger.info(
-            f"Building UIMs with name {names}."
-        )
-        for name, df_split in zip(names, splits):
-            builder_uim_split = IncrementalSparseMatrix_FilterIDs(
-                preinitialized_col_mapper=self._item_id_to_index_mapper,
-                on_new_col="ignore",
-                preinitialized_row_mapper=self._user_id_to_index_mapper,
-                on_new_row="ignore"
-            )
-
-            # for _, df_row in tqdm(df_split.iterrows(), total=df_split.shape[0]):
-            #     impressions = np.array(df_row["impressions"], dtype="object")
-            #     users = np.array([df_row["user_id"]] * len(impressions), dtype="object")
-            #     data = np.ones_like(impressions, dtype=np.int32)
-            for df_split_chunk in tqdm(
-                np.array_split(df_split, indices_or_sections=self._num_parts_split_dataset)
-            ):
-                # Explosions of empty lists in impressions are transformed into NAs, NA values must be removed before
-                # being inserted into the csr_matrix.
-                df_split_chunk = df_split_chunk.explode(
-                    column="impressions",
-                    ignore_index=False,
-                )
-                df_split_chunk = df_split_chunk[
-                    df_split_chunk["impressions"].notna()
-                ]
-
-                impressions = df_split_chunk["impressions"].to_numpy()
-                users = df_split_chunk["user_id"].to_numpy()
-                data = np.ones_like(impressions, dtype=np.int32)
-
-                builder_uim_split.add_data_lists(
-                    row_list_to_add=users,
-                    col_list_to_add=impressions,
-                    data_list_to_add=data,
-                )
-
-            uim_split = builder_uim_split.get_SparseMatrix()
-            if self._binarize_impressions:
-                uim_split.data = np.ones_like(uim_split.data, dtype=np.int32)
-
-            self._impressions[name] = uim_split.copy()
+        # _, _, _, _, _, _, df_train, df_validation, df_test, _, _, _ = self._data_leave_last_k_out_split
+        #
+        # names = [
+        #     BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TRAIN,
+        #     BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_VALIDATION,
+        #     BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TEST,
+        # ]
+        # splits = [
+        #     df_train,
+        #     df_validation,
+        #     df_test,
+        # ]
+        #
+        # logger.info(
+        #     f"Building UIMs with name {names}."
+        # )
+        # for name, df_split in zip(names, splits):
+        #     builder_uim_split = IncrementalSparseMatrix_FilterIDs(
+        #         preinitialized_col_mapper=self._item_id_to_index_mapper,
+        #         on_new_col="ignore",
+        #         preinitialized_row_mapper=self._user_id_to_index_mapper,
+        #         on_new_row="ignore"
+        #     )
+        #
+        #     # for _, df_row in tqdm(df_split.iterrows(), total=df_split.shape[0]):
+        #     #     impressions = np.array(df_row["impressions"], dtype="object")
+        #     #     users = np.array([df_row["user_id"]] * len(impressions), dtype="object")
+        #     #     data = np.ones_like(impressions, dtype=np.int32)
+        #
+        #     for df_split_chunk in tqdm(
+        #         np.array_split(df_split, indices_or_sections=self._num_parts_split_dataset)
+        #     ):
+        #         # Explosions of empty lists in impressions are transformed into NAs, NA values must be removed before
+        #         # being inserted into the csr_matrix.
+        #         df_split_chunk = df_split_chunk.explode(
+        #             column="impressions",
+        #             ignore_index=False,
+        #         )
+        #         df_split_chunk = df_split_chunk[
+        #             df_split_chunk["impressions"].notna()
+        #         ]
+        #
+        #         impressions = df_split_chunk["impressions"].to_numpy()
+        #         users = df_split_chunk["user_id"].to_numpy()
+        #         data = np.ones_like(impressions, dtype=np.int32)
+        #
+        #         builder_uim_split.add_data_lists(
+        #             row_list_to_add=users,
+        #             col_list_to_add=impressions,
+        #             data_list_to_add=data,
+        #         )
+        #
+        #     uim_split = builder_uim_split.get_SparseMatrix()
+        #     if self._binarize_impressions:
+        #         uim_split.data = np.ones_like(uim_split.data, dtype=np.int32)
+        #
+        #     self._impressions[name] = uim_split.copy()
 
 
 if __name__ == "__main__":
     configs = [
         MINDSmallConfig(),
-        MINDLargeConfig(),
+        # MINDLargeConfig(),
     ]
 
     for config in configs:
-        raw_data = MINDRawData(
-            config=config,
-        )
-
-        pandas_data = PandasMINDRawData(
-            config=config,
-        )
-
         data_reader = MINDReader(
             config=config,
         )
@@ -1425,5 +1423,3 @@ if __name__ == "__main__":
 
         print(dataset.get_loaded_UIM_names())
         print(dataset.get_loaded_URM_names())
-
-    quit(255)
