@@ -26,30 +26,27 @@ import os
 from enum import Enum
 from typing import Any, cast, Union
 
-import attr
+import attrs
 import dask.dataframe as dd
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 from numba import jit
-
-from recsys_framework_extensions.logging import get_logger
-from recsys_framework_extensions.decorators import typed_cache, timeit
-from recsys_framework_extensions.data.splitter import (
-    remove_duplicates_in_interactions,
-    remove_users_without_min_number_of_interactions,
-    split_sequential_train_test_by_column_threshold,
-    T_KEEP,
-    split_sequential_train_test_by_num_records_on_test
-)
 from recsys_framework_extensions.data.dataset import BaseDataset
 from recsys_framework_extensions.data.mixins import ParquetDataMixin, DaskParquetDataMixin, DatasetStatisticsMixin
 from recsys_framework_extensions.data.reader import DataReader
 from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe
+from recsys_framework_extensions.data.splitter import (
+    remove_duplicates_in_interactions,
+    remove_users_without_min_number_of_interactions,
+    split_sequential_train_test_by_column_threshold,
+    split_sequential_train_test_by_num_records_on_test, E_KEEP
+)
+from recsys_framework_extensions.decorators import typed_cache, timeit
 from recsys_framework_extensions.evaluation import EvaluationStrategy
-
+from recsys_framework_extensions.hashing import compute_sha256_hash_from_object_repr
+from recsys_framework_extensions.logging import get_logger
 from tqdm import tqdm
-
 
 tqdm.pandas()
 
@@ -57,24 +54,6 @@ tqdm.pandas()
 logger = get_logger(
     logger_name=__file__,
 )
-
-
-def docstring_for_df(
-    df: pd.DataFrame
-) -> str:
-    """
-
-    References
-    ----------
-    .. [1] https://stackoverflow.com/a/61041468/13385583
-    """
-    docstring = 'Index:\n'
-    docstring += f'    {df.index}\n'
-    docstring += 'Columns:\n'
-    for col in df.columns:
-        docstring += f'    Name: {df[col].name}, dtype={df[col].dtype}, nullable: {df[col].hasnans}\n'
-
-    return docstring
 
 
 @jit(nopython=True, parallel=False)
@@ -113,21 +92,16 @@ class ContentWiseImpressionsVariant(Enum):
     SERIES = "SERIES"
 
 
-@attr.frozen
+@attrs.define(kw_only=True, frozen=True, slots=False)
 class ContentWiseImpressionsConfig:
     data_folder = os.path.join(
         ".", "data", "ContentWiseImpressions",
     )
-    variant = ContentWiseImpressionsVariant.SERIES
+
     num_interaction_records = 10_457_810
     num_impression_records = 307_453
 
-    min_number_of_interactions = 3
-    binarize_impressions = True
-    binarize_interactions = True
-    keep_duplicates: T_KEEP = "first"
-
-    pandas_dtype = {
+    pandas_dtypes = {
         "user_id": "category",
         "item_id": "category",
         "series_id": "category",
@@ -142,6 +116,53 @@ class ContentWiseImpressionsConfig:
         "num_interacted_items": pd.Int32Dtype(),
         "position_interactions": pd.Int32Dtype(),
     }
+
+    min_number_of_interactions = attrs.field(
+        default=3,
+        validator=[
+            attrs.validators.gt(0),
+        ]
+    )
+    binarize_impressions = attrs.field(
+        default=True,
+        validator=[
+            attrs.validators.instance_of(bool),
+        ]
+    )
+    binarize_interactions = attrs.field(
+        default=True,
+        validator=[
+            attrs.validators.instance_of(bool),
+        ]
+    )
+    keep_duplicates: E_KEEP = attrs.field(
+        default=E_KEEP.FIRST,
+        validator=[
+            attrs.validators.in_(E_KEEP),  # type: ignore
+        ]
+    )
+    variant: ContentWiseImpressionsVariant = attrs.field(
+        default=ContentWiseImpressionsVariant.SERIES,
+        validator=[
+            attrs.validators.in_(ContentWiseImpressionsVariant),  # type: ignore
+        ]
+    )
+    interactions_item_column: str = attrs.field(
+        init=False,
+    )
+
+    def __attrs_post_init__(self):
+        # We need to use object.__setattr__ because the config is an immutable class, this is the attrs way to
+        # circumvent assignment in immutable classes.
+        if ContentWiseImpressionsVariant.ITEMS == self.variant:
+            object.__setattr__(self, "interactions_item_column", "item_id")
+        elif ContentWiseImpressionsVariant.SERIES == self.variant:
+            object.__setattr__(self, "interactions_item_column", "series_id")
+        else:
+            raise ValueError(
+                f"Received an invalid enum for variant={self.variant}. "
+                f"Valid values are {list(ContentWiseImpressionsVariant)}"
+            )
 
 
 class ContentWiseImpressionsRawData(DaskParquetDataMixin):
@@ -240,7 +261,7 @@ class PandasContentWiseImpressionsRawData(ParquetDataMixin):
             to_pandas_func=self._data_to_pandas,
             file_path=self.file_data,
         ).astype(
-            dtype=self.config.pandas_dtype,
+            dtype=self.config.pandas_dtypes,
         )
 
     @timeit
@@ -335,10 +356,14 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin):
         pandas_raw_data: PandasContentWiseImpressionsRawData,
     ):
         self.config = config
+        self.config_hash = compute_sha256_hash_from_object_repr(
+            obj=config
+        )
+
         self.pandas_raw_data = pandas_raw_data
 
         self._dataset_folder = os.path.join(
-            self.config.data_folder, "data-processing",
+            self.config.data_folder, "data-processing", self.config_hash, ""
         )
 
         self.file_leave_last_k_out_folder = os.path.join(
@@ -356,15 +381,6 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin):
         self.train_filename = "train.parquet"
         self.validation_filename = "validation.parquet"
         self.test_filename = "test.parquet"
-
-        self._keep_duplicates = self.config.keep_duplicates
-        self._min_number_of_interactions = self.config.min_number_of_interactions
-
-        self.interactions_item_column = (
-            "item_id"
-            if ContentWiseImpressionsVariant.ITEMS == self.config.variant
-            else "series_id"
-        )
 
         os.makedirs(
             name=self._dataset_folder,
@@ -386,7 +402,7 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin):
             file_path=self.file_filter_data_path,
             to_pandas_func=self._filtered_to_pandas,
         ).astype(
-            dtype=self.config.pandas_dtype,
+            dtype=self.config.pandas_dtypes,
         )
 
     @property  # type: ignore
@@ -407,9 +423,9 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin):
             to_pandas_func=self._timestamp_splits_to_pandas,
         )
 
-        df_train = df_train.astype(dtype=self.config.pandas_dtype)
-        df_validation = df_validation.astype(dtype=self.config.pandas_dtype)
-        df_test = df_test.astype(dtype=self.config.pandas_dtype)
+        df_train = df_train.astype(dtype=self.config.pandas_dtypes)
+        df_validation = df_validation.astype(dtype=self.config.pandas_dtypes)
+        df_test = df_test.astype(dtype=self.config.pandas_dtypes)
 
         return df_train, df_validation, df_test
 
@@ -431,9 +447,9 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin):
             to_pandas_func=self._leave_last_k_out_splits_to_pandas,
         )
 
-        df_train = df_train.astype(dtype=self.config.pandas_dtype)
-        df_validation = df_validation.astype(dtype=self.config.pandas_dtype)
-        df_test = df_test.astype(dtype=self.config.pandas_dtype)
+        df_train = df_train.astype(dtype=self.config.pandas_dtypes)
+        df_validation = df_validation.astype(dtype=self.config.pandas_dtypes)
+        df_test = df_test.astype(dtype=self.config.pandas_dtypes)
 
         return df_train, df_validation, df_test
 
@@ -471,24 +487,16 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin):
             ignore_index=False,
         )
 
-        # interaction_type_ratings = 2
-        # df_data, _ = remove_records_by_threshold(
-        #     df=df_data,
-        #     column="interaction_type",
-        #     threshold=interaction_type_ratings,
-        #     how="neq",
-        # )
-
         df_data, _ = remove_duplicates_in_interactions(
             df=df_data,
-            columns_to_compare=["user_id", self.interactions_item_column],
-            keep=self._keep_duplicates,
+            columns_to_compare=["user_id", self.config.interactions_item_column],
+            keep=self.config.keep_duplicates,
         )
 
         df_data, _ = remove_users_without_min_number_of_interactions(
             df=df_data,
             users_column="user_id",
-            min_number_of_interactions=self._min_number_of_interactions,
+            min_number_of_interactions=self.config.min_number_of_interactions,
         )
 
         return df_data
@@ -548,9 +556,13 @@ class ContentWiseImpressionsReader(DataReader):
         super().__init__()
 
         self.config = config
+        self.config_hash = compute_sha256_hash_from_object_repr(
+            obj=config
+        )
+        self.processed_data_loader = processed_data_loader
 
         self.DATA_FOLDER = os.path.join(
-            self.config.data_folder, "data_reader", self.config.variant.value, "",
+            self.config.data_folder, "data_reader", self.config.variant.value, self.config_hash, "",
         )
 
         self.ORIGINAL_SPLIT_FOLDER = self.DATA_FOLDER
@@ -565,10 +577,8 @@ class ContentWiseImpressionsReader(DataReader):
         self._binarize_interactions = self.config.binarize_interactions
         self._num_parts_split_dataset = 10
 
-        self.processed_data_loader = processed_data_loader
-
         self.users_column = "user_id"
-        self.items_column = self.processed_data_loader.interactions_item_column
+        self.items_column = self.config.interactions_item_column
         self.impressions_column = "impressions"
         self.impressions_id_column = "impression_id"
 
@@ -695,35 +705,6 @@ class ContentWiseImpressionsReader(DataReader):
 
         self._interactions[BaseDataset.NAME_URM_ALL] = urm_all
 
-        #
-        # df_data_filtered.info()
-        #
-        # users = df_data_filtered[self.users_column].to_numpy()
-        # items = df_data_filtered[self.items_column].to_numpy()
-        # data = np.ones_like(users, dtype=np.int32)
-        #
-        # builder_urm_all = IncrementalSparseMatrix_FilterIDs(
-        #     preinitialized_col_mapper=self._item_id_to_index_mapper,
-        #     on_new_col="add",
-        #     preinitialized_row_mapper=self._user_id_to_index_mapper,
-        #     on_new_row="add"
-        # )
-        #
-        # builder_urm_all.add_data_lists(
-        #     row_list_to_add=users,
-        #     col_list_to_add=items,
-        #     data_list_to_add=data,
-        # )
-        #
-        # urm_all = builder_urm_all.get_SparseMatrix()
-        # if self._binarize_interactions:
-        #     urm_all.data = np.ones_like(urm_all.data, dtype=np.int32)
-        #
-        #
-        #
-        # self._user_id_to_index_mapper = builder_urm_all.get_row_token_to_id_mapper()
-        # self._item_id_to_index_mapper = builder_urm_all.get_column_token_to_id_mapper()
-
     def _calculate_uim_all(self):
         logger.info(
             f"Building UIM with name {BaseDataset.NAME_UIM_ALL}."
@@ -739,36 +720,6 @@ class ContentWiseImpressionsReader(DataReader):
         )
 
         self._impressions[BaseDataset.NAME_UIM_ALL] = uim_all.copy()
-
-        # df_data_filtered.info()
-        #
-        #
-        #
-        # builder_impressions_all = IncrementalSparseMatrix_FilterIDs(
-        #     preinitialized_col_mapper=self._item_id_to_index_mapper,
-        #     on_new_col="add",
-        #     preinitialized_row_mapper=self._user_id_to_index_mapper,
-        #     on_new_row="add",
-        # )
-        #
-        # users = df_data_filtered[self.users_column].to_numpy()
-        # impressions = df_data_filtered[self.impressions_column].to_numpy()
-        # data = np.ones_like(impressions, dtype=np.int32)
-        #
-        # builder_impressions_all.add_data_lists(
-        #     row_list_to_add=users,
-        #     col_list_to_add=impressions,
-        #     data_list_to_add=data,
-        # )
-        #
-        # uim_all = builder_impressions_all.get_SparseMatrix()
-        # if self._binarize_impressions:
-        #     uim_all.data = np.ones_like(uim_all.data, dtype=np.int32)
-        #
-        # self._impressions[BaseDataset.NAME_UIM_ALL] = uim_all.copy()
-        #
-        # self._user_id_to_index_mapper = builder_impressions_all.get_row_token_to_id_mapper()
-        # self._item_id_to_index_mapper = builder_impressions_all.get_column_token_to_id_mapper()
 
     def _calculate_urm_leave_last_k_out_splits(self) -> None:
         df_train, df_validation, df_test = self.processed_data_loader.leave_last_k_out_splits
@@ -798,52 +749,9 @@ class ContentWiseImpressionsReader(DataReader):
             )
 
             self._interactions[name] = urm_split.copy()
-            # builder_urm_split = IncrementalSparseMatrix_FilterIDs(
-            #     preinitialized_col_mapper=self._item_id_to_index_mapper,
-            #     on_new_col="ignore",
-            #     preinitialized_row_mapper=self._user_id_to_index_mapper,
-            #     on_new_row="ignore"
-            # )
-            #
-            # users = df_split[self.users_column].to_numpy()
-            # items = df_split[self.items_column].to_numpy()
-            # data = np.ones_like(users, dtype=np.int32)
-            #
-            # builder_urm_split.add_data_lists(
-            #     row_list_to_add=users,
-            #     col_list_to_add=items,
-            #     data_list_to_add=data,
-            # )
-            #
-            # urm_split = builder_urm_split.get_SparseMatrix()
-            # if self._binarize_interactions:
-            #     urm_split.data = np.ones_like(urm_split.data, dtype=np.int32)
-            #
-            # self._interactions[name] = urm_split.copy()
 
     def _calculate_uim_leave_last_k_out_splits(self) -> None:
         df_train, df_validation, df_test = self.processed_data_loader.leave_last_k_out_splits
-
-        # df_train = df_train[
-        #     [self.users_column, self.impressions_column, self.impressions_id_column]
-        # ]
-        # df_train = df_train[
-        #     df_train[self.impressions_id_column].notna()
-        # ]
-        #
-        # df_validation = df_validation[
-        #     [self.users_column, self.impressions_column, self.impressions_id_column]
-        # ]
-        # df_validation = df_validation[
-        #     df_validation[self.impressions_id_column].notna()
-        # ]
-        #
-        # df_test = df_test[
-        #     [self.users_column, self.impressions_column, self.impressions_id_column]
-        # ]
-        # df_test = df_test[
-        #     df_test[self.impressions_id_column].notna()
-        # ]
 
         names = [
             BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TRAIN,
@@ -870,55 +778,9 @@ class ContentWiseImpressionsReader(DataReader):
             )
 
             self._impressions[name] = uim_split.copy()
-            # builder_uim_split = IncrementalSparseMatrix_FilterIDs(
-            #     preinitialized_col_mapper=self._item_id_to_index_mapper,
-            #     on_new_col="ignore",
-            #     preinitialized_row_mapper=self._user_id_to_index_mapper,
-            #     on_new_row="ignore"
-            # )
-            #
-            #
-            # for df_split_chunk in tqdm(
-            #     np.array_split(df_split, indices_or_sections=self._num_parts_split_dataset)
-            # ):
-            #     # Explosions of empty lists in impressions are transformed into NAs, NA values must be removed before
-            #     # being inserted into the csr_matrix.
-            #     df_split_chunk = df_split_chunk.explode(
-            #         column="impressions",
-            #         ignore_index=False,
-            #     )
-            #     df_split_chunk = df_split_chunk[
-            #         df_split_chunk["impressions"].notna()
-            #     ]
-            #
-            #     impressions = df_split_chunk["impressions"].to_numpy()
-            #     users = df_split_chunk["user_id"].to_numpy()
-            #     data = np.ones_like(impressions, dtype=np.int32)
-            #
-            #     builder_uim_split.add_data_lists(
-            #         row_list_to_add=users,
-            #         col_list_to_add=impressions,
-            #         data_list_to_add=data,
-            #     )
-            #
-            # uim_split = builder_uim_split.get_SparseMatrix()
-            # if self._binarize_impressions:
-            #     uim_split.data = np.ones_like(uim_split.data, dtype=np.int32)
-            #
-            # self._impressions[name] = uim_split.copy()
 
     def _calculate_urm_timestamp_splits(self) -> None:
         df_train, df_validation, df_test = self.processed_data_loader.timestamp_splits
-
-        # df_train = df_train[
-        #     [self.users_column, self.items_column]
-        # ]
-        # df_validation = df_validation[
-        #     [self.users_column, self.items_column]
-        # ]
-        # df_test = df_test[
-        #     [self.users_column, self.items_column]
-        # ]
 
         names = [
             BaseDataset.NAME_URM_TIMESTAMP_TRAIN,
@@ -946,52 +808,8 @@ class ContentWiseImpressionsReader(DataReader):
 
             self._interactions[name] = urm_split.copy()
 
-            # builder_urm_split = IncrementalSparseMatrix_FilterIDs(
-            #     preinitialized_col_mapper=self._item_id_to_index_mapper,
-            #     on_new_col="ignore",
-            #     preinitialized_row_mapper=self._user_id_to_index_mapper,
-            #     on_new_row="ignore"
-            # )
-            #
-            # users = df_split[self.users_column].to_numpy()
-            # items = df_split[self.items_column].to_numpy()
-            # data = np.ones_like(users, dtype=np.int32)
-            #
-            # builder_urm_split.add_data_lists(
-            #     row_list_to_add=users,
-            #     col_list_to_add=items,
-            #     data_list_to_add=data,
-            # )
-            #
-            # urm_split = builder_urm_split.get_SparseMatrix()
-            # if self._binarize_interactions:
-            #     urm_split.data = np.ones_like(urm_split.data, dtype=np.int32)
-            #
-            # self._interactions[name] = urm_split.copy()
-
     def _calculate_uim_timestamp_splits(self) -> None:
         df_train, df_validation, df_test = self.processed_data_loader.timestamp_splits
-
-        # df_train = df_train[
-        #     [self.users_column, self.impressions_column, self.impressions_id_column]
-        # ]
-        # df_train = df_train[
-        #     df_train[self.impressions_id_column].notna()
-        # ]
-        #
-        # df_validation = df_validation[
-        #     [self.users_column, self.impressions_column, self.impressions_id_column]
-        # ]
-        # df_validation = df_validation[
-        #     df_validation[self.impressions_id_column].notna()
-        # ]
-        #
-        # df_test = df_test[
-        #     [self.users_column, self.impressions_column, self.impressions_id_column]
-        # ]
-        # df_test = df_test[
-        #     df_test[self.impressions_id_column].notna()
-        # ]
 
         names = [
             BaseDataset.NAME_UIM_TIMESTAMP_TRAIN,
@@ -1018,46 +836,6 @@ class ContentWiseImpressionsReader(DataReader):
             )
 
             self._impressions[name] = uim_split.copy()
-            # print(df_split)
-            # builder_uim_split = IncrementalSparseMatrix_FilterIDs(
-            #     preinitialized_col_mapper=self._item_id_to_index_mapper,
-            #     on_new_col="ignore",
-            #     preinitialized_row_mapper=self._user_id_to_index_mapper,
-            #     on_new_row="ignore"
-            # )
-            #
-            # # for _, df_row in tqdm(df_split.iterrows(), total=df_split.shape[0]):
-            # #     impressions = np.array(df_row["impressions"], dtype="object")
-            # #     users = np.array([df_row["user_id"]] * len(impressions), dtype="object")
-            # #     data = np.ones_like(impressions, dtype=np.int32)
-            # for df_split_chunk in tqdm(
-            #     np.array_split(df_split, indices_or_sections=self._num_parts_split_dataset)
-            # ):
-            #     # Explosions of empty lists in impressions are transformed into NAs, NA values must be removed before
-            #     # being inserted into the csr_matrix.
-            #     df_split_chunk = df_split_chunk.explode(
-            #         column="impressions",
-            #         ignore_index=False,
-            #     )
-            #     df_split_chunk = df_split_chunk[
-            #         df_split_chunk["impressions"].notna()
-            #     ]
-            #
-            #     impressions = df_split_chunk["impressions"].to_numpy()
-            #     users = df_split_chunk["user_id"].to_numpy()
-            #     data = np.ones_like(impressions, dtype=np.int32)
-            #
-            #     builder_uim_split.add_data_lists(
-            #         row_list_to_add=users,
-            #         col_list_to_add=impressions,
-            #         data_list_to_add=data,
-            #     )
-            #
-            # uim_split = builder_uim_split.get_SparseMatrix()
-            # if self._binarize_impressions:
-            #     uim_split.data = np.ones_like(uim_split.data, dtype=np.int32)
-            #
-            # self._impressions[name] = uim_split.copy()
 
 
 class ContentWiseImpressionsStatistics(DatasetStatisticsMixin):
@@ -1067,12 +845,15 @@ class ContentWiseImpressionsStatistics(DatasetStatisticsMixin):
         config: ContentWiseImpressionsConfig,
     ):
         self.config = config
+        self.config_hash = compute_sha256_hash_from_object_repr(
+            obj=self.config,
+        )
         self.reader = reader
         self.processed_data_reader = reader.processed_data_loader
         self.raw_data_reader = reader.processed_data_loader.pandas_raw_data
 
         self.statistics_folder = os.path.join(
-            self.config.data_folder, "statistics", self.config.variant.value, "",
+            self.config.data_folder, "statistics", self.config.variant.value, self.config_hash, "",
         )
         self.statistics_file_name = "statistics.zip"
 
@@ -1240,6 +1021,9 @@ class ContentWiseImpressionsStatistics(DatasetStatisticsMixin):
 
 if __name__ == "__main__":
     config = ContentWiseImpressionsConfig()
+
+    import pdb
+    pdb.set_trace()
 
     raw_data = ContentWiseImpressionsRawData(
         config=config,
