@@ -25,36 +25,38 @@ Arrays of the dataset in its original form
 
 import os
 from enum import Enum
-from typing import cast, Any
-from memory_profiler import profile
+from typing import cast
 
 import attr
-import dask.dataframe as dd
 import numba
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-from dask.delayed import delayed
-from numba import jit
-from numpy.lib.npyio import NpzFile
-from recsys_framework.Data_manager.DataReader import DataReader
-from recsys_framework.Data_manager.Dataset import gini_index
-from recsys_framework.Data_manager.IncrementalSparseMatrix import (
+from Data_manager.IncrementalSparseMatrix import (
     IncrementalSparseMatrix_FilterIDs,
 )
-from recsys_framework.Recommenders.DataIO import DataIO
-from recsys_framework.Utils.conf_logging import get_logger
-from recsys_framework.Utils.decorators import timeit
+from numba import jit
+from numpy.lib.npyio import NpzFile
+from recsys_framework_extensions.data.dataset import BaseDataset
+from recsys_framework_extensions.data.reader import DataReader
+from recsys_framework_extensions.data.mixins import ParquetDataMixin
+from recsys_framework_extensions.data.splitter import (
+    filter_impressions_by_interactions_index,
+    split_sequential_train_test_by_num_records_on_test,
+    split_sequential_train_test_by_column_threshold,
+    remove_users_without_min_number_of_interactions,
+    remove_duplicates_in_interactions,
+    T_KEEP,
+    remove_records_by_threshold,
+    apply_custom_function,
+)
+from recsys_framework_extensions.decorators import timeit
+from recsys_framework_extensions.decorators import typed_cache
+from recsys_framework_extensions.logging import get_logger
 from recsys_slates_dataset.data_helper import (
     download_data_files as download_finn_no_slate_files,
 )
 from tqdm import tqdm
-
-from data_splitter import filter_impressions_by_interactions_index, split_sequential_train_test_by_num_records_on_test, \
-    split_sequential_train_test_by_column_threshold, remove_users_without_min_number_of_interactions, \
-    remove_duplicates_in_interactions, T_KEEP, remove_records_by_threshold, apply_custom_function
-from mixins import BaseDataset, ParquetDataMixin, BaseDataReader
-from utils import typed_cache
 
 tqdm.pandas()
 
@@ -83,6 +85,7 @@ def remove_non_clicks_on_impressions(
         ],
         dtype=np.int32,
     )
+
 
 map(
     remove_non_clicks_on_impressions,
@@ -338,18 +341,18 @@ class FINNNoSlateDataFrames(Enum):
 #         self.config = FinnNoSlatesConfig()
 #         self.raw_data_loader = FINNNoSlateRawData()
 #
-#         self._dataset_folder = os.path.join(
+#         self._folder_dataset = os.path.join(
 #             self.config.data_folder, "dask", "original",
 #         )
 #
 #         self.folder_interactions = os.path.join(
-#             self._dataset_folder, "interactions_exploded", ""
+#             self._folder_dataset, "interactions_exploded", ""
 #         )
 #         self.folder_impressions = os.path.join(
-#             self._dataset_folder, "impressions", ""
+#             self._folder_dataset, "impressions", ""
 #         )
 #         self.folder_impressions_metadata = os.path.join(
-#             self._dataset_folder, "impressions_metadata", ""
+#             self._folder_dataset, "impressions_metadata", ""
 #         )
 #
 #
@@ -1037,7 +1040,7 @@ class PandasFinnNoSlateRawData(ParquetDataMixin):
 #         )
 
 
-class FINNNoSlateReader(BaseDataReader):
+class FINNNoSlateReader(DataReader):
     def __init__(
         self,
         config: FinnNoSlatesConfig,
