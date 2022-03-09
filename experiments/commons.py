@@ -6,7 +6,9 @@ import attr
 
 from FINNNoReader import FINNNoSlateReader
 from MINDReader import MINDReader
-from mixins import BaseDataReader, EvaluationStrategy
+from ContentWiseImpressionsReader import ContentWiseImpressionsReader
+from recsys_framework_extensions.evaluation import EvaluationStrategy
+from recsys_framework_extensions.data.reader import DataReader
 
 
 class Benchmarks(Enum):
@@ -14,13 +16,13 @@ class Benchmarks(Enum):
     MINDLarge = "MINDLarge"
     FINNNoSlates = "FINNNoSlates"
     ContentWiseImpressions = "ContentWiseImpressions"
-    XINGRecSysChallenge2016 = "XINGRecSysChallenge2016"
 
 
 DATA_READERS = {
     Benchmarks.MINDSmall: MINDReader,
     Benchmarks.MINDLarge: MINDReader,
     Benchmarks.FINNNoSlates: FINNNoSlateReader,
+    Benchmarks.ContentWiseImpressions: ContentWiseImpressionsReader,
 }
 
 
@@ -28,7 +30,7 @@ DATA_READERS = {
 class Dataset:
     benchmark: Benchmarks = attr.ib()
     priority: int = attr.ib()
-    reader_class: Type[BaseDataReader] = attr.ib()
+    reader_class: Type[DataReader] = attr.ib()
     config: object = attr.ib()
     evaluation_strategy: EvaluationStrategy = attr.ib()
 

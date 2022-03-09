@@ -1,25 +1,24 @@
-import itertools
 import os
 import uuid
-from collections.abc import Iterator
-from typing import Type, Optional
+from typing import Type, cast
 
-import attr
-import scipy.sparse as sp
-from skopt.space import Categorical, Integer, Real
+import Recommenders.Recommender_import_list as recommenders
+from Evaluation.Evaluator import EvaluatorHoldout
+from Recommenders.BaseRecommender import BaseRecommender
+from recsys_framework_extensions.dask import DaskInterface
+from recsys_framework_extensions.evaluation import EvaluationStrategy
+from recsys_framework_extensions.hyper_parameter_search import run_hyper_parameter_search_collaborative
+from recsys_framework_extensions.logging import get_logger
 
 import experiments.commons as commons
-import recsys_framework.Recommenders as recommenders
-from recsys_framework.Evaluation.Evaluator import EvaluatorHoldout
-from recsys_framework.HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
-from recsys_framework.HyperparameterTuning.SearchBayesianSkopt import SearchBayesianSkopt
-from recsys_framework.HyperparameterTuning.run_parameter_search import runParameterSearch_Collaborative
-from recsys_framework.Recommenders.BaseRecommender import BaseRecommender
-from recsys_framework.Utils.conf_dask import DaskInterface
-from recsys_framework.Utils.conf_logging import get_logger
-from recsys_framework.Utils.plotting import generate_accuracy_and_beyond_metrics_latex
-
-from mixins import BaseDataReader, EvaluationStrategy
+from ContentWiseImpressionsReader import (
+    ContentWiseImpressionsReader,
+    PandasContentWiseImpressionsProcessData,
+    ContentWiseImpressionsConfig,
+    ContentWiseImpressionsRawData,
+    PandasContentWiseImpressionsRawData,
+)
+from MINDReader import MINDSmallConfig, MINDReader
 
 logger = get_logger(__name__)
 
@@ -63,24 +62,35 @@ commons.FOLDERS.add(HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR)
 #                                REPRODUCIBILITY VARIABLES                            #
 ####################################################################################################
 ####################################################################################################
-ALGORITHM_NAME = "CFGAN"
-CONFERENCE_NAME = "CIKM"
-VALIDATION_CUTOFFS = [10]
-TEST_CUTOFFS = [1, 5, 10, 20]
-METRIC_TO_OPTIMIZE = "NDCG"
-NUM_CASES = 50
-NUM_RANDOM_STARTS = int(NUM_CASES / 3)  # 16 if NUM_CASES is 50.
 REPRODUCIBILITY_SEED = 1234567890
-CFGAN_NUM_EPOCHS = 400
 
 RESULT_EXPORT_CUTOFFS = [20]
-KNN_SIMILARITY_LIST = [
-    "cosine",
-    "dice",
-    "jaccard",
-    "asymmetric",
-    "tversky"
-]
+
+HYPER_PARAMETER_SEARCH_CONFIG = {
+    # Allocate a maximum of 14 days for hyperparameter search, measured in seconds (60 seconds, 60 minutes, 24 hours,
+    # 14 days).
+    "MAX_TOTAL_TIME": 60 * 60 * 24 * 14,
+    "METRIC_TO_OPTIMIZE": "NDCG",
+    "CUTOFF_TO_OPTIMIZE": 10,
+    "NUM_CASES": 50,
+    # 16 if NUM_CASES is 50.
+    "NUM_RANDOM_STARTS": int(50 / 3),
+    "KNN_SIMILARITY_TYPES": [
+        "cosine",
+        "dice",
+        "jaccard",
+        "asymmetric",
+        "tversky",
+    ],
+    "EVALUATE_ON_TEST": "last",
+}
+
+EVALUATION_CONFIG = {
+    "CUTOFFS": [5, 10, 20, 30, 40, 50, 100],
+    "MIN_RATINGS_PER_USER": 1,
+    "EXCLUDE_SEEN": True,
+}
+
 ACCURACY_METRICS_LIST = [
     "PRECISION",
     "RECALL",
@@ -105,14 +115,18 @@ ALL_METRICS_LIST = [
 ARTICLE_BASELINES: list[Type[BaseRecommender]] = [
     # recommenders.Random,
     # recommenders.TopPop,
-    # recommenders.UserKNNCFRecommender,
-    # recommenders.ItemKNNCFRecommender,
-    # recommenders.RP3betaRecommender,
+    recommenders.UserKNNCFRecommender,
+    recommenders.ItemKNNCFRecommender,
+    recommenders.RP3betaRecommender,
     recommenders.PureSVDRecommender,
-    # recommenders.SLIMElasticNetRecommender,
-    # recommenders.SLIM_BPR_Cython,
-    # recommenders.MatrixFactorization_BPR_Cython,
-    # recommenders.EASE_R_Recommender,
+    recommenders.NMFRecommender,
+    recommenders.IALSRecommender,
+    recommenders.SLIMElasticNetRecommender,
+    #recommenders.SLIM_BPR_Cython,
+    recommenders.MatrixFactorization_BPR_Cython,
+    recommenders.LightFMCFRecommender,
+    recommenders.MultVAERecommender,
+    #recommenders.EASE_R_Recommender,
 ]
 ARTICLE_KNN_SIMILARITY_LIST = [
     "asymmetric",
@@ -143,7 +157,6 @@ ARTICLE_ALL_METRICS_LIST = [
 ####################################################################################################
 def _run_baselines_hyper_parameter_tuning(
     benchmark: commons.Benchmarks,
-    benchmark_reader: Type[BaseDataReader],
     benchmark_config: object,
     evaluation_strategy: EvaluationStrategy,
     recommender: Type[BaseRecommender],
@@ -155,13 +168,48 @@ def _run_baselines_hyper_parameter_tuning(
     original implementation. The baselines are the same as in the original paper of CFGAN plus
     other baselines, such as PureSVD and P3Alpha.
     """
-    dataset = benchmark_reader(
-        config=benchmark_config,
-    ).dataset
+    if commons.Benchmarks.ContentWiseImpressions == benchmark:
+        benchmark_config = cast(
+            ContentWiseImpressionsConfig,
+            benchmark_config,
+        )
+
+        raw_reader = ContentWiseImpressionsRawData(
+            config=benchmark_config
+        )
+
+        pandas_raw_data_reader = PandasContentWiseImpressionsRawData(
+            config=benchmark_config,
+            raw_data_loader=raw_reader,
+        )
+
+        pandas_processed_data_reader = PandasContentWiseImpressionsProcessData(
+            config=benchmark_config,
+            pandas_raw_data=pandas_raw_data_reader,
+        )
+
+        benchmark_reader = ContentWiseImpressionsReader(
+            config=benchmark_config,
+            processed_data_loader=pandas_processed_data_reader,
+        )
+    elif commons.Benchmarks.MINDSmall == benchmark:
+        benchmark_config = cast(
+            MINDSmallConfig,
+            benchmark_config,
+        )
+        benchmark_reader = MINDReader(
+            config=benchmark_config,
+        )
+    else:
+        raise ValueError("error fernando-debugger")
+    
+    dataset = benchmark_reader.dataset
 
     urm_train, urm_validation, urm_test = dataset.get_urm_splits(
         evaluation_strategy=evaluation_strategy
     )
+
+    urm_train_and_validation = urm_train + urm_validation
 
     import random
     import numpy as np
@@ -176,50 +224,65 @@ def _run_baselines_hyper_parameter_tuning(
 
     evaluator_validation = EvaluatorHoldout(
         urm_validation,
-        cutoff_list=VALIDATION_CUTOFFS,
+        cutoff_list=EVALUATION_CONFIG["CUTOFFS"],
+        exclude_seen=EVALUATION_CONFIG["EXCLUDE_SEEN"],
+        min_ratings_per_user=EVALUATION_CONFIG["MIN_RATINGS_PER_USER"],
+        verbose=True,
+    )
+    evaluator_validation_early_stopping = EvaluatorHoldout(
+        urm_validation,
+        # The example uses the hyper-param config instead of the evaluation cutoff.
+        cutoff_list=[HYPER_PARAMETER_SEARCH_CONFIG["CUTOFF_TO_OPTIMIZE"]],
+        exclude_seen=EVALUATION_CONFIG["EXCLUDE_SEEN"],
+        min_ratings_per_user=EVALUATION_CONFIG["MIN_RATINGS_PER_USER"],
+        verbose=True,
     )
     evaluator_test = EvaluatorHoldout(
         urm_test,
-        cutoff_list=TEST_CUTOFFS,
+        cutoff_list=EVALUATION_CONFIG["CUTOFFS"],
+        exclude_seen=EVALUATION_CONFIG["EXCLUDE_SEEN"],
+        min_ratings_per_user=EVALUATION_CONFIG["MIN_RATINGS_PER_USER"],
+        verbose=True,
     )
-
-    allow_weighting = True
-    resume_from_saved = True
-    parallelize_knn = False
 
     logger_info = {
         "recommender": recommender.RECOMMENDER_NAME,
         "dataset": benchmark.value,
-        "validation_cutoffs": VALIDATION_CUTOFFS,
-        "test_cutoffs": TEST_CUTOFFS,
+        "urm_test_shape": urm_test.shape,
         "urm_train_shape": urm_train.shape,
         "urm_validation_shape": urm_validation.shape,
-        "urm_test_shape": urm_test.shape,
-        "urm_train_last_test_shape": (urm_train + urm_validation).shape,
-        "output_folder_path": experiments_folder_path,
-        "parallelize_knn": parallelize_knn,
-        "allow_weighting": allow_weighting,
-        "metric_to_optimize": METRIC_TO_OPTIMIZE,
-        "num_cases": NUM_CASES,
-        "num_random_starts": NUM_RANDOM_STARTS
+        "urm_train_and_validation_shape": urm_train_and_validation.shape,
     }
 
-    logger.info(f"Hyper-parameter tuning arguments\n{logger_info}")
-
-    runParameterSearch_Collaborative(
+    logger.info(
+        f"Hyper-parameter tuning arguments:"
+        f"\n\t* {logger_info}"
+    )
+    run_hyper_parameter_search_collaborative(
         recommender_class=recommender,
+
         URM_train=urm_train,
-        URM_train_last_test=urm_train + urm_validation,
-        metric_to_optimize=METRIC_TO_OPTIMIZE,
-        evaluator_validation_earlystopping=evaluator_validation,
-        evaluator_validation=evaluator_validation,
+        URM_train_last_test=urm_train_and_validation,
+
         evaluator_test=evaluator_test,
+        evaluator_validation=evaluator_validation,
+        evaluator_validation_earlystopping=evaluator_validation_early_stopping,
+
         output_folder_path=experiments_folder_path,
-        parallelizeKNN=parallelize_knn,
-        allow_weighting=allow_weighting,
-        resume_from_saved=resume_from_saved,
-        n_cases=NUM_CASES,
-        n_random_starts=NUM_RANDOM_STARTS
+
+        n_cases=HYPER_PARAMETER_SEARCH_CONFIG["NUM_CASES"],
+        n_random_starts=HYPER_PARAMETER_SEARCH_CONFIG["NUM_RANDOM_STARTS"],
+        max_total_time=HYPER_PARAMETER_SEARCH_CONFIG["MAX_TOTAL_TIME"],
+        metric_to_optimize=HYPER_PARAMETER_SEARCH_CONFIG["METRIC_TO_OPTIMIZE"],
+        cutoff_to_optimize=HYPER_PARAMETER_SEARCH_CONFIG["CUTOFF_TO_OPTIMIZE"],
+        similarity_type_list=HYPER_PARAMETER_SEARCH_CONFIG["KNN_SIMILARITY_TYPES"],
+        evaluate_on_test=HYPER_PARAMETER_SEARCH_CONFIG["EVALUATE_ON_TEST"],
+
+        allow_weighting=True,
+        allow_bias_URM=False,
+        allow_dropout_MF=False,
+        parallelizeKNN=False,
+        resume_from_saved=True,
     )
 
 
@@ -269,7 +332,7 @@ def _run_baselines_hyper_parameter_tuning(
 #     early_stopping_kwargs = {
 #         "validation_every_n": 5,
 #         "stop_on_validation": True,
-#         "validation_metric": METRIC_TO_OPTIMIZE,
+#         "validation_metric": HYPER_PARAMETER_SEARCH_METRIC_TO_OPTIMIZE,
 #         "lower_validations_allowed": 5,
 #         "evaluator_object": evaluator_validation,
 #         "algorithm_name": recommender_class.RECOMMENDER_NAME,
@@ -417,7 +480,7 @@ def _run_baselines_hyper_parameter_tuning(
 #         "urm_test_shape": urm_test.shape,
 #         "urm_train_last_test_shape": (urm_train + urm_validation).shape,
 #         "output_folder_path": experiments_folder_path,
-#         "metric_to_optimize": METRIC_TO_OPTIMIZE,
+#         "metric_to_optimize": HYPER_PARAMETER_SEARCH_METRIC_TO_OPTIMIZE,
 #         "num_cases": NUM_CASES,
 #         "num_random_starts": NUM_RANDOM_STARTS,
 #     }
@@ -435,7 +498,7 @@ def _run_baselines_hyper_parameter_tuning(
 #         n_random_starts=NUM_RANDOM_STARTS,
 #         output_folder_path=experiments_folder_path,
 #         output_file_name_root=experiment_filename_root,
-#         metric_to_optimize=METRIC_TO_OPTIMIZE,
+#         metric_to_optimize=HYPER_PARAMETER_SEARCH_METRIC_TO_OPTIMIZE,
 #         resume_from_saved=True,
 #         save_metadata=True,
 #         seed=REPRODUCIBILITY_SEED,
@@ -465,7 +528,6 @@ def run_evaluation_experiments(
                     method=_run_baselines_hyper_parameter_tuning,
                     method_kwargs={
                         "benchmark": dataset.benchmark,
-                        "benchmark_reader": dataset.reader_class,
                         "benchmark_config": dataset.config,
                         "evaluation_strategy": dataset.evaluation_strategy,
                         "recommender": recommender,
@@ -483,7 +545,7 @@ def plot_popularity_of_datasets(
 ) -> None:
     for dataset in dataset_interface.datasets:
 
-        from recsys_framework.Utils.plot_popularity import plot_popularity_bias
+        from Utils.plot_popularity import plot_popularity_bias
         dataset_reader = dataset.reader_class(
             config=dataset.config,
         )
