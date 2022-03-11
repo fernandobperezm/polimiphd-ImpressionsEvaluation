@@ -30,26 +30,17 @@ from enum import Enum
 from typing import cast
 
 import attrs
-import dask.dataframe as dd
-import memory_profiler
 import numba
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-from Data_manager.IncrementalSparseMatrix import (
-    IncrementalSparseMatrix_FilterIDs,
-)
 from numba import jit
 from numpy.lib.npyio import NpzFile
-from recsys_framework_extensions.dask import configure_dask_cluster
 from recsys_framework_extensions.data.dataset import BaseDataset
-from recsys_framework_extensions.data.io import DataIO
+from recsys_framework_extensions.data.mixins import ParquetDataMixin, DataIOMixin
 from recsys_framework_extensions.data.reader import DataReader
-from recsys_framework_extensions.data.mixins import ParquetDataMixin, DaskParquetDataMixin, NumpyPandasDataMixin, \
-    HDFDataMixin, DataIOMixin
 from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe
 from recsys_framework_extensions.data.splitter import (
-    filter_impressions_by_interactions_index,
     split_sequential_train_test_by_num_records_on_test,
     split_sequential_train_test_by_column_threshold,
     remove_users_without_min_number_of_interactions,
@@ -319,25 +310,6 @@ class PandasFinnNoSlateRawData(ParquetDataMixin, DataIOMixin):  # ():
             config=config,
         )
 
-        # self._folder_dataset = os.path.join(
-        #     self.config.data_folder, "dask",
-        # )
-        # self._folder_parquet = os.path.join(
-        #     self._folder_dataset, "original",
-        # )
-
-        # self._folder_dataset = os.path.join(
-        #     self.config.data_folder, "pandas", "original", "",
-        # )
-
-
-        # self._folder_dataset = os.path.join(
-        #     self.config.data_folder, "numpy", "original", "",
-        # )
-        # self._file_path_data = os.path.join(
-        #     self._folder_dataset, "data.npz"
-        # )
-
         self._folder_dataset = os.path.join(
             self.config.data_folder, "pandas", "original", "",
         )
@@ -345,23 +317,6 @@ class PandasFinnNoSlateRawData(ParquetDataMixin, DataIOMixin):  # ():
             self._folder_dataset, "data.parquet"
         )
         self._file_name_impressions_arr = "impressions_arr.npy.zip"
-
-        # self._file_path_data = os.path.join(
-        #     self._folder_dataset, "data.parquet"
-        # )
-        # self._file_path_data_impressions = os.path.join(
-        #     self._folder_dataset, "data_impressions.parquet"
-        # )
-
-        # self.file_interactions = os.path.join(
-        #     self._folder_dataset, "interactions.parquet"
-        # )
-        # self.file_impressions = os.path.join(
-        #     self._folder_dataset, "impressions.parquet"
-        # )
-        # self.file_impressions_metadata = os.path.join(
-        #     self._folder_dataset, "impressions_metadata.parquet"
-        # )
 
         os.makedirs(
             name=self._folder_dataset,
@@ -690,11 +645,6 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
             users_column="user_id",
             min_number_of_interactions=self.config.min_number_of_interactions,
         )
-        #
-        # df_impressions, _ = filter_impressions_by_interactions_index(
-        #     df_impressions=df_impressions,
-        #     df_interactions=df_interactions,
-        # )
 
         # This filter removes error logs and non-interactions of the dataset.
         df_data, _ = apply_custom_function(
@@ -722,8 +672,6 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
             percentiles=[0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
         )
 
-        print(df_filtered_data, described)
-
         validation_threshold = described["80%"]
         test_threshold = described["90%"]
 
@@ -738,61 +686,6 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
             column="time_step",
             threshold=validation_threshold,
         )
-
-        # df_impressions_train, _ = filter_impressions_by_interactions_index(
-        #     df_impressions=df_impressions_filtered,
-        #     df_interactions=df_interactions_train,
-        # )
-        #
-        # df_impressions_validation, _ = filter_impressions_by_interactions_index(
-        #     df_impressions=df_impressions_filtered,
-        #     df_interactions=df_interactions_validation,
-        # )
-        #
-        # df_impressions_test, _ = filter_impressions_by_interactions_index(
-        #     df_impressions=df_impressions_filtered,
-        #     df_interactions=df_interactions_test,
-        # )
-        #
-        # df_metadata_train, _ = filter_impressions_by_interactions_index(
-        #     df_impressions=df_metadata_filtered,
-        #     df_interactions=df_interactions_train,
-        # )
-        #
-        # df_metadata_validation, _ = filter_impressions_by_interactions_index(
-        #     df_impressions=df_metadata_filtered,
-        #     df_interactions=df_interactions_validation,
-        # )
-        #
-        # df_metadata_test, _ = filter_impressions_by_interactions_index(
-        #     df_impressions=df_metadata_filtered,
-        #     df_interactions=df_interactions_test,
-        # )
-
-        # df_data_filtered = self.filtered
-        #
-        # # The timestamp in the dataset represents the timestamp of the impression, not the interactions, therefore,
-        # # we must use the condensed version to compute the 80% and the 90% of timestamps in the dataset. Using
-        # # `df_interactions` may shift the value of the timestamp, specially if there are several popular users.
-        # described = df_data_filtered["timestamp"].describe(
-        #     datetime_is_numeric=True,
-        #     percentiles=[0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-        # )
-        #
-        # validation_threshold = described["80%"]
-        # test_threshold = described["90%"]
-        #
-        # df_data_train, df_data_test = split_sequential_train_test_by_column_threshold(
-        #     df=df_data_filtered,
-        #     column="timestamp",
-        #     threshold=test_threshold
-        # )
-        #
-        # df_data_train, df_data_validation = split_sequential_train_test_by_column_threshold(
-        #     df=df_data_train,
-        #     column="timestamp",
-        #     threshold=validation_threshold
-        # )
 
         return [df_train, df_validation, df_test]
 
@@ -813,420 +706,6 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
         )
 
         return [df_train, df_validation, df_test]
-
-
-# class StatisticsFinnNoSlate:
-#     def __init__(self):
-#         self.data_loader = DaskFinnNoSlateRawData()
-#
-#         (
-#             self.dd_interactions,
-#             self.dd_impressions,
-#             self.dd_impressions_metadata,
-#         ) = (
-#             self.data_loader.interactions,
-#             self.data_loader.impressions,
-#             self.data_loader.interactions_impressions_metadata,
-#         )
-#
-#         self.filters_boolean = [
-#             ("full", slice(None)),
-#             # ("no-data", self.dd_interactions["item_id"] == 0),
-#             ("no-clicks", self.dd_interactions["item_id"] == 1),
-#             ("interactions_exploded-&-no-clicks", self.dd_interactions["item_id"] > 0),
-#             ("interactions_exploded", self.dd_interactions["item_id"] > 1),
-#             # ("only-recommendations",
-#             #  self.dd_impressions_metadata["impression_type"] == FINNNoImpressionOrigin.RECOMMENDATION.value),
-#             # ("only-search", self.dd_impressions_metadata["impression_type"] == FINNNoImpressionOrigin.SEARCH.value),
-#             # ("only-undefined", self.dd_impressions_metadata["impression_type"] == FINNNoImpressionOrigin.UNDEFINED.value),
-#         ]
-#
-#     def statistics_interactions(self) -> None:
-#         # if os.path.exists("data/FINN-NO-SLATE/statistics/interactions_exploded.zip"):
-#         #     return
-#
-#         interactions: dd.DataFrame = dd.concat(
-#             [self.dd_interactions, self.dd_impressions_metadata],
-#             axis="columns",
-#         )
-#
-#         statistics_: dict[str, Any] = {}
-#
-#         datasets: list[tuple[str, dd.DataFrame]] = [
-#             (name, interactions[filter_boolean])
-#             for name, filter_boolean in self.filters_boolean
-#         ] + [
-#             (
-#                 f"{name}_no_dup",
-#                 interactions[filter_boolean].drop_duplicates(
-#                     subset=["user_id", "item_id"],
-#                     # keep="first",
-#                     ignore_index=False,
-#                 ),
-#             )
-#             for name, filter_boolean in self.filters_boolean
-#         ]
-#
-#         columns_for_unique = [
-#             "user_id",
-#             "item_id",
-#             "time_step",
-#             "click_idx_in_impression",
-#             "impression_type",
-#             "item_in_impression",
-#         ]
-#
-#         columns_for_profile_length = [
-#             "user_id",
-#             "item_id",
-#             "time_step",
-#             "click_idx_in_impression",
-#             "impression_type",
-#             "item_in_impression",
-#         ]
-#
-#         columns_for_gini = [
-#             "user_id",
-#             "item_id",
-#             "time_step",
-#             "click_idx_in_impression",
-#             "impression_type",
-#             "item_in_impression",
-#         ]
-#
-#         columns_to_group_by = [
-#             ("user_id", "item_id"),
-#             ("item_id", "user_id"),
-#             ("time_step", "user_id"),
-#             ("click_idx_in_impression", "user_id"),
-#             ("impression_type", "user_id"),
-#             ("item_in_impression", "user_id"),
-#         ]
-#
-#         logger.info(f"Calculating statistics for several datasets.")
-#         name: str
-#         dataset_: dd.DataFrame
-#         series_column: dd.Series
-#         for name, dataset_ in tqdm(datasets):
-#             statistics_[name] = dict()
-#
-#             statistics_[name]["num_records"] = dataset_.shape[0]
-#             # statistics_[name]["describe"] = delayed(
-#             #     dataset_.astype({
-#             #         "user_id": 'category',
-#             #         "item_id": 'category',
-#             #         "time_step": 'category',
-#             #         "impression_type": 'category',
-#             #         "click_idx_in_impression": 'category',
-#             #     }).describe(
-#             #         include="all"
-#             #     ).astype({
-#             #         # Given that this type is boolean, and the describe mixes ints with boolean values, then it must
-#             #         # be parsed to either string or ints.
-#             #         "item_in_impression": pd.StringDtype(),
-#             #     })
-#             # )
-#
-#             # for column in columns_for_unique:
-#             #     if column not in statistics_[name]:
-#             #         statistics_[name][column] = dict()
-#             #
-#             #     series_column = dataset_[column]
-#             #
-#             #     statistics_[name][column][f"num_unique"] = series_column.nunique()
-#             #     statistics_[name][column][f"unique"] = series_column.unique()
-#             #
-#             for column in columns_for_profile_length:
-#                 if column not in statistics_[name]:
-#                     statistics_[name][column] = dict()
-#
-#                 series_column = dataset_[column]
-#
-#                 statistics_[name][column][f"profile_length"] = (
-#                     series_column.value_counts(
-#                         ascending=False,
-#                         sort=False,
-#                         normalize=False,
-#                         dropna=True,
-#                     )
-#                     .rename("profile_length")
-#                     .to_frame()
-#                 )
-#
-#                 statistics_[name][column][f"profile_length_normalized"] = (
-#                     series_column.value_counts(
-#                         ascending=False,
-#                         sort=False,
-#                         normalize=True,
-#                         dropna=True,
-#                     )
-#                     .rename("profile_length_normalized")
-#                     .to_frame()
-#                 )
-#
-#             # for column in columns_for_gini:
-#             #     if column not in statistics_[name]:
-#             #         statistics_[name][column] = dict()
-#             #
-#             #     series_column = dataset_[column]
-#             #
-#             #     # notna is there because columns might be NA.
-#             #     statistics_[name][column]["gini_index_values_labels"] = delayed(
-#             #         gini_index
-#             #     )(array=series_column)
-#             #     statistics_[name][column]["gini_index_values_counts"] = delayed(
-#             #         gini_index
-#             #     )(
-#             #         array=series_column.value_counts(
-#             #             dropna=True,
-#             #             normalize=False,
-#             #         ),
-#             #     )
-#             #
-#             # for column_to_group_by, column_for_statistics in columns_to_group_by:
-#             #     if column_to_group_by not in statistics_[name]:
-#             #         statistics_[name][column_to_group_by] = dict()
-#             #
-#             #     df_group_by = dataset_.groupby(
-#             #         by=[column_to_group_by],
-#             #     )
-#             #
-#             # statistics_[name][column_to_group_by][f"group_by_profile_length"] = df_group_by[
-#             #     column_for_statistics
-#             # ].count()
-#             # statistics_[name][column_to_group_by][f"group_by_describe"] = delayed(
-#             #     df_group_by.agg([
-#             #         "min",
-#             #         "max",
-#             #         "count",
-#             #         "size",
-#             #         "first",
-#             #         "last",
-#             #         # "var",
-#             #         # "std",
-#             #         # "mean",
-#             #     ])
-#             # )
-#
-#             # Create URM using original indices.
-#             # num_users = dataset_["user_id"].max() + 1
-#             # num_items = dataset_["item_id"].max() + 1
-#             #
-#             # row_indices = dataset_["user_id"]
-#             # col_indices = dataset_["item_id"]
-#             # data = delayed(np.ones_like)(
-#             #     a=row_indices,
-#             #     dtype=np.int32,
-#             # )
-#             # # assert row_indices.shape == col_indices.shape and row_indices.shape == data.shape
-#             #
-#             # urm_all_csr: sp.csr_matrix = delayed(sp.csr_matrix)(
-#             #     (
-#             #         data,
-#             #         (row_indices, col_indices)
-#             #     ),
-#             #     shape=(num_users, num_items),
-#             #     dtype=np.int32,
-#             # )
-#             #
-#             # statistics_[name]["urm_all"] = dict()
-#             # statistics_[name]["urm_all"]["matrix"] = urm_all_csr
-#             #
-#             # user_profile_length: np.ndarray = delayed(np.ediff1d)(urm_all_csr.indptr)
-#             # user_profile_stats: DescribeResult = delayed(
-#             #     st.describe
-#             # )(
-#             #     a=user_profile_length,
-#             #     axis=0,
-#             #     nan_policy="raise",
-#             # )
-#             # statistics_[name]["urm_all"]["interactions_by_users"] = {
-#             #     "num_observations": user_profile_stats.nobs,
-#             #     "min": user_profile_stats.minmax[0],
-#             #     "max": user_profile_stats.minmax[1],
-#             #     "mean": user_profile_stats.mean,
-#             #     "variance": user_profile_stats.variance,
-#             #     "skewness": user_profile_stats.skewness,
-#             #     "kurtosis": user_profile_stats.kurtosis,
-#             #     "gini_index": delayed(gini_index)(
-#             #         array=user_profile_length,
-#             #     ),
-#             # }
-#             #
-#             # urm_all_csc: sp.csc_matrix = urm_all_csr.tocsc()
-#             # item_profile_length: np.ndarray = delayed(np.ediff1d)(urm_all_csc.indptr)
-#             # item_profile_stats: DescribeResult = delayed(
-#             #     st.describe
-#             # )(
-#             #     a=item_profile_length,
-#             #     axis=0,
-#             #     nan_policy="omit",
-#             # )
-#             # statistics_[name]["urm_all"]["interactions_by_items"] = {
-#             #     "num_observations": item_profile_stats.nobs,
-#             #     "min": item_profile_stats.minmax[0],
-#             #     "max": item_profile_stats.minmax[1],
-#             #     "mean": item_profile_stats.mean,
-#             #     "variance": item_profile_stats.variance,
-#             #     "skewness": item_profile_stats.skewness,
-#             #     "kurtosis": item_profile_stats.kurtosis,
-#             #     "gini_index": delayed(gini_index)(
-#             #         array=item_profile_length
-#             #     ),
-#             # }
-#
-#         logger.info("Sending compute to cluster.")
-#         computed_statistics = dask_interface._client.compute(statistics_).result()
-#
-#         logger.info("Saving computed statistics.")
-#
-#         print(
-#             computed_statistics["interactions_exploded"]["user_id"]["profile_length"],
-#             type(computed_statistics["interactions_exploded"]["user_id"]["profile_length"]),
-#         )
-#         print(
-#             computed_statistics["interactions_no_dup"]["user_id"]["profile_length"],
-#             type(
-#                 computed_statistics["interactions_no_dup"]["user_id"]["profile_length"]
-#             ),
-#         )
-#
-#         print(
-#             f'{np.array_equal(computed_statistics["interactions_exploded"]["user_id"]["profile_length"].index, computed_statistics["interactions_no_dup"]["user_id"]["profile_length"].index)=}'
-#         )
-#
-#         import pdb
-##
-#         data_io = DataIO(folder_path="data/FINN-NO-SLATE/statistics/")
-#         data_io.save_data(
-#             file_name="interactions_exploded.zip",
-#             data_dict_to_save=computed_statistics,
-#         )
-#
-#     def statistics_impressions(self):
-#         pass
-#
-#     def statistics_impressions_metadata(self):
-#         # if os.path.exists("data/FINN-NO-SLATE/statistics/impressions_metadata.zip"):
-#         #     return
-#
-#         interactions = dd.concat(
-#             [self.dd_interactions, self.dd_impressions_metadata],
-#             axis="columns",
-#         )
-#
-#         statistics_: dict[str, Any] = {}
-#
-#         columns_to_calculate_normalizations = [
-#             "click_idx_in_impression",
-#             "impression_type",
-#         ]
-#
-#         columns_for_gini = [
-#             "impression_type",
-#             "click_idx_in_impression",
-#         ]
-#
-#         columns_to_compare = [
-#             ("impression_type", "click_idx_in_impression"),
-#             ("click_idx_in_impression", "impression_type"),
-#         ]
-#
-#         columns_to_group_by = [
-#             ("impression_type", "click_idx_in_impression"),
-#             ("click_idx_in_impression", "impression_type"),
-#         ]
-#
-#         name: str
-#         dataset_: dd.DataFrame
-#         series_column: dd.Series
-#         for name, dataset_ in tqdm(datasets):
-#             statistics_[name] = dict()
-#
-#             for column in columns_to_calculate_normalizations:
-#                 if column not in statistics_[name]:
-#                     statistics_[name][column] = dict()
-#
-#                 series_column = dataset_[column]
-#
-#                 statistics_[name][column]["normalized"] = series_column.value_counts(
-#                     dropna=False,
-#                     normalize=True,
-#                 )
-#                 statistics_[name][column][
-#                     "non-normalized"
-#                 ] = series_column.value_counts(
-#                     dropna=False,
-#                     normalize=False,
-#                 )
-#
-#             for column in columns_for_gini:
-#                 if column not in statistics_[name]:
-#                     statistics_[name][column] = dict()
-#
-#                 series_column = dataset_[column]
-#
-#                 # notna is there because columns might be NA.
-#                 statistics_[name][column]["gini_index"] = delayed(gini_index)(
-#                     array=delayed(
-#                         series_column.values.compute
-#                     )(),  # .to_numpy(copy=True)
-#                 )
-#                 # dropna needed because columns might be NA.
-#                 statistics_[name][column][
-#                     f"unique_num_{column}"
-#                 ] = series_column.nunique(
-#                     # dropna=True
-#                 )
-#
-#             for column, other_col in columns_to_compare:
-#                 # This might contain duplicates. Do not normalize it because we're interested in absolute counts.
-#                 series_column = dataset_[column]
-#
-#                 statistics_[name][column][
-#                     f"profile_length_{column}"
-#                 ] = series_column.value_counts(
-#                     dropna=True,
-#                     normalize=False,
-#                 )
-#                 # This might contain duplicates. Do not normalize it because we're interested in absolute counts.
-#                 statistics_[name][column][
-#                     f"profile_length_{column}_without_duplicates"
-#                 ] = dataset_.drop_duplicates(
-#                     subset=[column, other_col],
-#                     # inplace=False,
-#                 )[
-#                     column
-#                 ].value_counts(
-#                     dropna=True,
-#                     normalize=False,
-#                 )
-#
-#             for column_to_group_by, column_for_statistics in columns_to_group_by:
-#                 if column_to_group_by not in statistics_[name]:
-#                     statistics_[name][column_to_group_by] = dict()
-#
-#                 df_group_by = dataset_.groupby(
-#                     by=[column_to_group_by],
-#                 )
-#
-#                 profile_length = df_group_by[column_for_statistics].count()
-#                 statistics_[name][column_to_group_by][
-#                     f"group_by_profile_length"
-#                 ] = profile_length
-#                 statistics_[name][column_to_group_by][
-#                     f"group_by_describe"
-#                 ] = profile_length.describe()
-#
-#         computed_statistics = dask_interface._client.compute(statistics_).result()
-#
-#         print(computed_statistics)
-#
-#         data_io = DataIO(folder_path="data/FINN-NO-SLATE/statistics/")
-#         data_io.save_data(
-#             file_name="impressions_metadata.zip",
-#             data_dict_to_save=computed_statistics,
-#         )
 
 
 class FINNNoSlateReader(DataReader):
@@ -1258,12 +737,6 @@ class FINNNoSlateReader(DataReader):
         self.items_column = "item_id"
         self.impressions_column = "impressions"
 
-        # self._keep_duplicates = self.config.keep_duplicates
-        # self._min_number_of_interactions = self.config.min_number_of_interactions
-        # self._binarize_impressions = self.config.binarize_impressions
-        # self._binarize_interactions = self.config.binarize_interactions
-        # self._num_parts_split_dataset = 500
-
         self._user_id_to_index_mapper: dict[int, int] = dict()
         self._item_id_to_index_mapper: dict[int, int] = dict()
 
@@ -1283,193 +756,6 @@ class FINNNoSlateReader(DataReader):
         return self.load_data(
             save_folder_path=self.ORIGINAL_SPLIT_FOLDER,
         )
-
-    # @property  # type: ignore
-    # @typed_cache
-    # def _data_filtered(self) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    #     logger.info(
-    #         f"Filtering data sources (interactions, impressions, metadata)."
-    #     )
-    #
-    #     df_interactions = self._raw_data_loader.interactions.copy()
-    #     df_impressions = self._raw_data_loader.impressions.copy()
-    #     df_metadata = self._raw_data_loader.interactions_impressions_metadata.copy()
-    #
-    #     # We don't need to reset the index first because this dataset does not have exploded values.
-    #     df_interactions = df_interactions.sort_values(
-    #         by=["time_step"],
-    #         ascending=True,
-    #         axis="index",
-    #         inplace=False,
-    #         ignore_index=False,
-    #     )
-    #
-    #     # This filter removes error logs and non-interactions of the dataset.
-    #     df_interactions, _ = remove_records_by_threshold(
-    #         df=df_interactions,
-    #         column="item_id",
-    #         threshold=self.config.min_item_id,
-    #     )
-    #
-    #     df_interactions, _ = remove_duplicates_in_interactions(
-    #         df=df_interactions,
-    #         columns_to_compare=["user_id", "item_id"],
-    #         keep=self._keep_duplicates,
-    #     )
-    #
-    #     df_interactions, _ = remove_users_without_min_number_of_interactions(
-    #         df=df_interactions,
-    #         users_column="user_id",
-    #         min_number_of_interactions=self._min_number_of_interactions,
-    #     )
-    #
-    #     df_impressions, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_impressions,
-    #         df_interactions=df_interactions,
-    #     )
-    #
-    #     # This filter removes error logs and non-interactions of the dataset.
-    #     df_impressions, _ = apply_custom_function(
-    #         df=df_impressions,
-    #         column="impressions",
-    #         func=remove_non_clicks_on_impressions,
-    #         func_name=remove_non_clicks_on_impressions.__name__,
-    #         axis="columns",
-    #     )
-    #
-    #     # Given that we removed the 0s and 1s in the impressions, then we must substract
-    #     df_metadata["position_interaction"] -= 1
-    #     df_metadata["num_impressions"] -= 1
-    #     # We don't have to process the column "is_item_in_impression" in the metadata because we already removed the
-    #     # non-clicks on the dataset interactions and impressions.
-    #
-    #     return df_interactions, df_impressions, df_metadata
-
-    # @property  # type: ignore
-    # @typed_cache
-    # def _data_time_step_split(
-    #     self
-    # ) -> tuple[
-    #     pd.DataFrame, pd.DataFrame, pd.DataFrame,
-    #     pd.DataFrame, pd.DataFrame, pd.DataFrame,
-    #     pd.DataFrame, pd.DataFrame, pd.DataFrame
-    # ]:
-    #     df_interactions_filtered, df_impressions_filtered, df_metadata_filtered = self._data_filtered
-    #
-    #     described = df_interactions_filtered["time_step"].describe(
-    #         datetime_is_numeric=True,
-    #         percentiles=[0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
-    #     )
-    #
-    #     validation_threshold = described["80%"]
-    #     test_threshold = described["90%"]
-    #
-    #     df_interactions_train, df_interactions_test = split_sequential_train_test_by_column_threshold(
-    #         df=df_interactions_filtered,
-    #         column="time_step",
-    #         threshold=test_threshold
-    #     )
-    #
-    #     df_interactions_train, df_interactions_validation = split_sequential_train_test_by_column_threshold(
-    #         df=df_interactions_train,
-    #         column="time_step",
-    #         threshold=validation_threshold
-    #     )
-    #
-    #     df_impressions_train, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_impressions_filtered,
-    #         df_interactions=df_interactions_train,
-    #     )
-    #
-    #     df_impressions_validation, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_impressions_filtered,
-    #         df_interactions=df_interactions_validation,
-    #     )
-    #
-    #     df_impressions_test, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_impressions_filtered,
-    #         df_interactions=df_interactions_test,
-    #     )
-    #
-    #     df_metadata_train, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_metadata_filtered,
-    #         df_interactions=df_interactions_train,
-    #     )
-    #
-    #     df_metadata_validation, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_metadata_filtered,
-    #         df_interactions=df_interactions_validation,
-    #     )
-    #
-    #     df_metadata_test, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_metadata_filtered,
-    #         df_interactions=df_interactions_test,
-    #     )
-    #
-    #     return (
-    #         df_interactions_train.copy(), df_interactions_validation.copy(), df_interactions_test.copy(),
-    #         df_impressions_train.copy(), df_impressions_validation.copy(), df_impressions_test.copy(),
-    #         df_metadata_train.copy(), df_metadata_validation.copy(), df_metadata_test.copy(),
-    #     )
-
-    # @property  # type: ignore
-    # @typed_cache
-    # def _data_leave_last_k_out_split(
-    #     self
-    # ) -> tuple[
-    #     pd.DataFrame, pd.DataFrame, pd.DataFrame,
-    #     pd.DataFrame, pd.DataFrame, pd.DataFrame,
-    #     pd.DataFrame, pd.DataFrame, pd.DataFrame
-    # ]:
-    #     df_interactions_filtered, df_impressions_filtered, df_metadata_filtered = self._data_filtered
-    #
-    #     df_interactions_train, df_interactions_test = split_sequential_train_test_by_num_records_on_test(
-    #         df=df_interactions_filtered,
-    #         group_by_column="user_id",
-    #         num_records_in_test=1,
-    #     )
-    #
-    #     df_interactions_train, df_interactions_validation = split_sequential_train_test_by_num_records_on_test(
-    #         df=df_interactions_train,
-    #         group_by_column="user_id",
-    #         num_records_in_test=1,
-    #     )
-    #
-    #     df_impressions_train, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_impressions_filtered,
-    #         df_interactions=df_interactions_train,
-    #     )
-    #
-    #     df_impressions_validation, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_impressions_filtered,
-    #         df_interactions=df_interactions_validation,
-    #     )
-    #
-    #     df_impressions_test, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_impressions_filtered,
-    #         df_interactions=df_interactions_test,
-    #     )
-    #
-    #     df_metadata_train, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_metadata_filtered,
-    #         df_interactions=df_interactions_train,
-    #     )
-    #
-    #     df_metadata_validation, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_metadata_filtered,
-    #         df_interactions=df_interactions_validation,
-    #     )
-    #
-    #     df_metadata_test, _ = filter_impressions_by_interactions_index(
-    #         df_impressions=df_metadata_filtered,
-    #         df_interactions=df_interactions_test,
-    #     )
-    #
-    #     return (
-    #         df_interactions_train.copy(), df_interactions_validation.copy(), df_interactions_test.copy(),
-    #         df_impressions_train.copy(), df_impressions_validation.copy(), df_impressions_test.copy(),
-    #         df_metadata_train.copy(), df_metadata_validation.copy(), df_metadata_test.copy(),
-    #     )
 
     def _get_dataset_name_root(self) -> str:
         return self.DATASET_SUBFOLDER
@@ -1574,37 +860,6 @@ class FINNNoSlateReader(DataReader):
 
         self._interactions[BaseDataset.NAME_URM_ALL] = urm_all
 
-        # logger.info(
-        #     f"Building URM with name {BaseDataset.NAME_URM_ALL}."
-        # )
-        # df_interactions_filtered, _, _ = self._data_filtered
-        #
-        # builder_urm_all = IncrementalSparseMatrix_FilterIDs(
-        #     preinitialized_col_mapper=self._item_id_to_index_mapper,
-        #     on_new_col="add",
-        #     preinitialized_row_mapper=self._user_id_to_index_mapper,
-        #     on_new_row="add"
-        # )
-        #
-        # users = df_interactions_filtered['user_id'].to_numpy()
-        # items = df_interactions_filtered['item_id'].to_numpy()
-        # data = np.ones_like(users, dtype=np.int32, )
-        #
-        # builder_urm_all.add_data_lists(
-        #     row_list_to_add=users,
-        #     col_list_to_add=items,
-        #     data_list_to_add=data,
-        # )
-        #
-        # urm_all = builder_urm_all.get_SparseMatrix()
-        # if self._binarize_interactions:
-        #     urm_all.data = np.ones_like(urm_all.data, dtype=np.int32)
-        #
-        # self._interactions[BaseDataset.NAME_URM_ALL] = urm_all
-        #
-        # self._user_id_to_index_mapper = builder_urm_all.get_row_token_to_id_mapper()
-        # self._item_id_to_index_mapper = builder_urm_all.get_column_token_to_id_mapper()
-
     def _calculate_uim_all(self):
         logger.info(
             f"Building UIM with name {BaseDataset.NAME_UIM_ALL}."
@@ -1620,51 +875,6 @@ class FINNNoSlateReader(DataReader):
         )
 
         self._impressions[BaseDataset.NAME_UIM_ALL] = uim_all.copy()
-
-        # logger.info(
-        #     f"Building UIM with name {BaseDataset.NAME_UIM_ALL}."
-        # )
-        # _, df_impressions_filtered, _ = self._data_filtered
-        #
-        # builder_impressions_all = IncrementalSparseMatrix_FilterIDs(
-        #     preinitialized_col_mapper=self._item_id_to_index_mapper,
-        #     on_new_col="add",
-        #     preinitialized_row_mapper=self._user_id_to_index_mapper,
-        #     on_new_row="add",
-        # )
-        #
-        # df_split_chunk: pd.DataFrame
-        # for df_split_chunk in tqdm(
-        #     np.array_split(df_impressions_filtered, indices_or_sections=self._num_parts_split_dataset)
-        # ):
-        #     # Explosions of empty lists in impressions are transformed into NAs, NA values must be removed before
-        #     # being inserted into the csr_matrix.
-        #     df_split_chunk = df_split_chunk.explode(
-        #         column="impressions",
-        #         ignore_index=False,
-        #     )
-        #     df_split_chunk = df_split_chunk[
-        #         df_split_chunk["impressions"].notna()
-        #     ]
-        #
-        #     impressions = df_split_chunk["impressions"].to_numpy()
-        #     users = df_split_chunk["user_id"].to_numpy()
-        #     data = np.ones_like(impressions, dtype=np.int32)
-        #
-        #     builder_impressions_all.add_data_lists(
-        #         row_list_to_add=users,
-        #         col_list_to_add=impressions,
-        #         data_list_to_add=data,
-        #     )
-        #
-        # uim_all = builder_impressions_all.get_SparseMatrix()
-        # if self._binarize_impressions:
-        #     uim_all.data = np.ones_like(uim_all.data, dtype=np.int32)
-        #
-        # self._impressions[BaseDataset.NAME_UIM_ALL] = uim_all.copy()
-        #
-        # self._user_id_to_index_mapper = builder_impressions_all.get_row_token_to_id_mapper()
-        # self._item_id_to_index_mapper = builder_impressions_all.get_column_token_to_id_mapper()
 
     def _calculate_urm_leave_last_k_out_splits(self) -> None:
         df_train, df_validation, df_test = self.processed_data_loader.leave_last_k_out_splits
@@ -1695,46 +905,6 @@ class FINNNoSlateReader(DataReader):
 
             self._interactions[name] = urm_split.copy()
 
-        # df_train, df_validation, df_test, _, _, _, _, _, _ = self._data_leave_last_k_out_split
-        #
-        # names = [
-        #     BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TRAIN,
-        #     BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_VALIDATION,
-        #     BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TEST,
-        # ]
-        # splits = [
-        #     df_train,
-        #     df_validation,
-        #     df_test
-        # ]
-        #
-        # logger.info(
-        #     f"Building URMs with name {names}."
-        # )
-        # for name, df_split in zip(names, splits):
-        #     builder_urm_split = IncrementalSparseMatrix_FilterIDs(
-        #         preinitialized_col_mapper=self._item_id_to_index_mapper,
-        #         on_new_col="ignore",
-        #         preinitialized_row_mapper=self._user_id_to_index_mapper,
-        #         on_new_row="ignore"
-        #     )
-        #
-        #     users = df_split['user_id'].to_numpy()
-        #     items = df_split['item_id'].to_numpy()
-        #     data = np.ones_like(users, dtype=np.int32, )
-        #
-        #     builder_urm_split.add_data_lists(
-        #         row_list_to_add=users,
-        #         col_list_to_add=items,
-        #         data_list_to_add=data,
-        #     )
-        #
-        #     urm_split = builder_urm_split.get_SparseMatrix()
-        #     if self._binarize_interactions:
-        #         urm_split.data = np.ones_like(urm_split.data, dtype=np.int32)
-        #
-        #     self._interactions[name] = urm_split.copy()
-
     def _calculate_uim_leave_last_k_out_splits(self) -> None:
         df_train, df_validation, df_test = self.processed_data_loader.leave_last_k_out_splits
 
@@ -1763,57 +933,6 @@ class FINNNoSlateReader(DataReader):
             )
 
             self._impressions[name] = uim_split.copy()
-
-        # _, _, _, df_train, df_validation, df_test, _, _, _ = self._data_leave_last_k_out_split
-        #
-        # names = [
-        #     BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TRAIN,
-        #     BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_VALIDATION,
-        #     BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TEST,
-        # ]
-        # splits = [
-        #     df_train,
-        #     df_validation,
-        #     df_test,
-        # ]
-        #
-        # logger.info(
-        #     f"Building UIMs with name {names}."
-        # )
-        # for name, df_split in zip(names, splits):
-        #     builder_uim_split = IncrementalSparseMatrix_FilterIDs(
-        #         preinitialized_col_mapper=self._item_id_to_index_mapper,
-        #         on_new_col="ignore",
-        #         preinitialized_row_mapper=self._user_id_to_index_mapper,
-        #         on_new_row="ignore"
-        #     )
-        #
-        #     df_split_chunk: pd.DataFrame
-        #     for df_split_chunk in tqdm(
-        #         np.array_split(df_split, indices_or_sections=self._num_parts_split_dataset)
-        #     ):
-        #         df_split_chunk = df_split_chunk.explode(
-        #             column="impressions",
-        #             ignore_index=False,
-        #         )
-        #         df_split_chunk = df_split_chunk[
-        #             df_split_chunk["impressions"].notna()
-        #         ]
-        #         impressions = df_split_chunk["impressions"].to_numpy()
-        #         users = df_split_chunk["user_id"].to_numpy()
-        #         data = np.ones_like(impressions, dtype=np.int32)
-        #
-        #         builder_uim_split.add_data_lists(
-        #             row_list_to_add=users,
-        #             col_list_to_add=impressions,
-        #             data_list_to_add=data,
-        #         )
-        #
-        #     uim_split = builder_uim_split.get_SparseMatrix()
-        #     if self._binarize_impressions:
-        #         uim_split.data = np.ones_like(uim_split.data, dtype=np.int32)
-        #
-        #     self._impressions[name] = uim_split.copy()
 
     def _calculate_urm_time_step_splits(self) -> None:
         df_train, df_validation, df_test = self.processed_data_loader.timestamp_splits
@@ -1844,46 +963,6 @@ class FINNNoSlateReader(DataReader):
 
             self._interactions[name] = urm_split.copy()
 
-        # df_train, df_validation, df_test, _, _, _, _, _, _ = self._data_time_step_split
-        #
-        # names = [
-        #     BaseDataset.NAME_URM_TIMESTAMP_TRAIN,
-        #     BaseDataset.NAME_URM_TIMESTAMP_VALIDATION,
-        #     BaseDataset.NAME_URM_TIMESTAMP_TEST,
-        # ]
-        # splits = [
-        #     df_train,
-        #     df_validation,
-        #     df_test,
-        # ]
-        #
-        # logger.info(
-        #     f"Building URMs with name {names}."
-        # )
-        # for name, df_split in zip(names, splits):
-        #     builder_urm_split = IncrementalSparseMatrix_FilterIDs(
-        #         preinitialized_col_mapper=self._item_id_to_index_mapper,
-        #         on_new_col="ignore",
-        #         preinitialized_row_mapper=self._user_id_to_index_mapper,
-        #         on_new_row="ignore"
-        #     )
-        #
-        #     users = df_split['user_id'].to_numpy()
-        #     items = df_split['item_id'].to_numpy()
-        #     data = np.ones_like(users, dtype=np.int32, )
-        #
-        #     builder_urm_split.add_data_lists(
-        #         row_list_to_add=users,
-        #         col_list_to_add=items,
-        #         data_list_to_add=data,
-        #     )
-        #
-        #     urm_split = builder_urm_split.get_SparseMatrix()
-        #     if self._binarize_interactions:
-        #         urm_split.data = np.ones_like(urm_split.data, dtype=np.int32)
-        #
-        #     self._interactions[name] = urm_split.copy()
-
     def _calculate_uim_time_step_splits(self) -> None:
         df_train, df_validation, df_test = self.processed_data_loader.timestamp_splits
 
@@ -1912,138 +991,13 @@ class FINNNoSlateReader(DataReader):
             )
 
             self._impressions[name] = uim_split.copy()
-        # _, _, _, df_train, df_validation, df_test, _, _, _ = self._data_time_step_split
-        #
-        # names = [
-        #     BaseDataset.NAME_UIM_TIMESTAMP_TRAIN,
-        #     BaseDataset.NAME_UIM_TIMESTAMP_VALIDATION,
-        #     BaseDataset.NAME_UIM_TIMESTAMP_TEST,
-        # ]
-        # splits = [
-        #     df_train,
-        #     df_validation,
-        #     df_test,
-        # ]
-        #
-        # logger.info(
-        #     f"Building UIMs with name {names}."
-        # )
-        #
-        # for name, df_split in zip(names, splits):
-        #     builder_uim_split = IncrementalSparseMatrix_FilterIDs(
-        #         preinitialized_col_mapper=self._item_id_to_index_mapper,
-        #         on_new_col="ignore",
-        #         preinitialized_row_mapper=self._user_id_to_index_mapper,
-        #         on_new_row="ignore"
-        #     )
-        #
-        #     for df_split_chunk in tqdm(
-        #         np.array_split(df_split, indices_or_sections=self._num_parts_split_dataset)
-        #     ):
-        #         # Explosions of empty lists in impressions are transformed into NAs, NA values must be removed before
-        #         # being inserted into the csr_matrix.
-        #         df_split_chunk = df_split_chunk.explode(
-        #             column="impressions",
-        #             ignore_index=False,
-        #         )
-        #         df_split_chunk = df_split_chunk[
-        #             df_split_chunk["impressions"].notna()
-        #         ]
-        #
-        #         impressions = df_split_chunk["impressions"].to_numpy()
-        #         users = df_split_chunk["user_id"].to_numpy()
-        #         data = np.ones_like(impressions, dtype=np.int32)
-        #
-        #         builder_uim_split.add_data_lists(
-        #             row_list_to_add=users,
-        #             col_list_to_add=impressions,
-        #             data_list_to_add=data,
-        #         )
-        #
-        #     uim_split = builder_uim_split.get_SparseMatrix()
-        #     if self._binarize_impressions:
-        #         uim_split.data = np.ones_like(uim_split.data, dtype=np.int32)
-        #
-        #     self._impressions[name] = uim_split.copy()
-
-
-# def create_mapper(
-#     values: pd.Series,
-#     mapper_name: str,
-# ) -> pd.DataFrame:
-#     original_column_name = f"original_{mapper_name}_indices"
-#     mapped_column_name = f"mapped_{mapper_name}_indices"
-#
-#     return (
-#         pd.DataFrame(
-#             data={
-#                 original_column_name: values.unique(),
-#             },
-#         )
-#         .sort_values(
-#             by=[original_column_name],
-#             ascending=True,
-#             inplace=False,
-#             ignore_index=True,  # Sorting unique values in ascending order.
-#         )
-#         .reset_index(
-#             drop=False,
-#             inplace=False,
-#         )
-#         .rename(
-#             columns={"index": mapped_column_name},
-#             inplace=False,
-#         )
-#     )
 
 
 if __name__ == "__main__":
-    # dask_interface = configure_dask_cluster()
+    config = FinnNoSlatesConfig()
 
-    def load_raw_data():
-        config = FinnNoSlatesConfig()
-        data_reader = FINNNoSlateReader(
-            config=config,
-        )
+    data_reader = FINNNoSlateReader(
+        config=config,
+    )
 
-        dataset = data_reader.dataset
-        print(dataset)
-
-    load_raw_data()
-    quit(255)
-
-    # FINNNoSlateRawData().load_data()
-    # quit(0)
-
-    # DaskFinnNoSlateRawData().to_dask()
-    # PandasFinnNoSlateRawData().to_pandas()
-    # quit(0)
-
-    finn_no_statistics = StatisticsFinnNoSlate()
-    finn_no_statistics.statistics_interactions()
-    # finn_no_statistics.statistics_impressions_metadata()
-    quit(0)
-
-    # data_reader = FINNNoSlateReader()
-    # dataset = data_reader.dataset
-    # statistics = data_reader.statistics
-
-    # Create a training-validation-test split, for example by leave-1-out
-    # This splitter requires the DataReader object and the number of elements to holdout
-    # data_splitter = DataSplitter_leave_k_out(
-    #     dataReader_object=data_reader,
-    #     k_out_value=1,
-    #     use_validation_set=True,
-    #     leave_random_out=True,
-    # )
-
-    # The load_data function will split the data and save it in the desired folder.
-    # Once the split is saved, further calls to the load_data will load the split data ensuring
-    # you always use the same split
-    # data_splitter.load_data(
-    #     save_folder_path="./result_experiments/FINN-NO-SLATE/data-leave-1-random-out/"
-    #     # save_folder_path="./result_experiments/FINN-NO-SLATE/data-leave-1-random/"
-    # )
-    #
-    # # We can access the three URMs.
-    # urm_train, urm_validation, urm_test = data_splitter.get_holdout_split()
+    data_reader.dataset.verify_data_consistency()
