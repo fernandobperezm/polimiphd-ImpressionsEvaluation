@@ -9,7 +9,7 @@ from ContentWiseImpressionsReader import ContentWiseImpressionsConfig
 from experiments.commons import create_necessary_folders, DatasetInterface, Benchmarks, EvaluationStrategy
 from experiments.evaluation import (
     run_evaluation_experiments,
-    plot_popularity_of_datasets,
+    plot_popularity_of_datasets, ensure_datasets_exist,
 )
 from recsys_framework_extensions.dask import configure_dask_cluster
 from recsys_framework_extensions.logging import get_logger
@@ -55,33 +55,37 @@ if __name__ == '__main__':
     dataset_interface = DatasetInterface(
         priorities=[
             # 40,
-            20,
-            # 30,
-            20,
+            # 20,
+            30,
+            # 20,
         ],
         benchmarks=[
             # Benchmarks.MINDLarge,
-            Benchmarks.MINDSmall,
-            # Benchmarks.FINNNoSlates,
-            Benchmarks.ContentWiseImpressions,
+            # Benchmarks.MINDSmall,
+            Benchmarks.FINNNoSlates,
+            # Benchmarks.ContentWiseImpressions,
         ],
         configs=[
             # MINDLargeConfig(),
-            MINDSmallConfig(),
-            # FinnNoSlatesConfig(),
-            ContentWiseImpressionsConfig(),
+            # MINDSmallConfig(),
+            FinnNoSlatesConfig(),
+            # ContentWiseImpressionsConfig(),
         ],
         evaluations=[
             # EvaluationStrategy.LEAVE_LAST_K_OUT,
             # EvaluationStrategy.LEAVE_LAST_K_OUT,
             EvaluationStrategy.LEAVE_LAST_K_OUT,
-            EvaluationStrategy.LEAVE_LAST_K_OUT,
+            # EvaluationStrategy.LEAVE_LAST_K_OUT,
         ]
     )
 
     create_necessary_folders(
         benchmarks=dataset_interface.benchmarks,
         evaluation_strategies=dataset_interface.evaluation_strategies,
+    )
+
+    ensure_datasets_exist(
+        dataset_interface=dataset_interface,
     )
 
     if input_flags.run_evaluation:

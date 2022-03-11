@@ -6,6 +6,7 @@ import Recommenders.Recommender_import_list as recommenders
 from Evaluation.Evaluator import EvaluatorHoldout
 from Recommenders.BaseRecommender import BaseRecommender
 from recsys_framework_extensions.dask import DaskInterface
+from recsys_framework_extensions.data.reader import DataReader
 from recsys_framework_extensions.evaluation import EvaluationStrategy
 from recsys_framework_extensions.hyper_parameter_search import run_hyper_parameter_search_collaborative
 from recsys_framework_extensions.logging import get_logger
@@ -18,7 +19,8 @@ from ContentWiseImpressionsReader import (
     ContentWiseImpressionsRawData,
     PandasContentWiseImpressionsRawData,
 )
-from MINDReader import MINDSmallConfig, MINDReader
+from FINNNoReader import FinnNoSlatesConfig, FINNNoSlateReader
+from MINDReader import MINDSmallConfig, MINDReader, MINDLargeConfig
 
 logger = get_logger(__name__)
 
@@ -113,8 +115,8 @@ ALL_METRICS_LIST = [
 
 
 ARTICLE_BASELINES: list[Type[BaseRecommender]] = [
-    # recommenders.Random,
-    # recommenders.TopPop,
+    recommenders.Random,
+    recommenders.TopPop,
     recommenders.UserKNNCFRecommender,
     recommenders.ItemKNNCFRecommender,
     recommenders.RP3betaRecommender,
@@ -122,11 +124,11 @@ ARTICLE_BASELINES: list[Type[BaseRecommender]] = [
     recommenders.NMFRecommender,
     recommenders.IALSRecommender,
     recommenders.SLIMElasticNetRecommender,
-    #recommenders.SLIM_BPR_Cython,
-    recommenders.MatrixFactorization_BPR_Cython,
-    recommenders.LightFMCFRecommender,
-    recommenders.MultVAERecommender,
-    #recommenders.EASE_R_Recommender,
+    # recommenders.SLIM_BPR_Cython,
+    # recommenders.MatrixFactorization_BPR_Cython,
+    # recommenders.LightFMCFRecommender,
+    # recommenders.MultVAERecommender,
+    # recommenders.EASE_R_Recommender,
 ]
 ARTICLE_KNN_SIMILARITY_LIST = [
     "asymmetric",
@@ -152,22 +154,13 @@ ARTICLE_ALL_METRICS_LIST = [
 
 ####################################################################################################
 ####################################################################################################
-#             Reproducibility study: Hyper-parameter tuning of Baselines and CFGAN          #
+#             Common Methods.
 ####################################################################################################
 ####################################################################################################
-def _run_baselines_hyper_parameter_tuning(
-    benchmark: commons.Benchmarks,
+def get_reader_from_benchmark(
     benchmark_config: object,
-    evaluation_strategy: EvaluationStrategy,
-    recommender: Type[BaseRecommender],
-) -> None:
-    """Run hyper-parameter tuning of baselines on different datasets.
-
-    This method runs hyper parameter tuning of baselines on the original three datasets: Ciao,
-    ML100K, and ML1M in their "original" forms, i.e., using the train/test splits reported in the
-    original implementation. The baselines are the same as in the original paper of CFGAN plus
-    other baselines, such as PureSVD and P3Alpha.
-    """
+    benchmark: commons.Benchmarks,
+) -> DataReader:
     if commons.Benchmarks.ContentWiseImpressions == benchmark:
         benchmark_config = cast(
             ContentWiseImpressionsConfig,
@@ -200,8 +193,67 @@ def _run_baselines_hyper_parameter_tuning(
         benchmark_reader = MINDReader(
             config=benchmark_config,
         )
+    elif commons.Benchmarks.MINDLarge == benchmark:
+        benchmark_config = cast(
+            MINDLargeConfig,
+            benchmark_config,
+        )
+        benchmark_reader = MINDReader(
+            config=benchmark_config,
+        )
+    elif commons.Benchmarks.FINNNoSlates == benchmark:
+        benchmark_config = cast(
+            FinnNoSlatesConfig,
+            benchmark_config,
+        )
+        benchmark_reader = FINNNoSlateReader(
+            config=benchmark_config,
+        )
     else:
         raise ValueError("error fernando-debugger")
+
+    return benchmark_reader
+
+
+####################################################################################################
+####################################################################################################
+#             Data Processing
+####################################################################################################
+####################################################################################################
+def ensure_datasets_exist(
+    dataset_interface: commons.DatasetInterface,
+) -> None:
+    for dataset in dataset_interface.datasets:
+        benchmark_reader = get_reader_from_benchmark(
+            benchmark_config=dataset.config,
+            benchmark=dataset.benchmark,
+        )
+
+        print(benchmark_reader.dataset.verify_data_consistency())
+
+
+####################################################################################################
+####################################################################################################
+#             Reproducibility study: Hyper-parameter tuning of Baselines and CFGAN          #
+####################################################################################################
+####################################################################################################
+def _run_baselines_hyper_parameter_tuning(
+    benchmark: commons.Benchmarks,
+    benchmark_config: object,
+    evaluation_strategy: EvaluationStrategy,
+    recommender: Type[BaseRecommender],
+) -> None:
+    """Run hyper-parameter tuning of baselines on different datasets.
+
+    This method runs hyper parameter tuning of baselines on the original three datasets: Ciao,
+    ML100K, and ML1M in their "original" forms, i.e., using the train/test splits reported in the
+    original implementation. The baselines are the same as in the original paper of CFGAN plus
+    other baselines, such as PureSVD and P3Alpha.
+    """
+    benchmark_reader = get_reader_from_benchmark(
+        benchmark_config=benchmark_config,
+        benchmark=benchmark,
+    )
     
     dataset = benchmark_reader.dataset
 
