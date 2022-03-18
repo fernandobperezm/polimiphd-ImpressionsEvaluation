@@ -1,12 +1,12 @@
 """ ContentWiseImpressionsReader.py
-This module reads the small or the large version of the Microsoft News Dataset (ContentWiseImpressions).
+This module reads the small or the large version of the Microsoft News ExperimentCase (ContentWiseImpressions).
 
 Notes
 -----
 TODO: fernando-debugger. 
 Columns of the dataset
     Impression ID
-        ContentWiseImpressions Dataset identifier for the impression. THEY DO NOT COME IN ORDER, i.e., a higher impression ID
+        ContentWiseImpressions ExperimentCase identifier for the impression. THEY DO NOT COME IN ORDER, i.e., a higher impression ID
         does not mean that the impression occurred later. See user "U1000" where impression "86767" comes first than
         impression "46640", so do not rely on impression reproducibility.pyid to partition the dataset. Also, partition id is shuffled
         across users, so two consecutive impression ids might refer to different users.
@@ -98,6 +98,8 @@ class ContentWiseImpressionsConfig:
         ".", "data", "ContentWiseImpressions",
     )
 
+    sha256_hash: str = ""
+
     num_interaction_records = 10_457_810
     num_impression_records = 307_453
 
@@ -152,7 +154,7 @@ class ContentWiseImpressionsConfig:
     )
 
     def __attrs_post_init__(self):
-        # We need to use object.__setattr__ because the config is an immutable class, this is the attrs way to
+        # We need to use object.__setattr__ because the benchmark_config is an immutable class, this is the attrs way to
         # circumvent assignment in immutable classes.
         if ContentWiseImpressionsVariant.ITEMS == self.variant:
             object.__setattr__(self, "interactions_item_column", "item_id")
@@ -163,6 +165,8 @@ class ContentWiseImpressionsConfig:
                 f"Received an invalid enum for variant={self.variant}. "
                 f"Valid values are {list(ContentWiseImpressionsVariant)}"
             )
+
+        object.__setattr__(self, "sha256_hash", compute_sha256_hash_from_object_repr(obj=self))
 
 
 class ContentWiseImpressionsRawData(DaskParquetDataMixin):
@@ -356,14 +360,11 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin):
         pandas_raw_data: PandasContentWiseImpressionsRawData,
     ):
         self.config = config
-        self.config_hash = compute_sha256_hash_from_object_repr(
-            obj=config
-        )
 
         self.pandas_raw_data = pandas_raw_data
 
         self._dataset_folder = os.path.join(
-            self.config.data_folder, "data-processing", self.config_hash, ""
+            self.config.data_folder, "data-processing", self.config.sha256_hash, ""
         )
 
         self.file_leave_last_k_out_folder = os.path.join(
@@ -547,6 +548,204 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin):
         return [df_data_train, df_data_validation, df_data_test]
 
 
+# class PandasContentWiseImpressionsFeatureData(ParquetDataMixin):
+#     def __init__(
+#         self,
+#         config: ContentWiseImpressionsConfig,
+#         pandas_raw_data: PandasContentWiseImpressionsRawData,
+#     ):
+#         self.config = config
+#         self.config_hash = compute_sha256_hash_from_object_repr(
+#             obj=config
+#         )
+#
+#         self.pandas_raw_data = pandas_raw_data
+#
+#         self._dataset_folder = os.path.join(
+#             self.config.data_folder, "data-processing", self.config_hash, ""
+#         )
+#
+#         self.file_leave_last_k_out_folder = os.path.join(
+#             self._dataset_folder, "leave-last-k-out", ""
+#         )
+#
+#         self.file_timestamp_folder = os.path.join(
+#             self._dataset_folder, "timestamp", ""
+#         )
+#
+#         self.file_filter_data_path = os.path.join(
+#             self._dataset_folder, "filter_data.parquet"
+#         )
+#
+#         self.train_filename = "train.parquet"
+#         self.validation_filename = "validation.parquet"
+#         self.test_filename = "test.parquet"
+#
+#         os.makedirs(
+#             name=self._dataset_folder,
+#             exist_ok=True,
+#         )
+#         os.makedirs(
+#             name=self.file_leave_last_k_out_folder,
+#             exist_ok=True,
+#         )
+#         os.makedirs(
+#             name=self.file_timestamp_folder,
+#             exist_ok=True,
+#         )
+#
+#     @property  # type: ignore
+#     @typed_cache
+#     def filtered(self) -> pd.DataFrame:
+#         return self.load_parquet(
+#             file_path=self.file_filter_data_path,
+#             to_pandas_func=self._filtered_to_pandas,
+#         ).astype(
+#             dtype=self.config.pandas_dtypes,
+#         )
+#
+#     @property  # type: ignore
+#     @typed_cache
+#     def timestamp_splits(
+#         self
+#     ) -> tuple[
+#         pd.DataFrame, pd.DataFrame, pd.DataFrame,
+#     ]:
+#         file_paths = [
+#             os.path.join(self.file_timestamp_folder, self.train_filename),
+#             os.path.join(self.file_timestamp_folder, self.validation_filename),
+#             os.path.join(self.file_timestamp_folder, self.test_filename),
+#         ]
+#
+#         df_train, df_validation, df_test = self.load_parquets(
+#             file_paths=file_paths,
+#             to_pandas_func=self._timestamp_splits_to_pandas,
+#         )
+#
+#         df_train = df_train.astype(dtype=self.config.pandas_dtypes)
+#         df_validation = df_validation.astype(dtype=self.config.pandas_dtypes)
+#         df_test = df_test.astype(dtype=self.config.pandas_dtypes)
+#
+#         return df_train, df_validation, df_test
+#
+#     @property  # type: ignore
+#     @typed_cache
+#     def leave_last_k_out_splits(
+#         self
+#     ) -> tuple[
+#         pd.DataFrame, pd.DataFrame, pd.DataFrame,
+#     ]:
+#         file_paths = [
+#             os.path.join(self.file_leave_last_k_out_folder, self.train_filename),
+#             os.path.join(self.file_leave_last_k_out_folder, self.validation_filename),
+#             os.path.join(self.file_leave_last_k_out_folder, self.test_filename),
+#         ]
+#
+#         df_train, df_validation, df_test = self.load_parquets(
+#             file_paths=file_paths,
+#             to_pandas_func=self._leave_last_k_out_splits_to_pandas,
+#         )
+#
+#         df_train = df_train.astype(dtype=self.config.pandas_dtypes)
+#         df_validation = df_validation.astype(dtype=self.config.pandas_dtypes)
+#         df_test = df_test.astype(dtype=self.config.pandas_dtypes)
+#
+#         return df_train, df_validation, df_test
+#
+#     def _filtered_to_pandas(self) -> pd.DataFrame:
+#         """
+#
+#         Notes
+#         -----
+#         The main dataframe, to which all filters are applied, is `df_interactions` given that
+#         `df_interactions_condensed` as the interactions in a "condensed" format (user_id, list[item_id]) instead of
+#         tuple format (user_id, item_id). `df_interaction` has interactions in tuple format.
+#
+#         The main issue with this is that `df_interaction` *does not have unique indices*, given that it is
+#         an exploded version of `df_interactions_condensed`.
+#
+#         What we do to avoid filtering problems is that we first reset the index of `df_interactions_exploded` without
+#         dropping the index column, then we apply all filters to it, and then set the index again to be the
+#         previously-reset index column.
+#
+#         After this, we can ensure that the set of indices values are the same across the three datasets and when we
+#         filter datasets by their indices we are sure that we're doing the filtering correctly.
+#         """
+#
+#         logger.info(
+#             f"Filtering data sources (interactions, impressions, metadata)."
+#         )
+#
+#         df_data = self.pandas_raw_data.data
+#
+#         df_data = df_data.sort_values(
+#             by=["timestamp"],
+#             ascending=True,
+#             axis="index",
+#             inplace=False,
+#             ignore_index=False,
+#         )
+#
+#         df_data, _ = remove_duplicates_in_interactions(
+#             df=df_data,
+#             columns_to_compare=["user_id", self.config.interactions_item_column],
+#             keep=self.config.keep_duplicates,
+#         )
+#
+#         df_data, _ = remove_users_without_min_number_of_interactions(
+#             df=df_data,
+#             users_column="user_id",
+#             min_number_of_interactions=self.config.min_number_of_interactions,
+#         )
+#
+#         return df_data
+#
+#     def _timestamp_splits_to_pandas(self) -> list[pd.DataFrame]:
+#         df_data_filtered = self.filtered
+#
+#         # The timestamp in the dataset represents the timestamp of the impression, not the interactions, therefore,
+#         # we must use the condensed version to compute the 80% and the 90% of timestamps in the dataset. Using
+#         # `df_interactions` may shift the value of the timestamp, specially if there are several popular users.
+#         described = df_data_filtered["timestamp"].describe(
+#             datetime_is_numeric=True,
+#             percentiles=[0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+#         )
+#
+#         validation_threshold = described["80%"]
+#         test_threshold = described["90%"]
+#
+#         df_data_train, df_data_test = split_sequential_train_test_by_column_threshold(
+#             df=df_data_filtered,
+#             column="timestamp",
+#             threshold=test_threshold
+#         )
+#
+#         df_data_train, df_data_validation = split_sequential_train_test_by_column_threshold(
+#             df=df_data_train,
+#             column="timestamp",
+#             threshold=validation_threshold
+#         )
+#
+#         return [df_data_train, df_data_validation, df_data_test]
+#
+#     def _leave_last_k_out_splits_to_pandas(self) -> list[pd.DataFrame]:
+#         df_data_filtered = self.filtered
+#
+#         df_data_train, df_data_test = split_sequential_train_test_by_num_records_on_test(
+#             df=df_data_filtered,
+#             group_by_column="user_id",
+#             num_records_in_test=1,
+#         )
+#
+#         df_data_train, df_data_validation = split_sequential_train_test_by_num_records_on_test(
+#             df=df_data_train,
+#             group_by_column="user_id",
+#             num_records_in_test=1,
+#         )
+#
+#         return [df_data_train, df_data_validation, df_data_test]
+
+
 class ContentWiseImpressionsReader(DataReader):
     def __init__(
         self,
@@ -556,26 +755,16 @@ class ContentWiseImpressionsReader(DataReader):
         super().__init__()
 
         self.config = config
-        self.config_hash = compute_sha256_hash_from_object_repr(
-            obj=config
-        )
         self.processed_data_loader = processed_data_loader
 
         self.DATA_FOLDER = os.path.join(
-            self.config.data_folder, "data_reader", self.config.variant.value, self.config_hash, "",
+            self.config.data_folder, "data_reader", self.config.variant.value, self.config.sha256_hash, "",
         )
 
         self.ORIGINAL_SPLIT_FOLDER = self.DATA_FOLDER
-
         self._DATA_READER_NAME = "ContentWiseImpressionsReader"
-
         self.DATASET_SUBFOLDER = "ContentWiseImpressionsReader"
-
         self.IS_IMPLICIT = self.config.binarize_interactions
-
-        self._binarize_impressions = self.config.binarize_impressions
-        self._binarize_interactions = self.config.binarize_interactions
-        self._num_parts_split_dataset = 10
 
         self.users_column = "user_id"
         self.items_column = self.config.interactions_item_column
@@ -698,7 +887,7 @@ class ContentWiseImpressionsReader(DataReader):
             df=df_data_filtered,
             users_column=self.users_column,
             items_column=self.items_column,
-            binarize_interactions=self._binarize_interactions,
+            binarize_interactions=self.config.binarize_interactions,
             mapper_user_id_to_index=self._user_id_to_index_mapper,
             mapper_item_id_to_index=self._item_id_to_index_mapper,
         )
@@ -714,7 +903,7 @@ class ContentWiseImpressionsReader(DataReader):
             df=self.processed_data_loader.filtered,
             users_column=self.users_column,
             items_column=self.impressions_column,
-            binarize_interactions=self._binarize_impressions,
+            binarize_interactions=self.config.binarize_impressions,
             mapper_user_id_to_index=self._user_id_to_index_mapper,
             mapper_item_id_to_index=self._item_id_to_index_mapper,
         )
@@ -743,7 +932,7 @@ class ContentWiseImpressionsReader(DataReader):
                 df=df_split,
                 users_column=self.users_column,
                 items_column=self.items_column,
-                binarize_interactions=self._binarize_impressions,
+                binarize_interactions=self.config.binarize_interactions,
                 mapper_user_id_to_index=self._user_id_to_index_mapper,
                 mapper_item_id_to_index=self._item_id_to_index_mapper,
             )
@@ -772,7 +961,7 @@ class ContentWiseImpressionsReader(DataReader):
                 df=df_split,
                 users_column=self.users_column,
                 items_column=self.impressions_column,
-                binarize_interactions=self._binarize_impressions,
+                binarize_interactions=self.config.binarize_impressions,
                 mapper_user_id_to_index=self._user_id_to_index_mapper,
                 mapper_item_id_to_index=self._item_id_to_index_mapper,
             )
@@ -801,7 +990,7 @@ class ContentWiseImpressionsReader(DataReader):
                 df=df_split,
                 users_column=self.users_column,
                 items_column=self.items_column,
-                binarize_interactions=self._binarize_impressions,
+                binarize_interactions=self.config.binarize_interactions,
                 mapper_user_id_to_index=self._user_id_to_index_mapper,
                 mapper_item_id_to_index=self._item_id_to_index_mapper,
             )
@@ -830,7 +1019,7 @@ class ContentWiseImpressionsReader(DataReader):
                 df=df_split,
                 users_column=self.users_column,
                 items_column=self.impressions_column,
-                binarize_interactions=self._binarize_impressions,
+                binarize_interactions=self.config.binarize_impressions,
                 mapper_user_id_to_index=self._user_id_to_index_mapper,
                 mapper_item_id_to_index=self._item_id_to_index_mapper,
             )
@@ -845,15 +1034,12 @@ class ContentWiseImpressionsStatistics(DatasetStatisticsMixin):
         config: ContentWiseImpressionsConfig,
     ):
         self.config = config
-        self.config_hash = compute_sha256_hash_from_object_repr(
-            obj=self.config,
-        )
         self.reader = reader
         self.processed_data_reader = reader.processed_data_loader
         self.raw_data_reader = reader.processed_data_loader.pandas_raw_data
 
         self.statistics_folder = os.path.join(
-            self.config.data_folder, "statistics", self.config.variant.value, self.config_hash, "",
+            self.config.data_folder, "statistics", self.config.variant.value, self.config.sha256_hash, "",
         )
         self.statistics_file_name = "statistics.zip"
 
