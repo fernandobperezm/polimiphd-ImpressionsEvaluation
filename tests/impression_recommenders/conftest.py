@@ -177,6 +177,30 @@ def uim_position(df: pd.DataFrame) -> sp.csr_matrix:
 
 
 @fixture
+def uim_frequency(df: pd.DataFrame) -> sp.csr_matrix:
+    df = df.set_index(
+        ["timestamp", "user_id", "item_id"]
+    ).apply(
+        pd.Series.explode,
+    ).reset_index(
+        drop=False,
+    )
+
+    arr_user_id = df["user_id"].to_numpy()
+    arr_item_id = df["impressions"].to_numpy()
+    arr_data = np.ones_like(arr_user_id, dtype=np.int32)
+
+    return sp.csr_matrix(
+        (
+            arr_data,
+            (arr_user_id, arr_item_id),
+        ),
+        shape=(NUM_USERS, NUM_ITEMS),
+        dtype=np.int32,
+    )
+
+
+@fixture
 def uim(df: pd.DataFrame) -> sp.csr_matrix:
     df = df.set_index(
         ["timestamp", "user_id", "item_id"]
