@@ -49,6 +49,7 @@ class TestLastImpressionsRecommender:
         rec.fit()
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
+            items_to_compute=test_items,
             cutoff=test_cutoff,
             remove_seen_flag=False,
             remove_top_pop_flag=False,
@@ -322,4 +323,3 @@ class TestLastImpressionsRecommender:
         # assert
         assert np.array_equal(expected_item_scores, scores)
         assert np.array_equal(expected_recommendations, recommendations)
-
