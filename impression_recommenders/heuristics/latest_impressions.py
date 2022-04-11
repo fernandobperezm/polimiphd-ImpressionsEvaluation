@@ -1,12 +1,8 @@
-from typing import Literal, Optional
+from typing import Optional
 
 import numpy as np
 import scipy.sparse as sp
-
 from Recommenders.BaseRecommender import BaseRecommender
-
-
-T_RANK_METHOD = Literal["average", "min", "max", "dense", "ordinal"]
 
 
 class LastImpressionsRecommender(BaseRecommender):
@@ -50,7 +46,6 @@ class LastImpressionsRecommender(BaseRecommender):
 
         self._uim_position: sp.csr_matrix = uim_position.copy()
         self._uim_timestamp: sp.csr_matrix = uim_timestamp.copy()
-        self._rank_method: T_RANK_METHOD = "average"
 
         assert self.URM_train.shape == self._uim_position.shape
         assert self.URM_train.shape == self._uim_timestamp.shape

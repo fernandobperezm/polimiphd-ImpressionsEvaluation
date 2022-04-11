@@ -99,11 +99,9 @@ class DitheringRecommender(BaseRecommender):
 
     def fit(
         self,
-        rank_method: T_RANK_METHOD,
         epsilon: float,
         **kwargs,
     ):
-        self._rank_method = rank_method
         self._rng_func_variance = np.log(epsilon)
 
     def save_model(self, folder_path, file_name=None):

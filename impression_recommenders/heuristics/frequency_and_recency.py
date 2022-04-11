@@ -1,4 +1,3 @@
-from enum import Enum
 from typing import Optional
 
 import numpy as np
@@ -6,13 +5,7 @@ import scipy.sparse as sp
 import scipy.stats as st
 from Recommenders.BaseRecommender import BaseRecommender
 
-
-class ERankMethod(Enum):
-    AVERAGE = "average"
-    MIN = "min"
-    MAX = "max"
-    DENSE = "dense"
-    ORDINAL = "ordinal"
+from impression_recommenders.constants import ERankMethod
 
 
 class FrequencyRecencyRecommender(BaseRecommender):
