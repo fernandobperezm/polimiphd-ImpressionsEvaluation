@@ -1,8 +1,7 @@
-from typing import Literal
+from typing import Literal, Optional
 
 import numpy as np
 import scipy.sparse as sp
-import scipy.stats as st
 
 from Recommenders.BaseRecommender import BaseRecommender
 
@@ -59,7 +58,7 @@ class LastImpressionsRecommender(BaseRecommender):
     def _compute_item_score(
         self,
         user_id_array: list[int],
-        items_to_compute=None
+        items_to_compute: Optional[list[int]] = None,
     ) -> np.ndarray:
         """
         Computes the preference scores of users toward items.
@@ -72,16 +71,19 @@ class LastImpressionsRecommender(BaseRecommender):
         Return
         ------
         np.ndarray
-            A matrix with shape (M, N), where M = |user_id_array|, and N = |items_to_compute|.
+            A matrix with shape (M, N), where M = |user_id_array|, and N = #Items .
         """
-        _, num_train_items = self.URM_train.shape
-        num_score_users = len(user_id_array)
+        assert user_id_array is not None
+        assert len(user_id_array) > 0
+
+        num_score_users: int = len(user_id_array)
+        num_score_items: int = self.URM_train.shape[1]
 
         item_scores: np.ndarray = np.NINF * np.ones(
-            shape=(num_score_users, num_train_items)
+            shape=(num_score_users, num_score_items)
         )
         item_scores2: np.ndarray = np.NINF * np.ones(
-            shape=(num_score_users, num_train_items)
+            shape=(num_score_users, num_score_items)
         )
 
         for idx_item_score, user_id in enumerate(user_id_array):
@@ -89,15 +91,23 @@ class LastImpressionsRecommender(BaseRecommender):
             user_positions: np.ndarray = -self._uim_position[user_id, :].toarray().ravel()
 
             user_max_timestamp = user_timestamps.max(initial=np.NINF)
-            if user_max_timestamp == 0:
+            if user_max_timestamp == 0.0:
                 # A value of zero means that the user did not receive any impression, therefore, we cannot recommend
                 # anything with this recommender.
                 user_max_timestamp = np.NINF
 
+            # If we want to compute for only a certain group of items (`items_to_compute` not being None),
+            # then we must have a mask that sets -INF to items outside this list.
+            if items_to_compute is None:
+                arr_mask_items: np.ndarray = np.ones_like(user_timestamps, dtype=np.bool8)
+            else:
+                arr_mask_items = np.zeros_like(user_timestamps, dtype=np.bool8)
+                arr_mask_items[items_to_compute] = True
+
             # Option 1. Set all values in columns with np.where, in this case, if the condition is true, then it uses
             # the value in `user_positions`, else it uses `np.NINF`.
             item_scores[idx_item_score, :] = np.where(
-                user_timestamps == user_max_timestamp,
+                (user_timestamps == user_max_timestamp) & arr_mask_items,
                 user_positions,
                 np.NINF,
             )
@@ -106,59 +116,13 @@ class LastImpressionsRecommender(BaseRecommender):
             # boolean indexing, in this case, items_to_select is a boolean array, in places where it is True,
             # then it will update the value. The number of truth values must be the same in the right. That is why we
             # also do user_positions[items_to_select], in this way we tell which values we want in those truth places.
-            items_to_select = user_timestamps == user_max_timestamp
+            items_to_select = (user_timestamps == user_max_timestamp) & arr_mask_items
             item_scores2[idx_item_score, items_to_select] = user_positions[items_to_select]
 
-        assert item_scores.shape == (num_score_users, num_train_items)
+        assert item_scores.shape == (num_score_users, num_score_items)
         assert np.array_equal(item_scores, item_scores2)
 
         return item_scores
-
-        #
-        # arr_timestamp_users = self._uim_timestamp[user_id_array, :].max(axis=0)
-        # arr_position_users = self._uim_position[user_id_array, :]
-        #
-        # # st.rankdata assigns rank in ascending order, where the highest rank is the most relevant item, therefore,
-        # # we need to invert the scores with the minus sign (-) so it assigns the highest rank to the most recent and
-        # # most frequent item.
-        # arr_scores_timestamp = -arr_timestamp_users
-        # arr_scores_position = -arr_position_users
-        #
-        # arr_frequency_timestamp_scores = np.array(
-        #     list(zip(arr_scores_timestamp, arr_scores_position)),
-        #     dtype=[
-        #         ("score_timestamp", arr_scores_timestamp.dtype),
-        #         ("score_position", arr_scores_position.dtype),
-        #     ]
-        # )
-        #
-        # item_scores = st.rankdata(
-        #     a=arr_frequency_timestamp_scores,
-        #     method=self._rank_method,
-        #     axis=1,
-        # )
-        #
-        # assert item_scores.shape == (num_score_users, num_train_items)
-        # assert item_scores.shape == arr_scores_timestamp.shape
-        # assert item_scores.shape == arr_scores_position.shape
-        #
-        # return item_scores
-
-        # if items_to_compute is None:
-        #     item_scores = arr_item_scores_all
-        # else:
-        #     # Assign the lowest possible score to items outside `items_to_compute`, this score is NEGATIVE INFINITE.
-        #     # Items inside `items_to_compute` will receive their value from `self._uim_timestamp`
-        #     item_scores = np.NINF * np.ones(
-        #         (num_score_users, num_train_items),
-        #         dtype=np.float32
-        #     )
-        #
-        #     item_scores[:, items_to_compute] = arr_item_scores_all[:, items_to_compute]
-        #
-        # assert item_scores.shape == (num_score_users, num_train_items)
-        #
-        # return item_scores
 
     def save_model(self, folder_path, file_name=None):
         pass
