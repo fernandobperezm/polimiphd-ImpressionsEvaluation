@@ -209,7 +209,7 @@ def uim(df: pd.DataFrame) -> sp.csr_matrix:
     ).reset_index(
         drop=False,
     ).drop_duplicates(
-        subset=["user_id", "positions"],
+        subset=["user_id", "impressions"],
         keep="last",
         inplace=False,
     )
