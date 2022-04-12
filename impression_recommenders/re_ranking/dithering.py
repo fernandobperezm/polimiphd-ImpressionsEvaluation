@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Optional
 
 import numpy as np
 import scipy.sparse as sp
@@ -6,8 +6,7 @@ import scipy.stats as st
 
 from Recommenders.BaseRecommender import BaseRecommender
 
-
-T_RANK_METHOD = Literal["average", "min", "max", "dense", "ordinal"]
+from impression_recommenders.constants import ERankMethod
 
 
 class DitheringRecommender(BaseRecommender):
@@ -46,13 +45,17 @@ class DitheringRecommender(BaseRecommender):
         )
 
         self._trained_recommender = trained_recommender
-        self._rank_method: T_RANK_METHOD = "average"
+        self._rank_method: ERankMethod = ERankMethod.MIN
 
         self._rng = np.random.default_rng(seed=seed)
         self._rng_func_mean = 0.0
         self._rng_func_variance = 1.0
 
-    def _compute_item_score(self, user_id_array, items_to_compute=None):
+    def _compute_item_score(
+        self,
+        user_id_array: list[int],
+        items_to_compute: Optional[list[int]] = None
+    ):
         """
 
         :class:`BaseRecommender` ranks items in a further step by their score. Items with the highest scores are
@@ -61,20 +64,20 @@ class DitheringRecommender(BaseRecommender):
         :class:`DitheringRecommender` computes the item scores as the
 
         """
+        assert user_id_array is not None
+        assert len(user_id_array) > 0
 
         item_scores_trained_recommender = self._trained_recommender._compute_item_score(
             user_id_array=user_id_array,
             items_to_compute=items_to_compute,
         )
 
-        # `st.rankdata` computes the rankings from 1 to n. It gives 1 to the highest score and n to the lowest score.
-        # Dithering requires that 1 is given to the lowest score and n to the highest score.
-        # Therefore, we apply `st.rankdata` to -item_scores_trained_recommender (notice the - sign) so the highest
-        # score become the lowest and vice-versa. This ensures that the originally-highest-score gets the highest
-        # ranking (n) while the originally-lowest-score gets the lowest ranking (1).
+        # `st.rankdata` computes the rankings from 1 to n.
+        # It gives 1 to the lowest score and n to the lowest score.
+        # Dithering requires the same: 1 is given to the lowest score and n to the highest score.
         ranks_item_scores_trained_recommender = st.rankdata(
-            a=-item_scores_trained_recommender,
-            method=self._rank_method,
+            a=item_scores_trained_recommender,
+            method=self._rank_method.value,
             axis=1,
         )
 
@@ -89,6 +92,20 @@ class DitheringRecommender(BaseRecommender):
         )
 
         new_item_scores = log_ranks_item_scores + random_noise_item_scores
+
+        # If we are computing scores to a specific set of items, then we must set items outside this set to np.NINF,
+        # so they are not
+        if items_to_compute is not None:
+            arr_mask_items = np.zeros_like(new_item_scores, dtype=np.bool8)
+            arr_mask_items[:, items_to_compute] = True
+
+            # If the item is in `items_to_compute`, then keep the value from `new_item_scores`.
+            # Else, set to -inf.
+            new_item_scores = np.where(
+                arr_mask_items,
+                new_item_scores,
+                np.NINF,
+            )
 
         assert item_scores_trained_recommender.shape == ranks_item_scores_trained_recommender.shape
         assert item_scores_trained_recommender.shape == log_ranks_item_scores.shape
