@@ -1,21 +1,19 @@
-from typing import Literal, cast
+from typing import cast, Optional
 
 import numpy as np
 import scipy.sparse as sp
 import scipy.stats as st
-
 from Recommenders.BaseRecommender import BaseRecommender
 
-
-T_RANK_METHOD = Literal["average", "min", "max", "dense", "ordinal"]
+from impression_recommenders.constants import ERankMethod
 
 
 class CyclingRecommender(BaseRecommender):
     def __init__(
         self,
         urm_train: sp.csr_matrix,
+        uim_frequency: sp.csr_matrix,
         trained_recommender: BaseRecommender,
-        urm_presentation: sp.csr_matrix,
         seed: int,
     ):
         super().__init__(
@@ -24,17 +22,17 @@ class CyclingRecommender(BaseRecommender):
         )
 
         self._trained_recommender = trained_recommender
-        self._matrix_presentation = urm_presentation
+        self._uim_frequency = uim_frequency
         self._matrix_presentation_scores = sp.csr_matrix(np.array([], dtype=np.float32))
         self._cycling_weight: float = 3.0
-        self._rank_method: T_RANK_METHOD = "average"
+        self._rank_method: ERankMethod = ERankMethod.MIN
 
         self._rng = np.random.default_rng(seed=seed)
 
     def _compute_item_score(
         self,
-        user_id_array,
-        items_to_compute=None
+        user_id_array: list[int],
+        items_to_compute: Optional[list[int]] = None,
     ) -> np.ndarray:
         """
         This function computes the item scores using the definition of cycling.
@@ -60,46 +58,75 @@ class CyclingRecommender(BaseRecommender):
             A (M, N) numpy array that contains the score for each user-item pair.
 
         """
+        assert user_id_array is not None
+        assert len(user_id_array) > 0
+
+        num_score_users: int = len(user_id_array)
+        num_score_items: int = self.URM_train.shape[1]
+
         # Dense array of shape (M,N) where M is len(user_id_array) and N is the total number of users in the dataset.
         arr_scores_relevance: np.ndarray = self._trained_recommender._compute_item_score(
             user_id_array=user_id_array,
             items_to_compute=items_to_compute,
         )
-        arr_scores_presentation = self._matrix_presentation_scores[user_id_array]
+        arr_scores_presentation: np.ndarray = self._matrix_presentation_scores[user_id_array, :].toarray()
 
-        arr_scores_relevance = -arr_scores_relevance
-        arr_scores_presentation = -arr_scores_presentation
+        assert (num_score_users, num_score_items) == arr_scores_presentation.shape
+        assert (num_score_users, num_score_items) == arr_scores_relevance.shape
 
-        arr_presentation_relevance_scores = np.array(
-            list(zip(arr_scores_presentation, arr_scores_relevance)),
+        arr_scores_presentation_relevance = np.array(
+            [
+                [
+                    (arr_scores_presentation[row, col], arr_scores_relevance[row, col])
+                    for col in range(num_score_items)
+                ]
+                for row in range(num_score_users)
+            ],
             dtype=[
                 ("score_presentation", arr_scores_presentation.dtype),
-                ("score_relevance", arr_scores_relevance.dtype)
+                ("score_relevance", arr_scores_relevance.dtype),
             ]
         )
 
+        assert (num_score_users, num_score_items) == arr_scores_presentation_relevance.shape
+
+        # st.rankdata assigns rank in ascending order [(0,0) -> 1 while (4, 6) -> 10], where the highest rank is the
+        # most relevant item, therefore, we need to invert the scores with the minus sign (-) so it assigns the
+        # highest rank to the most recent and most frequent item.
         new_item_scores = st.rankdata(
-            a=arr_presentation_relevance_scores,
-            method=self._rank_method,
+            a=arr_scores_presentation_relevance,
+            method=self._rank_method.value,
             axis=1,
         )
 
-        assert arr_scores_relevance.shape == arr_scores_presentation.shape
-        assert new_item_scores.shape[1] == arr_scores_presentation.shape[1]
+        # If we are computing scores to a specific set of items, then we must set items outside this set to np.NINF,
+        # so they are not
+        if items_to_compute is not None:
+            arr_mask_items = np.zeros_like(new_item_scores, dtype=np.bool8)
+            arr_mask_items[:, items_to_compute] = True
+
+            # If the item is in `items_to_compute`, then keep the value from `new_item_scores`.
+            # Else, set to -inf.
+            new_item_scores = np.where(
+                arr_mask_items,
+                new_item_scores,
+                np.NINF,
+            )
+
+        assert (num_score_users, num_score_items) == new_item_scores.shape
 
         return new_item_scores
 
     def fit(
         self,
         weight: float,
-        rank_method: T_RANK_METHOD,
         **kwargs,
     ):
         self._cycling_weight = weight
 
         self._matrix_presentation_scores = cast(
             sp.csr_matrix,
-            self._matrix_presentation / self._cycling_weight
+            self._uim_frequency / self._cycling_weight
         )
 
     def save_model(self, folder_path, file_name=None):

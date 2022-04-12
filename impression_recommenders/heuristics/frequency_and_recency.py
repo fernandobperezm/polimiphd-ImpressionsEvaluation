@@ -80,8 +80,7 @@ class FrequencyRecencyRecommender(BaseRecommender):
         )
 
         # st.rankdata assigns rank in ascending order [(0,0) -> 1 while (4, 6) -> 10], where the highest rank is the
-        # most relevant item, therefore, we need to invert the scores with the minus sign (-) so it assigns the
-        # highest rank to the most recent and most frequent item.
+        # most relevant item.
         item_scores = st.rankdata(
             a=arr_frequency_timestamp_scores,
             method=self._rank_method.value,
