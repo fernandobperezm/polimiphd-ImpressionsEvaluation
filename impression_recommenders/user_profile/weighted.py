@@ -1,3 +1,4 @@
+import abc
 from typing import Optional, Union
 
 import numpy as np
@@ -10,7 +11,7 @@ from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO
 
 
-class BaseWeightedUserProfileRecommender(BaseRecommender):
+class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
     def __init__(
         self,
         urm_train: sp.csr_matrix,

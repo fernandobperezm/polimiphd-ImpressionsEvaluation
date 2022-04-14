@@ -778,11 +778,6 @@ class TestUserWeightedUserProfileRecommender:
             [43., 44., 33., 55., 48., 41., 60.],
         ], dtype=np.float64)
 
-        exp = mock_base_recommender.W_sparse.dot(
-            (test_reg_urm * urm)
-            + (test_reg_uim * uim)
-        )
-
         rec = UserWeightedUserProfileRecommender(
             urm_train=urm,
             uim_train=uim,
