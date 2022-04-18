@@ -41,17 +41,17 @@ class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
         )
 
         self._attr_name_item_factors = "ITEM_factors"
+        if not hasattr(trained_recommender, self._attr_name_item_factors):
+            raise AttributeError(
+                f"Cannot fold-in the recommender {trained_recommender} as it has not been trained (it lacks the "
+                f"attribute '{self._attr_name_item_factors}'."
+            )
 
         self.RECOMMENDER_NAME = f"FoldedMatrixFactorization_{trained_recommender.RECOMMENDER_NAME}"
 
         self.trained_recommender = trained_recommender
         self.W_sparse: sp.csr_matrix = sp.csr_matrix([])
 
-        if not hasattr(trained_recommender, self._attr_name_item_factors):
-            raise AttributeError(
-                f"Cannot fold-in the recommender {trained_recommender} as it has not been trained (it lacks the "
-                f"attribute '{self._attr_name_item_factors}'."
-            )
 
     def fit(self, top_k: int = None) -> None:
         item_factors: np.ndarray = getattr(self.trained_recommender, self._attr_name_item_factors)

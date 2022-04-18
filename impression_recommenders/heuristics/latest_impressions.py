@@ -85,7 +85,7 @@ class LastImpressionsRecommender(BaseRecommender):
             user_timestamps: np.ndarray = self._uim_timestamp[user_id, :].toarray().ravel()
             user_positions: np.ndarray = -self._uim_position[user_id, :].toarray().ravel()
 
-            user_max_timestamp = user_timestamps.max(initial=np.NINF)
+            user_max_timestamp: float = user_timestamps.max(initial=np.NINF)  # type: ignore
             if user_max_timestamp == 0.0:
                 # A value of zero means that the user did not receive any impression, therefore, we cannot recommend
                 # anything with this recommender.
