@@ -3,16 +3,36 @@ from __future__ import annotations
 
 from tap import Tap
 
+from experiments.heuristics import run_impressions_heuristics_experiments
+from impression_recommenders.heuristics.latest_impressions import LastImpressionsRecommender, \
+    SearchHyperParametersLastImpressionsRecommender
+from impression_recommenders.heuristics.frequency_and_recency import FrequencyRecencyRecommender, RecencyRecommender, \
+    SearchHyperParametersFrequencyRecencyRecommender, SearchHyperParametersRecencyRecommender
+from impression_recommenders.re_ranking.cycling import CyclingRecommender, SearchHyperParametersCyclingRecommender
+from impression_recommenders.re_ranking.dithering import DitheringRecommender, SearchHyperParametersDitheringRecommender
+from impression_recommenders.user_profile.weighted import (
+    UserWeightedUserProfileRecommender,
+    ItemWeightedUserProfileRecommender, SearchHyperParametersWeightedUserProfileRecommender,
+)
+
 from FINNNoReader import FinnNoSlatesConfig
 from MINDReader import MINDSmallConfig, MINDLargeConfig
 from ContentWiseImpressionsReader import ContentWiseImpressionsConfig
-from experiments.commons import create_necessary_folders, DatasetInterface, Benchmarks, EvaluationStrategy
-from experiments.evaluation import (
-    run_evaluation_experiments,
-    plot_popularity_of_datasets, ensure_datasets_exist,
+from experiments.commons import (
+    create_necessary_folders,
+    ExperimentCasesInterface,
+    Benchmarks,
+    HyperParameterTuningParameters,
+    Experiment,
+    ExperimentBenchmark,
+    ExperimentRecommender,
+    plot_popularity_of_datasets,
+    ensure_datasets_exist,
 )
+from experiments.evaluation import run_baselines_experiments
 from recsys_framework_extensions.dask import configure_dask_cluster
 from recsys_framework_extensions.logging import get_logger
+import Recommenders.Recommender_import_list as recommenders
 
 
 class ConsoleArguments(Tap):
@@ -21,7 +41,19 @@ class ConsoleArguments(Tap):
     tuned depend on the presence of the options --include_baselines and --include_cfgan.
     """
 
+    create_datasets: bool = False
+    """TODO: fernando-debugger."""
+
     include_baselines: bool = False
+    """Include baselines in the hyper-parameter tuning"""
+
+    include_impressions_heuristics: bool = False
+    """Include baselines in the hyper-parameter tuning"""
+
+    include_impressions_reranking: bool = False
+    """Include baselines in the hyper-parameter tuning"""
+
+    include_impressions_profile: bool = False
     """Include baselines in the hyper-parameter tuning"""
 
     print_evaluation_results: bool = False
@@ -44,6 +76,281 @@ if __name__ == '__main__':
 
     dask_interface = configure_dask_cluster()
 
+    common_hyper_parameter_tuning_parameters = HyperParameterTuningParameters()
+
+    benchmark_finn_no = ExperimentBenchmark(
+        benchmark=Benchmarks.FINNNoSlates,
+        config=FinnNoSlatesConfig(),
+        priority=10,
+    )
+
+    benchmark_mind_small = ExperimentBenchmark(
+        benchmark=Benchmarks.MINDSmall,
+        config=MINDSmallConfig(),
+        priority=10,
+    )
+
+    benchmark_cw = ExperimentBenchmark(
+        benchmark=Benchmarks.ContentWiseImpressions,
+        config=ContentWiseImpressionsConfig(),
+        priority=10,
+    )
+
+    recommender_random = ExperimentRecommender(
+        recommender=recommenders.Random,
+        search_hyper_parameters=None,
+        priority=30,
+    )
+    recommender_top_pop = ExperimentRecommender(
+        recommender=recommenders.TopPop,
+        search_hyper_parameters=None,
+        priority=30,
+    )
+    recommender_user_knn = ExperimentRecommender(
+        recommender=recommenders.UserKNNCFRecommender,
+        search_hyper_parameters=None,
+        priority=20,
+    )
+    recommender_item_knn = ExperimentRecommender(
+        recommender=recommenders.ItemKNNCFRecommender,
+        search_hyper_parameters=None,
+        priority=20,
+    )
+    recommender_pure_svd = ExperimentRecommender(
+        recommender=recommenders.PureSVDRecommender,
+        search_hyper_parameters=None,
+        priority=20,
+    )
+    recommender_nmf = ExperimentRecommender(
+        recommender=recommenders.NMFRecommender,
+        search_hyper_parameters=None,
+        priority=10,
+    )
+    recommender_rp3beta = ExperimentRecommender(
+        recommender=recommenders.RP3betaRecommender,
+        search_hyper_parameters=None,
+        priority=10,
+    )
+    recommender_mf_bpr = ExperimentRecommender(
+        recommender=recommenders.MatrixFactorization_BPR_Cython,
+        search_hyper_parameters=None,
+        priority=10,
+    )
+    recommender_slim_elasticnet = ExperimentRecommender(
+        recommender=recommenders.SLIMElasticNetRecommender,
+        search_hyper_parameters=None,
+        priority=5,
+    )
+    recommender_slim_bpr = ExperimentRecommender(
+        recommender=recommenders.SLIM_BPR_Cython,
+        search_hyper_parameters=None,
+        priority=4,
+    )
+    recommender_light_fm = ExperimentRecommender(
+        recommender=recommenders.LightFMCFRecommender,
+        search_hyper_parameters=None,
+        priority=4,
+    )
+    recommender_mult_vae = ExperimentRecommender(
+        recommender=recommenders.MultVAERecommender,
+        search_hyper_parameters=None,
+        priority=4,
+    )
+    recommender_ials = ExperimentRecommender(
+        recommender=recommenders.IALSRecommender,
+        search_hyper_parameters=None,
+        priority=1,
+    )
+    recommender_ease_r = ExperimentRecommender(
+        recommender=recommenders.EASE_R_Recommender,
+        search_hyper_parameters=None,
+        priority=1,
+    )
+
+    # Impression Recommenders
+    recommender_impressions_last_impressions = ExperimentRecommender(
+        recommender=LastImpressionsRecommender,
+        search_hyper_parameters=SearchHyperParametersLastImpressionsRecommender,
+        priority=10,
+    )
+    recommender_impressions_frequency_recency = ExperimentRecommender(
+        recommender=FrequencyRecencyRecommender,
+        search_hyper_parameters=SearchHyperParametersFrequencyRecencyRecommender,
+        priority=10,
+    )
+    recommender_impressions_recency = ExperimentRecommender(
+        recommender=RecencyRecommender,
+        search_hyper_parameters=SearchHyperParametersRecencyRecommender,
+        priority=10,
+    )
+    recommender_impressions_cycling = ExperimentRecommender(
+        recommender=CyclingRecommender,
+        search_hyper_parameters=SearchHyperParametersCyclingRecommender,
+        priority=10,
+    )
+    recommender_impressions_dithering = ExperimentRecommender(
+        recommender=DitheringRecommender,
+        search_hyper_parameters=SearchHyperParametersDitheringRecommender,
+        priority=10,
+    )
+    recommender_impressions_user_weighted = ExperimentRecommender(
+        recommender=UserWeightedUserProfileRecommender,
+        search_hyper_parameters=SearchHyperParametersWeightedUserProfileRecommender,
+        priority=10,
+    )
+    recommender_impressions_item_weighted = ExperimentRecommender(
+        recommender=ItemWeightedUserProfileRecommender,
+        search_hyper_parameters=SearchHyperParametersWeightedUserProfileRecommender,
+        priority=10,
+    )
+
+    experiments_baselines = [
+        Experiment(
+            hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+            benchmark=benchmark_cw,
+            recommenders=[
+                recommender_random,
+                recommender_top_pop,
+                recommender_user_knn,
+                recommender_item_knn,
+                recommender_pure_svd,
+                recommender_nmf,
+                recommender_rp3beta,
+                recommender_mf_bpr,
+                recommender_slim_elasticnet,
+                recommender_slim_bpr,
+                recommender_light_fm,
+                recommender_mult_vae,
+                recommender_ials,
+                recommender_ease_r,
+            ],
+        ),
+        # Experiment(
+        #     hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+        #     benchmark=benchmark_mind_small,
+        #     recommenders=[
+        #         recommender_random,
+        #         recommender_top_pop,
+        #         recommender_user_knn,
+        #         recommender_item_knn,
+        #         recommender_pure_svd,
+        #         recommender_nmf,
+        #         recommender_rp3beta,
+        #         recommender_mf_bpr,
+        #         recommender_slim_elasticnet,
+        #         recommender_slim_bpr,
+        #         recommender_light_fm,
+        #         recommender_mult_vae,
+        #         recommender_ials,
+        #         recommender_ease_r,
+        #     ],
+        # ),
+        # Experiment(
+        #     hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+        #     benchmark=benchmark_finn_no,
+        #     recommenders=[
+        #         recommender_random,
+        #         recommender_top_pop,
+        #         recommender_user_knn,
+        #         recommender_item_knn,
+        #         recommender_pure_svd,
+        #         recommender_nmf,
+        #         recommender_rp3beta,
+        #         recommender_mf_bpr,
+        #         recommender_slim_elasticnet,
+        #         recommender_slim_bpr,
+        #         recommender_light_fm,
+        #         recommender_mult_vae,
+        #         recommender_ials,
+        #         recommender_ease_r,
+        #     ],
+        # ),
+    ]
+
+    experiments_impressions_heuristics = [
+        Experiment(
+            hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+            benchmark=benchmark_cw,
+            recommenders=[
+                recommender_impressions_last_impressions,
+                recommender_impressions_frequency_recency,
+                recommender_impressions_recency,
+            ],
+        ),
+        # Experiment(
+        #     hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+        #     benchmark=benchmark_mind_small,
+        #     recommenders=[
+        #         recommender_impressions_last_impressions,
+        #         recommender_impressions_frequency_recency,
+        #         recommender_impressions_recency,
+        #     ],
+        # ),
+        # Experiment(
+        #     hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+        #     benchmark=benchmark_finn_no,
+        #     recommenders=[
+        #         recommender_impressions_last_impressions,
+        #         recommender_impressions_frequency_recency,
+        #         recommender_impressions_recency,
+        #     ],
+        # ),
+    ]
+
+    experiments_impressions_re_ranking = [
+        Experiment(
+            hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+            benchmark=benchmark_cw,
+            recommenders=[
+                recommender_impressions_cycling,
+                recommender_impressions_dithering,
+            ],
+        ),
+        Experiment(
+            hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+            benchmark=benchmark_mind_small,
+            recommenders=[
+                recommender_impressions_cycling,
+                recommender_impressions_dithering,
+            ],
+        ),
+        Experiment(
+            hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+            benchmark=benchmark_finn_no,
+            recommenders=[
+                recommender_impressions_cycling,
+                recommender_impressions_dithering,
+            ],
+        ),
+    ]
+
+    experiments_impressions_user_profiles = [
+        Experiment(
+            hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+            benchmark=benchmark_cw,
+            recommenders=[
+                recommender_impressions_user_weighted,
+                recommender_impressions_item_weighted,
+            ],
+        ),
+        Experiment(
+            hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+            benchmark=benchmark_mind_small,
+            recommenders=[
+                recommender_impressions_user_weighted,
+                recommender_impressions_item_weighted,
+            ],
+        ),
+        Experiment(
+            hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
+            benchmark=benchmark_finn_no,
+            recommenders=[
+                recommender_impressions_user_weighted,
+                recommender_impressions_item_weighted,
+            ],
+        ),
+    ]
+
     # Training statistics.
     # CW - UserKNN - 3 GB Training - 250 sec/it
     # CW - ItemKNN - 3 GB Training - 320 sec/it
@@ -52,59 +359,46 @@ if __name__ == '__main__':
     # MINDSmall - EASE_R - 16GB Training - 80sec/it
     # MINDLarge - EASE_R - 29.3GB Training - 450sec/it
     # FINNNoSlates - EASE R - 12.4TB Training - No Training.
-    dataset_interface = DatasetInterface(
-        priorities=[
-            # 40,
-            # 20,
-            30,
-            # 20,
-        ],
-        benchmarks=[
-            # Benchmarks.MINDLarge,
-            # Benchmarks.MINDSmall,
-            Benchmarks.FINNNoSlates,
-            # Benchmarks.ContentWiseImpressions,
-        ],
-        configs=[
-            # MINDLargeConfig(),
-            # MINDSmallConfig(),
-            FinnNoSlatesConfig(),
-            # ContentWiseImpressionsConfig(),
-        ],
-        evaluations=[
-            # EvaluationStrategy.LEAVE_LAST_K_OUT,
-            # EvaluationStrategy.LEAVE_LAST_K_OUT,
-            EvaluationStrategy.LEAVE_LAST_K_OUT,
-            # EvaluationStrategy.LEAVE_LAST_K_OUT,
-        ]
+    experiments_interface = ExperimentCasesInterface(
+        experiments=experiments_baselines
+    )
+
+    experiments_impressions_heuristics_interface = ExperimentCasesInterface(
+        experiments=experiments_impressions_heuristics,
     )
 
     create_necessary_folders(
-        benchmarks=dataset_interface.benchmarks,
-        evaluation_strategies=dataset_interface.evaluation_strategies,
+        benchmarks=experiments_interface.benchmarks,
+        evaluation_strategies=experiments_interface.evaluation_strategies,
     )
 
-    ensure_datasets_exist(
-        dataset_interface=dataset_interface,
-    )
+    if input_flags.create_datasets:
+        ensure_datasets_exist(
+            dataset_interface=experiments_interface,
+        )
 
-    if input_flags.run_evaluation:
-        run_evaluation_experiments(
-            include_baselines=input_flags.include_baselines,
+    if input_flags.include_baselines:
+        run_baselines_experiments(
             dask_interface=dask_interface,
-            dataset_interface=dataset_interface,
+            experiment_cases_interface=experiments_interface
+        )
+
+    if input_flags.include_impressions_heuristics:
+        run_impressions_heuristics_experiments(
+            dask_interface=dask_interface,
+            experiment_cases_interface=experiments_impressions_heuristics_interface,
         )
 
     dask_interface.wait_for_jobs()
 
     if input_flags.plot_popularity_of_datasets:
         plot_popularity_of_datasets(
-            dataset_interface=dataset_interface,
+            experiments_interface=experiments_interface,
         )
 
     # if input_flags.print_evaluation_results:
     #     print_reproducibility_results(
-    #         dataset_interface=dataset_interface,
+    #         experiments_interface=experiments_interface,
     #     )
 
     dask_interface.close()

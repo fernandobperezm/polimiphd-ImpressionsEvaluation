@@ -3,7 +3,11 @@ import uuid
 from typing import Type
 
 import Recommenders.Recommender_import_list as recommenders
+import attrs
 from Evaluation.Evaluator import EvaluatorHoldout
+from HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
+from HyperparameterTuning.SearchBayesianSkopt import SearchBayesianSkopt
+from HyperparameterTuning.SearchSingleCase import SearchSingleCase
 from Recommenders.BaseRecommender import BaseRecommender
 from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.evaluation import exclude_from_evaluation
@@ -22,7 +26,7 @@ logger = get_logger(__name__)
 ####################################################################################################
 BASE_FOLDER = os.path.join(
     commons.RESULTS_EXPERIMENTS_DIR,
-    "evaluation",
+    "heuristics",
     "{benchmark}",
     "{evaluation_strategy}",
     "",
@@ -120,12 +124,14 @@ ARTICLE_ALL_METRICS_LIST = [
 #                               Hyper-parameter tuning of Baselines                                #
 ####################################################################################################
 ####################################################################################################
-def _run_baselines_hyper_parameter_tuning(
+def _run_impressions_heuristics_hyper_parameter_tuning(
     experiment: commons.Experiment,
     experiment_recommender: commons.ExperimentRecommender,
 ) -> None:
     """TODO: fernando-debugger| complete.
     """
+    assert experiment_recommender.search_hyper_parameters is not None
+
     benchmark_reader = commons.get_reader_from_benchmark(
         benchmark_config=experiment.benchmark.config,
         benchmark=experiment.benchmark.benchmark,
@@ -133,30 +139,84 @@ def _run_baselines_hyper_parameter_tuning(
     
     dataset = benchmark_reader.dataset
 
-    data_splits = dataset.get_urm_splits(
+    interactions_data_splits = dataset.get_urm_splits(
         evaluation_strategy=experiment.hyper_parameter_tuning_parameters.evaluation_strategy
     )
 
-    import random
-    import numpy as np
-
-    logger.debug(
-        f"Modules - {random=} - {np=}"
+    impressions_feature_frequency_train = dataset.sparse_matrix_impression_feature(
+        feature=commons.get_feature_key_by_benchmark(
+            benchmark=experiment.benchmark.benchmark,
+            evaluation_strategy=experiment.hyper_parameter_tuning_parameters.evaluation_strategy,
+            impressions_feature=commons.ImpressionsFeatures.USER_ITEM_FREQUENCY,
+            impressions_feature_column=commons.ImpressionsFeatureColumnsFrequency.FREQUENCY,
+            impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN,
+        )
+    )
+    impressions_feature_frequency_train_validation = dataset.sparse_matrix_impression_feature(
+        feature=commons.get_feature_key_by_benchmark(
+            benchmark=experiment.benchmark.benchmark,
+            evaluation_strategy=experiment.hyper_parameter_tuning_parameters.evaluation_strategy,
+            impressions_feature=commons.ImpressionsFeatures.USER_ITEM_FREQUENCY,
+            impressions_feature_column=commons.ImpressionsFeatureColumnsFrequency.FREQUENCY,
+            impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN_VALIDATION,
+        )
     )
 
-    random.seed(experiment.hyper_parameter_tuning_parameters.reproducibility_seed)
-    np.random.seed(experiment.hyper_parameter_tuning_parameters.reproducibility_seed)
+    impressions_feature_position_train = dataset.sparse_matrix_impression_feature(
+        feature=commons.get_feature_key_by_benchmark(
+            benchmark=experiment.benchmark.benchmark,
+            evaluation_strategy=experiment.hyper_parameter_tuning_parameters.evaluation_strategy,
+            impressions_feature=commons.ImpressionsFeatures.USER_ITEM_POSITION,
+            impressions_feature_column=commons.ImpressionsFeatureColumnsPosition.POSITION,
+            impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN,
+        )
+    )
+    impressions_feature_position_train_validation = dataset.sparse_matrix_impression_feature(
+        feature=commons.get_feature_key_by_benchmark(
+            benchmark=experiment.benchmark.benchmark,
+            evaluation_strategy=experiment.hyper_parameter_tuning_parameters.evaluation_strategy,
+            impressions_feature=commons.ImpressionsFeatures.USER_ITEM_POSITION,
+            impressions_feature_column=commons.ImpressionsFeatureColumnsPosition.POSITION,
+            impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN_VALIDATION,
+        )
+    )
+
+    impressions_feature_timestamp_train = dataset.sparse_matrix_impression_feature(
+        feature=commons.get_feature_key_by_benchmark(
+            benchmark=experiment.benchmark.benchmark,
+            evaluation_strategy=experiment.hyper_parameter_tuning_parameters.evaluation_strategy,
+            impressions_feature=commons.ImpressionsFeatures.USER_ITEM_TIMESTAMP,
+            impressions_feature_column=commons.ImpressionsFeatureColumnsTimestamp.TIMESTAMP,
+            impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN,
+        )
+    )
+    impressions_feature_timestamp_train_validation = dataset.sparse_matrix_impression_feature(
+        feature=commons.get_feature_key_by_benchmark(
+            benchmark=experiment.benchmark.benchmark,
+            evaluation_strategy=experiment.hyper_parameter_tuning_parameters.evaluation_strategy,
+            impressions_feature=commons.ImpressionsFeatures.USER_ITEM_TIMESTAMP,
+            impressions_feature_column=commons.ImpressionsFeatureColumnsTimestamp.TIMESTAMP,
+            impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN_VALIDATION,
+        )
+    )
 
     experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
         benchmark=experiment.benchmark.benchmark.value,
         evaluation_strategy=experiment.hyper_parameter_tuning_parameters.evaluation_strategy.value,
     )
+    experiment_file_name_root = experiment_recommender.recommender.RECOMMENDER_NAME
+
+    import random
+    import numpy as np
+
+    random.seed(experiment.hyper_parameter_tuning_parameters.reproducibility_seed)
+    np.random.seed(experiment.hyper_parameter_tuning_parameters.reproducibility_seed)
 
     if experiment.hyper_parameter_tuning_parameters.evaluation_ignore_users is None:
         users_to_exclude_validation = None
     else:
         users_to_exclude_validation = exclude_from_evaluation(
-            urm_test=data_splits.sp_urm_test,
+            urm_test=interactions_data_splits.sp_urm_test,
             frac_to_exclude=experiment.hyper_parameter_tuning_parameters.evaluation_ignore_users,
             type_to_exclude="users",
             seed=experiment.hyper_parameter_tuning_parameters.reproducibility_seed,
@@ -166,14 +226,14 @@ def _run_baselines_hyper_parameter_tuning(
         items_to_exclude_validation = None
     else:
         items_to_exclude_validation = exclude_from_evaluation(
-            urm_test=data_splits.sp_urm_test,
+            urm_test=interactions_data_splits.sp_urm_test,
             frac_to_exclude=experiment.hyper_parameter_tuning_parameters.evaluation_ignore_items,
             type_to_exclude="items",
             seed=experiment.hyper_parameter_tuning_parameters.reproducibility_seed,
         )
 
     evaluator_validation = EvaluatorHoldout(
-        data_splits.sp_urm_validation,
+        URM_test_list=interactions_data_splits.sp_urm_validation,
         cutoff_list=experiment.hyper_parameter_tuning_parameters.evaluation_cutoffs,
         exclude_seen=experiment.hyper_parameter_tuning_parameters.evaluation_exclude_seen,
         min_ratings_per_user=experiment.hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
@@ -181,18 +241,8 @@ def _run_baselines_hyper_parameter_tuning(
         ignore_users=users_to_exclude_validation,
         ignore_items=items_to_exclude_validation,
     )
-    evaluator_validation_early_stopping = EvaluatorHoldout(
-        data_splits.sp_urm_validation,
-        # The example uses the hyper-param benchmark_config instead of the evaluation cutoff.
-        cutoff_list=[experiment.hyper_parameter_tuning_parameters.cutoff_to_optimize],
-        exclude_seen=experiment.hyper_parameter_tuning_parameters.evaluation_exclude_seen,
-        min_ratings_per_user=experiment.hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
-        verbose=True,
-        ignore_users=users_to_exclude_validation,
-        ignore_items=items_to_exclude_validation,
-    )
     evaluator_test = EvaluatorHoldout(
-        data_splits.sp_urm_test,
+        URM_test_list=interactions_data_splits.sp_urm_test,
         cutoff_list=experiment.hyper_parameter_tuning_parameters.evaluation_cutoffs,
         exclude_seen=experiment.hyper_parameter_tuning_parameters.evaluation_exclude_seen,
         min_ratings_per_user=experiment.hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
@@ -204,10 +254,10 @@ def _run_baselines_hyper_parameter_tuning(
     logger_info = {
         "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
         "dataset": experiment.benchmark.benchmark.value,
-        "urm_test_shape": data_splits.sp_urm_test.shape,
-        "urm_train_shape": data_splits.sp_urm_train.shape,
-        "urm_validation_shape": data_splits.sp_urm_validation.shape,
-        "urm_train_and_validation_shape": data_splits.sp_urm_train_validation.shape,
+        "urm_test_shape": interactions_data_splits.sp_urm_test.shape,
+        "urm_train_shape": interactions_data_splits.sp_urm_train.shape,
+        "urm_validation_shape": interactions_data_splits.sp_urm_validation.shape,
+        "urm_train_and_validation_shape": interactions_data_splits.sp_urm_train_validation.shape,
         "hyper_parameter_tuning_parameters": experiment.hyper_parameter_tuning_parameters.__repr__(),
     }
 
@@ -215,39 +265,60 @@ def _run_baselines_hyper_parameter_tuning(
         f"Hyper-parameter tuning arguments:"
         f"\n\t* {logger_info}"
     )
-    run_hyper_parameter_search_collaborative(
-        allow_weighting=True,
-        allow_bias_URM=False,
-        allow_dropout_MF=False,
 
+    recommender_init_validation_args_kwargs = SearchInputRecommenderArgs(
+        CONSTRUCTOR_POSITIONAL_ARGS=[],
+        CONSTRUCTOR_KEYWORD_ARGS={
+            "urm_train": interactions_data_splits.sp_urm_train,
+            "uim_frequency": impressions_feature_frequency_train,
+            "uim_position": impressions_feature_position_train,
+            "uim_timestamp": impressions_feature_timestamp_train,
+            "seed": experiment.hyper_parameter_tuning_parameters.reproducibility_seed,
+        },
+        FIT_POSITIONAL_ARGS=[],
+        FIT_KEYWORD_ARGS={},
+        EARLYSTOPPING_KEYWORD_ARGS={},
+    )
+
+    recommender_init_test_args_kwargs = SearchInputRecommenderArgs(
+        CONSTRUCTOR_POSITIONAL_ARGS=[],
+        CONSTRUCTOR_KEYWORD_ARGS={
+            "urm_train": interactions_data_splits.sp_urm_train_validation,
+            "uim_frequency": impressions_feature_frequency_train_validation,
+            "uim_position": impressions_feature_position_train_validation,
+            "uim_timestamp": impressions_feature_timestamp_train_validation,
+            "seed": experiment.hyper_parameter_tuning_parameters.reproducibility_seed,
+        },
+        FIT_POSITIONAL_ARGS=[],
+        FIT_KEYWORD_ARGS={},
+        EARLYSTOPPING_KEYWORD_ARGS={},
+    )
+
+    search_single_case = SearchSingleCase(
+        recommender_class=experiment_recommender.recommender,
+        evaluator_validation=evaluator_validation,
+        evaluator_test=evaluator_test,
+        verbose=True,
+    )
+    search_single_case.search(
         cutoff_to_optimize=experiment.hyper_parameter_tuning_parameters.cutoff_to_optimize,
 
-        evaluator_test=evaluator_test,
-        evaluator_validation=evaluator_validation,
-        evaluator_validation_earlystopping=evaluator_validation_early_stopping,
         evaluate_on_test=experiment.hyper_parameter_tuning_parameters.evaluate_on_test,
 
-        max_total_time=experiment.hyper_parameter_tuning_parameters.max_total_time,
+        fit_hyperparameters_values={},
+
         metric_to_optimize=experiment.hyper_parameter_tuning_parameters.metric_to_optimize,
 
-        n_cases=experiment.hyper_parameter_tuning_parameters.num_cases,
-        n_random_starts=experiment.hyper_parameter_tuning_parameters.num_random_starts,
-
+        output_file_name_root=experiment_file_name_root,
         output_folder_path=experiments_folder_path,
 
-        parallelizeKNN=False,
-
-        recommender_class=experiment_recommender.recommender,
+        recommender_input_args=recommender_init_validation_args_kwargs,
+        recommender_input_args_last_test=recommender_init_test_args_kwargs,
         resume_from_saved=experiment.hyper_parameter_tuning_parameters.resume_from_saved,
-
-        similarity_type_list=experiment.hyper_parameter_tuning_parameters.knn_similarity_types,
-
-        URM_train=data_splits.sp_urm_train,
-        URM_train_last_test=data_splits.sp_urm_train_validation,
     )
 
 
-def run_baselines_experiments(
+def run_impressions_heuristics_experiments(
     dask_interface: DaskInterface,
     experiment_cases_interface: commons.ExperimentCasesInterface,
 ) -> None:
@@ -256,7 +327,7 @@ def run_baselines_experiments(
 
             dask_interface.submit_job(
                 job_key=(
-                    f"_run_baselines_hyper_parameter_tuning"
+                    f"_run_impressions_heuristics_hyper_parameter_tuning"
                     f"|{experiment.benchmark.benchmark.value}"
                     f"|{experiment_recommender.recommender.RECOMMENDER_NAME}"
                     f"|{uuid.uuid4()}"
@@ -266,7 +337,7 @@ def run_baselines_experiments(
                     "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
                     "benchmark": experiment.benchmark.benchmark.value,
                 },
-                method=_run_baselines_hyper_parameter_tuning,
+                method=_run_impressions_heuristics_hyper_parameter_tuning,
                 method_kwargs={
                     "experiment": experiment,
                     "experiment_recommender": experiment_recommender,
