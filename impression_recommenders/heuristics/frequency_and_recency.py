@@ -1,5 +1,6 @@
 from typing import Optional
 
+import attrs
 import numpy as np
 import scipy.sparse as sp
 import scipy.stats as st
@@ -8,12 +9,25 @@ from Recommenders.BaseRecommender import BaseRecommender
 from impression_recommenders.constants import ERankMethod
 
 
+@attrs.define(kw_only=True, frozen=True, slots=False)
+class SearchHyperParametersFrequencyRecencyRecommender:
+    pass
+
+
+@attrs.define(kw_only=True, frozen=True, slots=False)
+class SearchHyperParametersRecencyRecommender:
+    pass
+
+
 class FrequencyRecencyRecommender(BaseRecommender):
+    RECOMMENDER_NAME = "FrequencyRecencyRecommender"
+
     def __init__(
         self,
         urm_train: sp.csr_matrix,
         uim_frequency: sp.csr_matrix,
         uim_timestamp: sp.csr_matrix,
+        **kwargs,
     ):
         """
         Parameters
@@ -112,10 +126,13 @@ class FrequencyRecencyRecommender(BaseRecommender):
 
 
 class RecencyRecommender(BaseRecommender):
+    RECOMMENDER_NAME = "RecencyRecommender"
+
     def __init__(
         self,
         urm_train: sp.csr_matrix,
         uim_timestamp: sp.csr_matrix,
+        **kwargs,
     ):
         """
         Parameters

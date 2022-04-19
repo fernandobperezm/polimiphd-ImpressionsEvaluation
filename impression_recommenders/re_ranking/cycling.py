@@ -1,11 +1,25 @@
 from typing import cast, Optional
 
+import attrs
 import numpy as np
 import scipy.sparse as sp
 import scipy.stats as st
 from Recommenders.BaseRecommender import BaseRecommender
+from skopt.space import Real
 
 from impression_recommenders.constants import ERankMethod
+
+
+@attrs.define(kw_only=True, frozen=True, slots=False)
+class SearchHyperParametersCyclingRecommender:
+    weight: Real = attrs.field(
+        default=Real(
+            low=1e-5,
+            high=1e2,
+            prior="uniform",
+            base=10,
+        )
+    )
 
 
 class CyclingRecommender(BaseRecommender):

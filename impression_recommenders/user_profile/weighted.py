@@ -1,6 +1,7 @@
 import abc
 from typing import Optional, Union
 
+import attrs
 import numpy as np
 import scipy.sparse as sp
 from Recommenders.BaseRecommender import BaseRecommender
@@ -9,6 +10,27 @@ from Recommenders.BaseSimilarityMatrixRecommender import BaseItemSimilarityMatri
 from Recommenders.Recommender_utils import check_matrix
 
 from recsys_framework_extensions.data.io import DataIO
+from skopt.space import Real
+
+
+@attrs.define(kw_only=True, frozen=True, slots=False)
+class SearchHyperParametersWeightedUserProfileRecommender:
+    reg_urm: Real = attrs.field(
+        default=Real(
+            low=1e-2,
+            high=1e2,
+            prior="uniform",
+            base=10,
+        )
+    )
+    reg_uim: Real = attrs.field(
+        default=Real(
+            low=1e-10,
+            high=1e10,
+            prior="log-uniform",
+            base=10,
+        )
+    )
 
 
 class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):

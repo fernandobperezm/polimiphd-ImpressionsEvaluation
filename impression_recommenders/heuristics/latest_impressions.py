@@ -1,8 +1,14 @@
 from typing import Optional
 
+import attrs
 import numpy as np
 import scipy.sparse as sp
 from Recommenders.BaseRecommender import BaseRecommender
+
+
+@attrs.define(kw_only=True, frozen=True, slots=False)
+class SearchHyperParametersLastImpressionsRecommender:
+    pass
 
 
 class LastImpressionsRecommender(BaseRecommender):
@@ -16,12 +22,14 @@ class LastImpressionsRecommender(BaseRecommender):
     .. [1]
 
     """
+    RECOMMENDER_NAME = "LastImpressionsRecommender"
 
     def __init__(
         self,
         urm_train: sp.csr_matrix,
         uim_position: sp.csr_matrix,
         uim_timestamp: sp.csr_matrix,
+        **kwargs,
     ):
         """
         Parameters
