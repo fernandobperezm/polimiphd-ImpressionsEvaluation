@@ -1,6 +1,7 @@
 from typing import cast, Optional
 
 import attrs
+import numba
 import numpy as np
 import scipy.sparse as sp
 import scipy.stats as st
@@ -22,6 +23,54 @@ class SearchHyperParametersCyclingRecommender:
     )
 
 
+_numba_dtype = numba.from_dtype(
+    dtype=np.dtype([
+        ("score_presentation", np.float32),
+        ("score_relevance", np.float32),
+    ])
+)
+
+
+# NOTE: parallel=True is slower with 10000 rows and might introduce race conditions.
+@numba.jit(nopython=True, parallel=False)
+def _nb_join_score_arrays(
+    arr_scores_presentation: np.ndarray,
+    arr_scores_relevance: np.ndarray,
+):
+    assert arr_scores_presentation.shape == arr_scores_relevance.shape
+
+    arr = np.empty(
+        shape=arr_scores_presentation.shape,
+        dtype=_numba_dtype,
+    )
+
+    n_rows, n_cols = arr_scores_presentation.shape
+    for row in range(n_rows):
+        for col in range(n_cols):
+            arr[row, col]["score_presentation"] = arr_scores_presentation[row, col]
+            arr[row, col]["score_relevance"] = arr_scores_relevance[row, col]
+
+    return arr
+
+
+_nb_join_score_arrays(
+    arr_scores_presentation=np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]], dtype=np.float32),
+    arr_scores_relevance=np.array([[1., 2., 3.], [4., 5., 6., ]], dtype=np.float32),
+)
+_nb_join_score_arrays(
+    arr_scores_presentation=np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]], dtype=np.float64),
+    arr_scores_relevance=np.array([[1., 2., 3.], [4., 5., 6., ]], dtype=np.float32),
+)
+_nb_join_score_arrays(
+    arr_scores_presentation=np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]], dtype=np.float32),
+    arr_scores_relevance=np.array([[1., 2., 3.], [4., 5., 6., ]], dtype=np.float64),
+)
+_nb_join_score_arrays(
+    arr_scores_presentation=np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]], dtype=np.float64),
+    arr_scores_relevance=np.array([[1., 2., 3.], [4., 5., 6., ]], dtype=np.float64),
+)
+
+
 class CyclingRecommender(BaseRecommender):
     RECOMMENDER_NAME = "CyclingRecommender"
 
@@ -37,7 +86,6 @@ class CyclingRecommender(BaseRecommender):
             URM_train=urm_train,
             verbose=True,
         )
-
 
         self._trained_recommender = trained_recommender
         self._uim_frequency = uim_frequency
@@ -92,18 +140,9 @@ class CyclingRecommender(BaseRecommender):
         assert (num_score_users, num_score_items) == arr_scores_presentation.shape
         assert (num_score_users, num_score_items) == arr_scores_relevance.shape
 
-        arr_scores_presentation_relevance = np.array(
-            [
-                [
-                    (arr_scores_presentation[row, col], arr_scores_relevance[row, col])
-                    for col in range(num_score_items)
-                ]
-                for row in range(num_score_users)
-            ],
-            dtype=[
-                ("score_presentation", arr_scores_presentation.dtype),
-                ("score_relevance", arr_scores_relevance.dtype),
-            ]
+        arr_scores_presentation_relevance = _nb_join_score_arrays(
+            arr_scores_presentation=arr_scores_presentation,
+            arr_scores_relevance=arr_scores_relevance,
         )
 
         assert (num_score_users, num_score_items) == arr_scores_presentation_relevance.shape
@@ -111,6 +150,8 @@ class CyclingRecommender(BaseRecommender):
         # st.rankdata assigns rank in ascending order [(0,0) -> 1 while (4, 6) -> 10], where the highest rank is the
         # most relevant item, therefore, we need to invert the scores with the minus sign (-) so it assigns the
         # highest rank to the most recent and most frequent item.
+        # NOTE: this function is slow (around 30s per 1000x30000 array). The problem is that sorting (it uses
+        # np.argsort internally) is the slowest part and cannot be faster.
         new_item_scores = st.rankdata(
             a=arr_scores_presentation_relevance,
             method=self._rank_method.value,
@@ -148,6 +189,7 @@ class CyclingRecommender(BaseRecommender):
             sp.csr_matrix,
             self._uim_frequency / self._cycling_weight
         )
+        self._matrix_presentation_scores.astype(dtype=np.float32)
 
     def save_model(self, folder_path, file_name=None):
         pass
