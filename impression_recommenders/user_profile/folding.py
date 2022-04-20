@@ -52,7 +52,6 @@ class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
         self.trained_recommender = trained_recommender
         self.W_sparse: sp.csr_matrix = sp.csr_matrix([])
 
-
     def fit(self, top_k: int = None) -> None:
         item_factors: np.ndarray = getattr(self.trained_recommender, self._attr_name_item_factors)
 

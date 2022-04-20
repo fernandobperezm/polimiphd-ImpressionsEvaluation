@@ -34,6 +34,8 @@ class SearchHyperParametersWeightedUserProfileRecommender:
 
 
 class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
+    RECOMMENDER_NAME = "BaseWeightedUserProfileRecommender"
+
     def __init__(
         self,
         urm_train: sp.csr_matrix,
@@ -132,6 +134,8 @@ class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
 
 
 class ItemWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
+    RECOMMENDER_NAME = "ItemWeightedUserProfileRecommender"
+
     def __init__(
         self,
         urm_train: sp.csr_matrix,
@@ -188,6 +192,8 @@ class ItemWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
 
 
 class UserWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
+    RECOMMENDER_NAME = "UserWeightedUserProfileRecommender"
+
     def __init__(
         self,
         urm_train: sp.csr_matrix,
