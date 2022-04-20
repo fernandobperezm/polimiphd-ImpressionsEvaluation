@@ -46,12 +46,14 @@ class DitheringRecommender(BaseRecommender):
        DOI: https://doi.org/10.1145/3057148.3057152
 
     """
+    RECOMMENDER_NAME = "DitheringRecommender"
 
     def __init__(
         self,
         urm_train: sp.csr_matrix,
         trained_recommender: BaseRecommender,
         seed: int,
+        **kwargs,
     ):
         super().__init__(
             URM_train=urm_train,
@@ -93,6 +95,8 @@ class DitheringRecommender(BaseRecommender):
             a=item_scores_trained_recommender,
             method=self._rank_method.value,
             axis=1,
+        ).astype(
+            np.float32,
         )
 
         log_ranks_item_scores = np.log(

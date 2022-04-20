@@ -105,11 +105,7 @@ class TestDitheringRecommender:
             # assert
             # For this particular recommender, we cannot test recommendations, as there might be several ties (same
             # timestamp for two impressions) and the .recommend handles ties in a non-deterministic way.
-            for row in range(expected_item_scores.shape[0]):
-                for col in range(expected_item_scores.shape[1]):
-                    assert expected_item_scores[row, col] == scores[row, col]
-
-            assert np.array_equal(expected_item_scores, scores)
+            assert np.allclose(expected_item_scores, scores)
 
     def test_all_users_some_items(
         self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_frequency: sp.csr_matrix,
@@ -174,7 +170,7 @@ class TestDitheringRecommender:
                 [np.NINF, 3.76651665740493, 1.3292541439356984,
                  np.NINF, np.NINF, 2.368786528913606,
                  np.NINF],
-            ], dtype=np.float64)
+            ], dtype=np.float32)
 
             rec = DitheringRecommender(
                 urm_train=urm,
@@ -270,7 +266,7 @@ class TestDitheringRecommender:
                  8.1842852016970791e-01, 1.2277051710001428e+00,
                  1.9112160002183629e+00, 1.9633214208054413e+00,
                  8.9635581814181065e-01],
-            ], dtype=np.float64)
+            ], dtype=np.float32)
 
             rec = DitheringRecommender(
                 urm_train=urm,
@@ -291,7 +287,7 @@ class TestDitheringRecommender:
             )
 
             # assert
-            assert np.array_equal(expected_item_scores, scores)
+            assert np.allclose(expected_item_scores, scores)
 
     def test_some_users_no_items(
         self, urm: sp.csr_matrix,
@@ -372,7 +368,7 @@ class TestDitheringRecommender:
             )
 
             # assert
-            assert np.array_equal(expected_item_scores, scores)
+            assert np.allclose(expected_item_scores, scores)
 
     def test_some_users_some_items(
         self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_frequency: sp.csr_matrix,
@@ -535,4 +531,4 @@ class TestDitheringRecommender:
             )
 
             # assert
-            assert np.array_equal(expected_item_scores, scores)
+            assert np.allclose(expected_item_scores, scores)

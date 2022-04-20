@@ -23,17 +23,21 @@ class SearchHyperParametersCyclingRecommender:
 
 
 class CyclingRecommender(BaseRecommender):
+    RECOMMENDER_NAME = "CyclingRecommender"
+
     def __init__(
         self,
         urm_train: sp.csr_matrix,
         uim_frequency: sp.csr_matrix,
         trained_recommender: BaseRecommender,
         seed: int,
+        **kwargs,
     ):
         super().__init__(
             URM_train=urm_train,
             verbose=True,
         )
+
 
         self._trained_recommender = trained_recommender
         self._uim_frequency = uim_frequency
@@ -111,6 +115,8 @@ class CyclingRecommender(BaseRecommender):
             a=arr_scores_presentation_relevance,
             method=self._rank_method.value,
             axis=1,
+        ).astype(
+            np.float32,
         )
 
         # If we are computing scores to a specific set of items, then we must set items outside this set to np.NINF,
