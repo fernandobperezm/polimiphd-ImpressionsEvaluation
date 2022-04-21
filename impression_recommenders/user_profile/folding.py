@@ -1,3 +1,4 @@
+import attrs
 import numpy as np
 import scipy.sparse as sp
 from Recommenders.BaseMatrixFactorizationRecommender import BaseMatrixFactorizationRecommender
@@ -6,9 +7,25 @@ from Recommenders.BaseSimilarityMatrixRecommender import BaseItemSimilarityMatri
 from Recommenders.MatrixFactorization.PureSVDRecommender import compute_W_sparse_from_item_latent_factors
 
 from Recommenders.Recommender_utils import check_matrix
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
+from skopt.space import Integer
+
+
+@attrs.define(kw_only=True, frozen=True, slots=False)
+class SearchHyperParametersFoldedMatrixFactorizationRecommender(SearchHyperParametersBaseRecommender):
+    top_k: Integer = attrs.field(
+        default=Integer(
+            low=5,
+            high=1000,
+            prior="uniform",
+            base=10,
+        )
+    )
 
 
 class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
+    RECOMMENDER_NAME = f"FoldedMatrixFactorizationRecommender"
+
     def __init__(
         self,
         urm_train: sp.csr_matrix,
@@ -58,12 +75,12 @@ class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
         if top_k is None:
             top_k = self.n_items
 
-        self.W_sparse = compute_W_sparse_from_item_latent_factors(
+        sparse_similarity_matrix = compute_W_sparse_from_item_latent_factors(
             ITEM_factors=item_factors,
             topK=top_k
         )
 
         self.W_sparse = check_matrix(
-            X=self.W_sparse,
+            X=sparse_similarity_matrix,
             format='csr',
         )

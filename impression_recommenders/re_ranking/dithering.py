@@ -6,13 +6,14 @@ import scipy.sparse as sp
 import scipy.stats as st
 
 from Recommenders.BaseRecommender import BaseRecommender
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
 from skopt.space import Real
 
 from impression_recommenders.constants import ERankMethod
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class SearchHyperParametersDitheringRecommender:
+class SearchHyperParametersDitheringRecommender(SearchHyperParametersBaseRecommender):
     epsilon: Real = attrs.field(
         default=Real(
             low=1e-5,

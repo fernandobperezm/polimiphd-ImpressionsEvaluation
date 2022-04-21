@@ -6,13 +6,16 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.stats as st
 from Recommenders.BaseRecommender import BaseRecommender
+from Recommenders.Recommender_utils import check_matrix
+from recsys_framework_extensions.data.io import DataIO
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
 from skopt.space import Real
 
 from impression_recommenders.constants import ERankMethod
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class SearchHyperParametersCyclingRecommender:
+class SearchHyperParametersCyclingRecommender(SearchHyperParametersBaseRecommender):
     weight: Real = attrs.field(
         default=Real(
             low=1e-5,
@@ -185,11 +188,33 @@ class CyclingRecommender(BaseRecommender):
     ):
         self._cycling_weight = weight
 
-        self._matrix_presentation_scores = cast(
-            sp.csr_matrix,
-            self._uim_frequency / self._cycling_weight
-        )
-        self._matrix_presentation_scores.astype(dtype=np.float32)
+        matrix_presentation_scores = (self._uim_frequency / self._cycling_weight)
+        self._matrix_presentation_scores = check_matrix(X=matrix_presentation_scores, format="csr", dtype=np.float32)
 
     def save_model(self, folder_path, file_name=None):
-        pass
+        if file_name is None:
+            file_name = self.RECOMMENDER_NAME
+
+        DataIO.s_save_data(
+            folder_path=folder_path,
+            file_name=file_name,
+            data_dict_to_save={
+                "_matrix_presentation_scores": self._matrix_presentation_scores,
+                "_cycling_weight": self._cycling_weight,
+            }
+        )
+
+    def load_model(
+        self,
+        folder_path: str,
+        file_name: Optional[str] = None,
+    ) -> None:
+        super().load_model(
+            folder_path=folder_path,
+            file_name=file_name,
+        )
+
+        assert hasattr(self, "_cycling_weight")
+        assert hasattr(self, "_matrix_presentation_scores") and self._matrix_presentation_scores.nnz > 0
+
+        self._matrix_presentation_scores = check_matrix(X=self._matrix_presentation_scores, format="csr", dtype=np.float32)

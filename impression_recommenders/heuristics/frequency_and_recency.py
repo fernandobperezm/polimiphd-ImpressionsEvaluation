@@ -5,21 +5,23 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.stats as st
 from Recommenders.BaseRecommender import BaseRecommender
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
+from recsys_framework_extensions.recommenders.mixins import MixinEmptySaveModel
 
 from impression_recommenders.constants import ERankMethod
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class SearchHyperParametersFrequencyRecencyRecommender:
+class SearchHyperParametersFrequencyRecencyRecommender(SearchHyperParametersBaseRecommender):
     pass
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class SearchHyperParametersRecencyRecommender:
+class SearchHyperParametersRecencyRecommender(SearchHyperParametersBaseRecommender):
     pass
 
 
-class FrequencyRecencyRecommender(BaseRecommender):
+class FrequencyRecencyRecommender(MixinEmptySaveModel, BaseRecommender):
     RECOMMENDER_NAME = "FrequencyRecencyRecommender"
 
     def __init__(
@@ -121,11 +123,8 @@ class FrequencyRecencyRecommender(BaseRecommender):
 
         return item_scores
 
-    def save_model(self, folder_path, file_name=None):
-        pass
 
-
-class RecencyRecommender(BaseRecommender):
+class RecencyRecommender(MixinEmptySaveModel, BaseRecommender):
     RECOMMENDER_NAME = "RecencyRecommender"
 
     def __init__(
@@ -192,6 +191,3 @@ class RecencyRecommender(BaseRecommender):
         assert item_scores.shape == (num_score_users, num_score_items)
 
         return item_scores
-
-    def save_model(self, folder_path, file_name=None):
-        pass

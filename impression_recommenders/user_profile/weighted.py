@@ -10,11 +10,12 @@ from Recommenders.BaseSimilarityMatrixRecommender import BaseItemSimilarityMatri
 from Recommenders.Recommender_utils import check_matrix
 
 from recsys_framework_extensions.data.io import DataIO
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
 from skopt.space import Real
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class SearchHyperParametersWeightedUserProfileRecommender:
+class SearchHyperParametersWeightedUserProfileRecommender(SearchHyperParametersBaseRecommender):
     reg_urm: Real = attrs.field(
         default=Real(
             low=1e-2,
@@ -25,9 +26,9 @@ class SearchHyperParametersWeightedUserProfileRecommender:
     )
     reg_uim: Real = attrs.field(
         default=Real(
-            low=1e-10,
-            high=1e10,
-            prior="log-uniform",
+            low=1e-2,
+            high=1e2,
+            prior="uniform",
             base=10,
         )
     )

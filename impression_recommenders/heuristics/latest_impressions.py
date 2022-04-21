@@ -4,14 +4,16 @@ import attrs
 import numpy as np
 import scipy.sparse as sp
 from Recommenders.BaseRecommender import BaseRecommender
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
+from recsys_framework_extensions.recommenders.mixins import MixinEmptySaveModel
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class SearchHyperParametersLastImpressionsRecommender:
+class SearchHyperParametersLastImpressionsRecommender(SearchHyperParametersBaseRecommender):
     pass
 
 
-class LastImpressionsRecommender(BaseRecommender):
+class LastImpressionsRecommender(MixinEmptySaveModel, BaseRecommender):
     """
     TODO: fernando-debugger| Finish this
     LastImpressionsRecommender
@@ -127,5 +129,3 @@ class LastImpressionsRecommender(BaseRecommender):
 
         return item_scores
 
-    def save_model(self, folder_path, file_name=None):
-        pass
