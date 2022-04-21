@@ -39,7 +39,8 @@ from numpy.lib.npyio import NpzFile
 from recsys_framework_extensions.data.dataset import BaseDataset
 from recsys_framework_extensions.data.mixins import ParquetDataMixin, DataIOMixin
 from recsys_framework_extensions.data.reader import DataReader
-from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe
+from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe, \
+    create_sparse_matrix_from_iter_dataframe
 from recsys_framework_extensions.data.splitter import (
     split_sequential_train_test_by_num_records_on_test,
     split_sequential_train_test_by_column_threshold,
@@ -47,7 +48,7 @@ from recsys_framework_extensions.data.splitter import (
     remove_duplicates_in_interactions,
     E_KEEP,
     remove_records_by_threshold,
-    apply_custom_function,
+    apply_custom_function, randomly_sample_by_column_values,
 )
 from recsys_framework_extensions.decorators import timeit
 from recsys_framework_extensions.decorators import typed_cache
@@ -125,13 +126,19 @@ def is_item_in_impression(
     assert impressions.shape[1] == 25
 
     num_impressions: int = impressions.shape[0]
+    arr_item_in_impressions = np.empty_like(item_ids, dtype=np.bool8)
 
-    return np.array(
-        [
-            item_ids[idx] in impressions[idx]
-            for idx in range(num_impressions)
-        ],
-    )
+    for idx in range(num_impressions):
+        arr_item_in_impressions[idx] = item_ids[idx] in impressions[idx]
+
+    return arr_item_in_impressions
+
+    # return np.array(
+    #     [
+    #         item_ids[idx] in impressions[idx]
+    #         for idx in range(num_impressions)
+    #     ],
+    # )
 
 
 # Ensure `is_item_in_impression` is JIT-compiled with expected array type,
@@ -147,6 +154,10 @@ class FinnNoSlatesConfig:
     data_folder = os.path.join(
         ".", "data", "FINN-NO-SLATE",
     )
+
+    sha256_hash: str = ""
+
+    try_low_memory_usage = True
 
     num_raw_data_points = 2_277_645
     num_time_steps = 20
@@ -164,6 +175,21 @@ class FinnNoSlatesConfig:
     }
 
     # The dataset treats 0s, 1s, and 2s, as error, no-clicks, and non-identifiable items, respectively.
+    reproducibility_seed = attrs.field(
+        default=1234567890,
+        validator=[
+            attrs.validators.instance_of(int),
+            attrs.validators.gt(0),
+        ]
+    )
+    frac_users_to_keep = attrs.field(
+        default=1.0,
+        validator=[
+            attrs.validators.instance_of(float),
+            attrs.validators.ge(0.0),
+            attrs.validators.le(1.0),
+        ]
+    )
     item_ids_to_exclude = attrs.field(
         default=[0, 1, 2],
         validator=[
@@ -196,10 +222,12 @@ class FinnNoSlatesConfig:
     )
 
     def __attrs_post_init__(self):
-        # We need to use object.__setattr__ because the config is an immutable class, this is the attrs way to
+        # We need to use object.__setattr__ because the benchmark_config is an immutable class, this is the attrs way to
         # circumvent assignment in immutable classes.
         object.__setattr__(self, "num_data_points", self.num_raw_data_points * self.num_time_steps)
         assert 45_552_900 == self.num_data_points
+
+        object.__setattr__(self, "sha256_hash", compute_sha256_hash_from_object_repr(obj=self))
 
 
 class FINNNoImpressionOrigin(Enum):
@@ -239,10 +267,8 @@ class FINNNoSlateRawData:
             self._original_dataset_folder, "raw_data.parquet"
         )
 
-        self._data_loaded = False
-
     @property  # type: ignore
-    @typed_cache
+    # @typed_cache
     def raw_data(self) -> tuple[
         np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray
     ]:
@@ -266,6 +292,10 @@ class FINNNoSlateRawData:
             assert (self.config.num_raw_data_points, self.config.num_time_steps,
                     self.config.num_items_in_each_impression) == impressions.shape
 
+            logger.debug(
+                f"Loaded raw data (user_ids, item_ids, click_indices_in_impressions, impressions, impression_origins, "
+                f"impressions_length_list) from {self.__class__.__name__}."
+            )
             return (
                 user_ids,
                 item_ids,
@@ -324,7 +354,7 @@ class PandasFinnNoSlateRawData(ParquetDataMixin, DataIOMixin):  # ():
         )
 
     @property  # type: ignore
-    @typed_cache
+    # @typed_cache
     def data(self) -> pd.DataFrame:
         df_data = self.load_parquet(
             file_path=self._file_path_data,
@@ -339,7 +369,13 @@ class PandasFinnNoSlateRawData(ParquetDataMixin, DataIOMixin):  # ():
             to_dict_func=self._data_impressions_to_dict,
         )["impressions"]
 
+        assert df_data.shape[0] == impressions.shape[0]
+
         df_data["impressions"] = list(impressions)
+
+        logger.debug(
+            f"Loaded pandas data (df_data with impressions) from {self.__class__.__name__}."
+        )
 
         return df_data
 
@@ -409,7 +445,7 @@ class PandasFinnNoSlateRawData(ParquetDataMixin, DataIOMixin):  # ():
         assert (self.config.num_data_points, 7) == df_data.shape
 
         # TODO: fernando-debugger. Remove
-        # df_data = df_data.head(100).copy(deep=True)
+        # df_data = df_data.head(100000).copy(deep=True)
 
         return df_data
 
@@ -428,6 +464,9 @@ class PandasFinnNoSlateRawData(ParquetDataMixin, DataIOMixin):  # ():
         )
 
         assert (self.config.num_data_points, self.config.num_items_in_each_impression) == impressions_arr.shape
+
+        # TODO: fernando-debugger. Remove
+        # impressions_arr = impressions_arr[:100000]
 
         return {
             "impressions": impressions_arr
@@ -491,16 +530,16 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
         config: FinnNoSlatesConfig,
     ):
         self.config = config
-        self.config_hash = compute_sha256_hash_from_object_repr(
-            obj=config
-        )
+        # self.config_hash = compute_sha256_hash_from_object_repr(
+        #     obj=benchmark_config
+        # )
 
         self.pandas_raw_data = PandasFinnNoSlateRawData(
             config=config,
         )
 
         self._folder_dataset = os.path.join(
-            self.config.data_folder, "data-processing", self.config_hash, ""
+            self.config.data_folder, "data-processing", self.config.sha256_hash, ""
         )
 
         self._folder_leave_last_k_out = os.path.join(
@@ -513,6 +552,9 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
 
         self._file_path_filter_data = os.path.join(
             self._folder_dataset, "filter_data.parquet"
+        )
+        self._file_path_sampled_out_data = os.path.join(
+            self._folder_dataset, "sampled_out_data.parquet",
         )
 
         self._filename_train = "train.parquet"
@@ -533,17 +575,23 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
         )
 
     @property  # type: ignore
-    @typed_cache
+    # @typed_cache
     def filtered(self) -> pd.DataFrame:
-        return self.load_parquet(
+        df_data_filtered = self.load_parquet(
             file_path=self._file_path_filter_data,
             to_pandas_func=self._filtered_to_pandas,
         ).astype(
             dtype=self.config.pandas_dtypes,
         )
 
+        logger.debug(
+            f"Loaded pandas filtered data (df_data_filtered) from {self.__class__.__name__}."
+        )
+
+        return df_data_filtered
+
     @property  # type: ignore
-    @typed_cache
+    # @typed_cache
     def timestamp_splits(
         self
     ) -> tuple[
@@ -564,10 +612,14 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
         df_validation = df_validation.astype(dtype=self.config.pandas_dtypes)
         df_test = df_test.astype(dtype=self.config.pandas_dtypes)
 
+        logger.debug(
+            f"Loaded pandas time step data splits (df_train, df_validation, df_test) from {self.__class__.__name__}."
+        )
+
         return df_train, df_validation, df_test
 
     @property  # type: ignore
-    @typed_cache
+    # @typed_cache
     def leave_last_k_out_splits(
         self
     ) -> tuple[
@@ -587,6 +639,11 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
         df_train = df_train.astype(dtype=self.config.pandas_dtypes)
         df_validation = df_validation.astype(dtype=self.config.pandas_dtypes)
         df_test = df_test.astype(dtype=self.config.pandas_dtypes)
+
+        logger.debug(
+            f"Loaded pandas leave-last-out data splits (df_train, df_validation, df_test) from"
+            f" {self.__class__.__name__}."
+        )
 
         return df_train, df_validation, df_test
 
@@ -616,6 +673,19 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
         )
 
         df_data = self.pandas_raw_data.data
+
+        df_data, df_removed = randomly_sample_by_column_values(
+            df=df_data,
+            frac_to_keep=self.config.frac_users_to_keep,
+            column="user_id",
+            seed=self.config.reproducibility_seed,
+        )
+
+        # Save the sampled out data into disk in case we need it in the future.
+        _ = self.load_parquet(
+            file_path=self._file_path_sampled_out_data,
+            to_pandas_func=lambda: df_removed,
+        )
 
         # We don't need to reset the index first because this dataset does not have exploded values.
         df_data = df_data.sort_values(
@@ -655,7 +725,8 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
             axis="columns",
         )
 
-        # Given that we removed the 0s and 1s in the impressions, then we must subtract.
+        # Given that we removed the 0s and 1s in the impressions, then we must subtract 1 to the columns
+        # `position_interaction` and `num_impressions` given that they account for the existence of one extra element.
         df_data["position_interaction"] -= 1
         df_data["num_impressions"] -= 1
         # We don't have to process the column "is_item_in_impression" in the metadata because we already removed the
@@ -708,7 +779,7 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin):
         return [df_train, df_validation, df_test]
 
 
-class FINNNoSlateReader(DataReader):
+class FINNNoSlateReader(ParquetDataMixin, DataIOMixin, DataReader):
     def __init__(
         self,
         config: FinnNoSlatesConfig,
@@ -716,16 +787,20 @@ class FINNNoSlateReader(DataReader):
         super().__init__()
 
         self.config = config
-        self.config_hash = compute_sha256_hash_from_object_repr(
-            obj=self.config,
-        )
+        # self.config_hash = compute_sha256_hash_from_object_repr(
+        #     obj=self.benchmark_config,
+        # )
 
         self.processed_data_loader = PandasFinnNoSlateProcessData(
             config=config,
         )
 
         self.DATA_FOLDER = os.path.join(
-            self.config.data_folder, "data_reader", self.config_hash, "",
+            self.config.data_folder, "data_reader", self.config.sha256_hash, "",
+        )
+
+        self.folder_data_tmp = os.path.join(
+            self.DATA_FOLDER, "tmp", "",
         )
 
         self._DATA_READER_NAME = "FINNNoSlateReader"
@@ -737,18 +812,28 @@ class FINNNoSlateReader(DataReader):
         self.items_column = "item_id"
         self.impressions_column = "impressions"
 
-        self._user_id_to_index_mapper: dict[int, int] = dict()
-        self._item_id_to_index_mapper: dict[int, int] = dict()
+        # self._user_id_to_index_mapper: dict[int, int] = dict()
+        # self._item_id_to_index_mapper: dict[int, int] = dict()
 
-        self._interactions: dict[str, sp.csr_matrix] = dict()
-        self._impressions: dict[str, sp.csr_matrix] = dict()
-        self._dataframes: dict[str, pd.DataFrame] = dict()
+        # self._interactions: dict[str, sp.csr_matrix] = dict()
+        # self._impressions: dict[str, sp.csr_matrix] = dict()
+        # self._dataframes: dict[str, pd.DataFrame] = dict()
 
         self._icms = None
         self._icm_mappers = None
 
         self._ucms = None
         self._ucms_mappers = None
+
+        os.makedirs(
+            self.DATA_FOLDER,
+            exist_ok=True
+        )
+
+        os.makedirs(
+            self.folder_data_tmp,
+            exist_ok=True
+        )
 
     @property  # type: ignore
     @typed_cache
@@ -761,21 +846,6 @@ class FINNNoSlateReader(DataReader):
         return self.DATASET_SUBFOLDER
 
     def _load_from_original_file(self) -> BaseDataset:
-        # IMPORTANT: calculate first the impressions, so we have all mappers created.
-        self._calculate_dataframes()
-
-        self._compute_user_mappers()
-        self._compute_item_mappers()
-
-        self._calculate_uim_all()
-        self._calculate_urm_all()
-
-        self._calculate_uim_leave_last_k_out_splits()
-        self._calculate_urm_leave_last_k_out_splits()
-
-        self._calculate_uim_time_step_splits()
-        self._calculate_urm_time_step_splits()
-
         return BaseDataset(
             dataset_name="FINNNoSlate",
             impressions=self._impressions,
@@ -787,7 +857,117 @@ class FINNNoSlateReader(DataReader):
             is_interactions_implicit=self.config.binarize_interactions,
         )
 
-    def _compute_item_mappers(self) -> None:
+    @property  # type: ignore
+    # @typed_cache
+    def _item_id_to_index_mapper(self) -> dict[int, int]:
+        # item_mappers = self.load_from_data_io(
+        #     file_name="item_id_to_index_mapper.zip",
+        #     folder_path=self.folder_data_tmp,
+        #     to_dict_func=self._calculate_item_mappers,
+        # )
+
+        item_mappers = self.load_parquet(
+            file_path=os.path.join(self.folder_data_tmp, "item_id_to_index_mapper.parquet"),
+            to_pandas_func=self._calculate_item_mappers,
+        )
+
+        return {
+            row["orig_value"]: row["mapped_value"]
+            for idx, row in item_mappers.iterrows()
+        }
+
+    @property  # type: ignore
+    # @typed_cache
+    def _user_id_to_index_mapper(self) -> dict[int, int]:
+        # user_mappers = self.load_from_data_io(
+        #     file_name="user_id_to_index_mapper.zip",
+        #     folder_path=self.folder_data_tmp,
+        #     to_dict_func=self._calculate_user_mappers,
+        # )
+
+        user_mappers = self.load_parquet(
+            file_path=os.path.join(self.folder_data_tmp, "user_id_to_index_mapper.parquet"),
+            to_pandas_func=self._calculate_user_mappers,
+        )
+
+        return {
+            row["orig_value"]: row["mapped_value"]
+            for idx, row in user_mappers.iterrows()
+        }
+
+    @property
+    def _dataframes(self) -> dict[str, pd.DataFrame]:
+        df_filtered = self.processed_data_loader.filtered
+        leave_last_out_splits = self.processed_data_loader.leave_last_k_out_splits
+        time_step_splits = self.processed_data_loader.timestamp_splits
+
+        return {
+            BaseDataset.NAME_DF_FILTERED: df_filtered,
+
+            BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TRAIN: leave_last_out_splits[0],
+            BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_VALIDATION: leave_last_out_splits[1],
+            BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TEST: leave_last_out_splits[2],
+
+            BaseDataset.NAME_DF_TIMESTAMP_TRAIN: time_step_splits[0],
+            BaseDataset.NAME_DF_TIMESTAMP_VALIDATION: time_step_splits[1],
+            BaseDataset.NAME_DF_TIMESTAMP_TEST: time_step_splits[2],
+        }
+
+    @property
+    def _interactions(self) -> dict[str, sp.csr_matrix]:
+        dict_urm_all = self.load_from_data_io(
+            file_name="urm_all.zip",
+            folder_path=self.folder_data_tmp,
+            to_dict_func=self._calculate_urm_all,
+        )
+
+        dict_urm_leave_last_out_splits = self.load_from_data_io(
+            file_name="urm_leave_last_k_out_splits.zip",
+            folder_path=self.folder_data_tmp,
+            to_dict_func=self._calculate_urm_leave_last_k_out_splits,
+        )
+
+        dict_urm_time_step_splits = self.load_from_data_io(
+            file_name="urm_time_step_splits.zip",
+            folder_path=self.folder_data_tmp,
+            to_dict_func=self._calculate_urm_time_step_splits,
+        )
+
+        return {
+            **dict_urm_all,
+            **dict_urm_leave_last_out_splits,
+            **dict_urm_time_step_splits,
+        }
+
+    @property
+    def _impressions(self) -> dict[str, sp.csr_matrix]:
+        dict_uim_all = self.load_from_data_io(
+            file_name="uim_all",
+            folder_path=self.folder_data_tmp,
+            to_dict_func=self._calculate_uim_all,
+        )
+
+        dict_uim_leave_last_out_splits = self.load_from_data_io(
+            file_name="uim_leave_last_k_out_splits",
+            folder_path=self.folder_data_tmp,
+            to_dict_func=self._calculate_uim_leave_last_k_out_splits,
+        )
+
+        dict_uim_time_step_splits = self.load_from_data_io(
+            file_name="uim_time_step_splits",
+            folder_path=self.folder_data_tmp,
+            to_dict_func=self._calculate_uim_time_step_splits,
+        )
+
+        return {
+            **dict_uim_all,
+            **dict_uim_leave_last_out_splits,
+            **dict_uim_time_step_splits,
+        }
+
+    @timeit
+    # def _compute_item_mappers(self) -> None:
+    def _calculate_item_mappers(self) -> pd.DataFrame:
         df_data_filtered = self.processed_data_loader.filtered[
             [self.items_column, self.impressions_column]
         ]
@@ -804,12 +984,22 @@ class FINNNoSlateReader(DataReader):
 
         unique_items = set(non_na_items).union(non_na_exploded_impressions)
 
-        self._item_id_to_index_mapper = {
-            int(orig_value): int(mapped_value)
-            for mapped_value, orig_value in enumerate(unique_items)
-        }
+        df_orig_to_mapped_value = pd.DataFrame(
+            data={
+                "orig_value": list(unique_items),
+                "mapped_value": np.arange(start=0, stop=len(unique_items), step=1)
+            }
+        )
 
-    def _compute_user_mappers(self) -> None:
+        # self._item_id_to_index_mapper = {
+        #     int(orig_value): int(mapped_value)
+        #     for mapped_value, orig_value in enumerate(unique_items)
+        # }
+        return df_orig_to_mapped_value
+
+    @timeit
+    # def _compute_user_mappers(self) -> None:
+    def _calculate_user_mappers(self) -> pd.DataFrame:
         df_data_filtered = self.processed_data_loader.filtered
 
         non_na_users = df_data_filtered[self.users_column].dropna(
@@ -818,29 +1008,26 @@ class FINNNoSlateReader(DataReader):
 
         unique_users = set(non_na_users)
 
-        self._user_id_to_index_mapper = {
-            int(orig_value): int(mapped_value)
-            for mapped_value, orig_value in enumerate(unique_users)
-        }
+        # self._user_id_to_index_mapper = {
+        #     int(orig_value): int(mapped_value)
+        #     for mapped_value, orig_value in enumerate(unique_users)
+        # }
 
-    def _calculate_dataframes(self) -> None:
-        self._dataframes[BaseDataset.NAME_DF_FILTERED] = self.processed_data_loader.filtered
+        # return {
+        #    int(orig_value): int(mapped_value)
+        #    for mapped_value, orig_value in enumerate(unique_users)
+        # }
 
-        self._dataframes[BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TRAIN] = \
-            self.processed_data_loader.leave_last_k_out_splits[0]
-        self._dataframes[BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_VALIDATION] = \
-            self.processed_data_loader.leave_last_k_out_splits[1]
-        self._dataframes[BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TEST] = \
-            self.processed_data_loader.leave_last_k_out_splits[2]
+        df_orig_to_mapped_value = pd.DataFrame(
+            data={
+                "orig_value": list(unique_users),
+                "mapped_value": np.arange(start=0, stop=len(unique_users), step=1)
+            }
+        )
+        return df_orig_to_mapped_value
 
-        self._dataframes[BaseDataset.NAME_DF_TIMESTAMP_TRAIN] = \
-            self.processed_data_loader.timestamp_splits[0]
-        self._dataframes[BaseDataset.NAME_DF_TIMESTAMP_VALIDATION] = \
-            self.processed_data_loader.timestamp_splits[1]
-        self._dataframes[BaseDataset.NAME_DF_TIMESTAMP_TEST] = \
-            self.processed_data_loader.timestamp_splits[2]
-
-    def _calculate_urm_all(self):
+    @timeit
+    def _calculate_urm_all(self) -> dict[str, sp.csr_matrix]:
         logger.info(
             f"Building URM with name {BaseDataset.NAME_URM_ALL}."
         )
@@ -858,14 +1045,19 @@ class FINNNoSlateReader(DataReader):
             mapper_item_id_to_index=self._item_id_to_index_mapper,
         )
 
-        self._interactions[BaseDataset.NAME_URM_ALL] = urm_all
+        # self._interactions[BaseDataset.NAME_URM_ALL] = urm_all
 
-    def _calculate_uim_all(self):
+        return {
+            BaseDataset.NAME_URM_ALL: urm_all.copy()
+        }
+
+    @timeit
+    def _calculate_uim_all(self) -> dict[str, sp.csr_matrix]:
         logger.info(
             f"Building UIM with name {BaseDataset.NAME_UIM_ALL}."
         )
 
-        uim_all = create_sparse_matrix_from_dataframe(
+        uim_all = create_sparse_matrix_from_iter_dataframe(
             df=self.processed_data_loader.filtered,
             users_column=self.users_column,
             items_column=self.impressions_column,
@@ -874,9 +1066,14 @@ class FINNNoSlateReader(DataReader):
             mapper_item_id_to_index=self._item_id_to_index_mapper,
         )
 
-        self._impressions[BaseDataset.NAME_UIM_ALL] = uim_all.copy()
+        # self._impressions[BaseDataset.NAME_UIM_ALL] = uim_all.copy()
+        return {
+            BaseDataset.NAME_UIM_ALL: uim_all.copy()
+        }
 
-    def _calculate_urm_leave_last_k_out_splits(self) -> None:
+    @timeit
+    # def _calculate_urm_leave_last_k_out_splits(self) -> None:
+    def _calculate_urm_leave_last_k_out_splits(self) -> dict[str, sp.csr_matrix]:
         df_train, df_validation, df_test = self.processed_data_loader.leave_last_k_out_splits
 
         names = [
@@ -893,6 +1090,7 @@ class FINNNoSlateReader(DataReader):
         logger.info(
             f"Building URMs with name {names}."
         )
+        interactions = {}
         for name, df_split in zip(names, splits):
             urm_split = create_sparse_matrix_from_dataframe(
                 df=df_split,
@@ -902,10 +1100,15 @@ class FINNNoSlateReader(DataReader):
                 mapper_user_id_to_index=self._user_id_to_index_mapper,
                 mapper_item_id_to_index=self._item_id_to_index_mapper,
             )
+            # self._interactions[name] = urm_split.copy()
 
-            self._interactions[name] = urm_split.copy()
+            interactions[name] = urm_split.copy()
 
-    def _calculate_uim_leave_last_k_out_splits(self) -> None:
+        return interactions
+
+    @timeit
+    # def _calculate_uim_leave_last_k_out_splits(self) -> None:
+    def _calculate_uim_leave_last_k_out_splits(self) -> dict[str, sp.csr_matrix]:
         df_train, df_validation, df_test = self.processed_data_loader.leave_last_k_out_splits
 
         names = [
@@ -922,8 +1125,9 @@ class FINNNoSlateReader(DataReader):
         logger.info(
             f"Building UIMs with name {names}."
         )
+        impressions = {}
         for name, df_split in zip(names, splits):
-            uim_split = create_sparse_matrix_from_dataframe(
+            uim_split = create_sparse_matrix_from_iter_dataframe(
                 df=df_split,
                 users_column=self.users_column,
                 items_column=self.impressions_column,
@@ -932,9 +1136,15 @@ class FINNNoSlateReader(DataReader):
                 mapper_item_id_to_index=self._item_id_to_index_mapper,
             )
 
-            self._impressions[name] = uim_split.copy()
+            # self._impressions[name] = uim_split.copy()
 
-    def _calculate_urm_time_step_splits(self) -> None:
+            impressions[name] = uim_split.copy()
+
+        return impressions
+
+    @timeit
+    # def _calculate_urm_time_step_splits(self) -> None:
+    def _calculate_urm_time_step_splits(self) -> dict[str, sp.csr_matrix]:
         df_train, df_validation, df_test = self.processed_data_loader.timestamp_splits
 
         names = [
@@ -951,6 +1161,7 @@ class FINNNoSlateReader(DataReader):
         logger.info(
             f"Building URMs with name {names}."
         )
+        interactions = {}
         for name, df_split in zip(names, splits):
             urm_split = create_sparse_matrix_from_dataframe(
                 df=df_split,
@@ -961,9 +1172,14 @@ class FINNNoSlateReader(DataReader):
                 mapper_item_id_to_index=self._item_id_to_index_mapper,
             )
 
-            self._interactions[name] = urm_split.copy()
+            # self._interactions[name] = urm_split.copy()
+            interactions[name] = urm_split.copy()
 
-    def _calculate_uim_time_step_splits(self) -> None:
+        return interactions
+
+    @timeit
+    # def _calculate_uim_time_step_splits(self) -> None:
+    def _calculate_uim_time_step_splits(self) -> dict[str, sp.csr_matrix]:
         df_train, df_validation, df_test = self.processed_data_loader.timestamp_splits
 
         names = [
@@ -980,8 +1196,9 @@ class FINNNoSlateReader(DataReader):
         logger.info(
             f"Building UIMs with name {names}."
         )
+        impressions = {}
         for name, df_split in zip(names, splits):
-            uim_split = create_sparse_matrix_from_dataframe(
+            uim_split = create_sparse_matrix_from_iter_dataframe(
                 df=df_split,
                 users_column=self.users_column,
                 items_column=self.impressions_column,
@@ -990,14 +1207,23 @@ class FINNNoSlateReader(DataReader):
                 mapper_item_id_to_index=self._item_id_to_index_mapper,
             )
 
-            self._impressions[name] = uim_split.copy()
+            # self._impressions[name] = uim_split.copy()
+
+            impressions[name] = uim_split.copy()
+
+        return impressions
 
 
 if __name__ == "__main__":
-    config = FinnNoSlatesConfig()
+    config = FinnNoSlatesConfig(
+        frac_users_to_keep=0.05,
+    )
+
+    import pdb
+    pdb.set_trace()
 
     data_reader = FINNNoSlateReader(
         config=config,
     )
 
-    data_reader.dataset.verify_data_consistency()
+    data_reader.dataset
