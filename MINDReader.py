@@ -49,13 +49,15 @@ import os
 import re
 import zipfile
 from enum import Enum
-from typing import Optional, NamedTuple
+from typing import Optional, NamedTuple, Callable
 
 import attrs  # Use the newest API of attrs package.
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 from recsys_framework_extensions.data.dataset import BaseDataset
+from recsys_framework_extensions.data.features import extract_frequency_user_item, extract_last_seen_user_item, \
+    extract_position_user_item, extract_timestamp_user_item
 from recsys_framework_extensions.data.mixins import ParquetDataMixin, SparseDataMixin
 from recsys_framework_extensions.data.reader import DataReader
 from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe
@@ -1022,6 +1024,216 @@ class PandasMINDProcessedData(ParquetDataMixin):
         return [df_data_train, df_data_validation, df_data_train_validation, df_data_test]
 
 
+class PandasMINDImpressionsFeaturesData(ParquetDataMixin):
+    def __init__(
+        self,
+        config: MINDSmallConfig,
+    ):
+        self.config = config
+        self.loader_processed_data = PandasMINDProcessedData(
+            config=config,
+        )
+
+        self._folder_dataset = os.path.join(
+            self.config.data_folder, "data-features-impressions", self.config.sha256_hash, ""
+        )
+
+        self._folder_leave_last_k_out = os.path.join(
+            self._folder_dataset, "leave-last-k-out", ""
+        )
+
+        self._file_name_split_train = "train.parquet"
+        self._file_name_split_validation = "validation.parquet"
+        self._file_name_split_train_validation = "train_validation.parquet"
+        self._file_name_split_test = "test.parquet"
+
+        self._feature_funcs: dict[str, Callable[..., tuple[pd.DataFrame, pd.DataFrame]]] = {
+            "user_item_frequency": functools.partial(
+                extract_frequency_user_item,
+                users_column="user_id",
+                items_column="impressions",
+            ),
+            "user_item_last_seen": functools.partial(
+                extract_last_seen_user_item,
+                users_column="user_id",
+                items_column="impressions",
+                timestamp_column="timestamp",
+            ),
+            "user_item_position": functools.partial(
+                extract_position_user_item,
+                users_column="user_id",
+                items_column="impressions",
+                positions_column=None,
+                to_keep="last",
+            ),
+            "user_item_timestamp": functools.partial(
+                extract_timestamp_user_item,
+                users_column="user_id",
+                items_column="impressions",
+                timestamp_column="timestamp",
+                to_keep="last",
+            )
+        }
+
+        os.makedirs(
+            name=self._folder_dataset,
+            exist_ok=True,
+        )
+        os.makedirs(
+            name=self._folder_leave_last_k_out,
+            exist_ok=True,
+        )
+
+        for folder in [self._folder_leave_last_k_out]:
+            for sub_folder in self._feature_funcs.keys():
+                os.makedirs(
+                    name=os.path.join(folder, sub_folder),
+                    exist_ok=True,
+                )
+
+    @property
+    def features(self) -> dict[str, list[str]]:
+        return {
+            "user_item_frequency": ["feature-user_id-impressions-frequency"],
+            "user_item_last_seen": [
+                "feature_last_seen_total_seconds",
+                "feature_last_seen_total_minutes",
+                "feature_last_seen_total_hours",
+                "feature_last_seen_total_days",
+                "feature_last_seen_total_weeks",
+            ],
+            "user_item_position": ["feature-user_id-impressions-position"],
+            "user_item_timestamp": ["feature-user_id-impressions-timestamp"],
+        }
+
+    @property
+    def impressions_features(self) -> dict[str, pd.DataFrame]:
+        impression_features: dict[str, pd.DataFrame] = {}
+
+        for evaluation_strategy in [EvaluationStrategy.LEAVE_LAST_K_OUT]:
+            for feature_key, feature_columns in self.features.items():
+                splits = self.user_item_feature(
+                    evaluation_strategy=evaluation_strategy,
+                    feature_key=feature_key
+                )
+
+                feature_name = f"{evaluation_strategy.value}-{feature_key}"
+                impression_features[f"{feature_name}-train"] = splits.df_train
+                impression_features[f"{feature_name}-validation"] = splits.df_validation
+                impression_features[f"{feature_name}-train_validation"] = splits.df_train_validation
+                impression_features[f"{feature_name}-test"] = splits.df_test
+
+        return impression_features
+
+    def user_item_feature(
+        self,
+        evaluation_strategy: EvaluationStrategy,
+        feature_key: str,
+    ) -> MINDSplits:
+        logger.debug(
+            f"Called {self.user_item_feature.__name__} with kwargs: {evaluation_strategy=} - {feature_key=}"
+        )
+        assert feature_key in self._feature_funcs
+
+        file_paths = self._get_file_paths_by_evaluation_strategy(
+            evaluation_strategy=evaluation_strategy,
+            feature=feature_key,
+        )
+
+        partial_func_user_item_position_to_pandas = functools.partial(
+            self._user_item_feature_to_pandas,
+            evaluation_strategy=evaluation_strategy,
+            feature_key=feature_key,
+        )
+
+        df_train: pd.DataFrame
+        df_validation: pd.DataFrame
+        df_train_validation: pd.DataFrame
+        df_test: pd.DataFrame
+
+        df_train, df_validation, df_train_validation, df_test = self.load_parquets(
+            file_paths=file_paths,
+            to_pandas_func=partial_func_user_item_position_to_pandas,
+        )
+
+        return MINDSplits(
+            df_train=df_train,
+            df_validation=df_validation,
+            df_train_validation=df_train_validation,
+            df_test=df_test,
+        )
+
+    def _get_file_paths_by_evaluation_strategy(
+        self,
+        evaluation_strategy: EvaluationStrategy,
+        feature: str,
+    ) -> list[str]:
+        if EvaluationStrategy.LEAVE_LAST_K_OUT == evaluation_strategy:
+            folder_to_look_up = self._folder_leave_last_k_out
+        else:
+            raise NotImplementedError(
+                f"The only evaluation strategy implemented for the MIND dataset is "
+                f"{EvaluationStrategy.LEAVE_LAST_K_OUT}. Passed evaluation strategy was {evaluation_strategy}"
+            )
+
+        return [
+            os.path.join(
+                folder_to_look_up, feature, self._file_name_split_train,
+            ),
+            os.path.join(
+                folder_to_look_up, feature, self._file_name_split_validation,
+            ),
+            os.path.join(
+                folder_to_look_up, feature, self._file_name_split_train_validation,
+            ),
+            os.path.join(
+                folder_to_look_up, feature, self._file_name_split_test,
+            ),
+        ]
+
+    def _get_splits_by_evaluation_strategy(
+        self,
+        evaluation_strategy: EvaluationStrategy,
+    ) -> MINDSplits:
+        if EvaluationStrategy.LEAVE_LAST_K_OUT == evaluation_strategy:
+            return self.loader_processed_data.leave_last_out_splits
+        else:
+            raise NotImplementedError(
+                f"The only evaluation strategy implemented for the MIND dataset is "
+                f"{EvaluationStrategy.LEAVE_LAST_K_OUT}. Passed evaluation strategy was {evaluation_strategy}"
+            )
+
+    def _user_item_feature_to_pandas(
+        self,
+        evaluation_strategy: EvaluationStrategy,
+        feature_key: str
+    ) -> list[pd.DataFrame]:
+        assert feature_key in self._feature_funcs
+
+        logger.debug(
+            f"Called {self._user_item_feature_to_pandas.__name__} with kwargs: "
+            f" {feature_key=} - {evaluation_strategy=} -"
+        )
+
+        splits = self._get_splits_by_evaluation_strategy(
+            evaluation_strategy=evaluation_strategy,
+        )
+
+        feature_func = self._feature_funcs[feature_key]
+
+        df_train_user_item_feature, _ = feature_func(df=splits.df_train)
+        df_validation_user_item_feature, _ = feature_func(df=splits.df_validation)
+        df_train_validation_user_item_feature, _ = feature_func(df=splits.df_train_validation)
+        df_test_user_item_feature, _ = feature_func(df=splits.df_test)
+
+        return [
+            df_train_user_item_feature,
+            df_validation_user_item_feature,
+            df_train_validation_user_item_feature,
+            df_test_user_item_feature,
+        ]
+
+
 class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin):
     def __init__(
         self,
@@ -1034,9 +1246,9 @@ class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin):
         self.data_loader_processed = PandasMINDProcessedData(
             config=config,
         )
-        # self.data_loader_impression_features = PandasContentWiseImpressionsImpressionsFeaturesData(
-        #     config=config,
-        # )
+        self.data_loader_impression_features = PandasMINDImpressionsFeaturesData(
+            config=config,
+        )
 
         self.users_column = "user_id"
         self.items_column = "item_ids"
@@ -1147,53 +1359,53 @@ class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin):
             BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TEST: sp_llo_uim_test,
         }
 
-    # @property
-    # def impressions_features(self) -> dict[str, sp.csr_matrix]:
-    #     impression_features: dict[str, sp.csr_matrix] = {}
-    #
-    #     for evaluation_strategy in EvaluationStrategy:
-    #         for feature_key, feature_columns in self.data_loader_impression_features.features.items():
-    #             for feature_column in feature_columns:
-    #                 folder = os.path.join(self._folder_data, evaluation_strategy.value)
-    #                 file_paths = [
-    #                     os.path.join(
-    #                         folder, f"impressions_features_{feature_key}_{feature_column}_train.npz"
-    #                     ),
-    #                     os.path.join(
-    #                         folder, f"impressions_features_{feature_key}_{feature_column}_validation.npz"
-    #                     ),
-    #                     os.path.join(
-    #                         folder, f"impressions_features_{feature_key}_{feature_column}_train_validation.npz"
-    #                     ),
-    #                     os.path.join(
-    #                         folder, f"impressions_features_{feature_key}_{feature_column}_test.npz"
-    #                     ),
-    #                 ]
-    #
-    #                 partial_func = functools.partial(
-    #                     self._impression_features_to_sparse,
-    #                     evaluation_strategy=evaluation_strategy,
-    #                     feature_key=feature_key,
-    #                     feature_column=feature_column
-    #                 )
-    #
-    #                 (
-    #                     sp_impressions_feature_train,
-    #                     sp_impressions_feature_validation,
-    #                     sp_impressions_feature_train_validation,
-    #                     sp_impressions_feature_test,
-    #                 ) = self.load_sparse_matrices(
-    #                     file_paths=file_paths,
-    #                     to_sparse_matrices_func=partial_func,
-    #                 )
-    #
-    #                 feature_name = f"{evaluation_strategy.value}-{feature_key}-{feature_column}"
-    #                 impression_features[f"{feature_name}-train"] = sp_impressions_feature_train
-    #                 impression_features[f"{feature_name}-validation"] = sp_impressions_feature_validation
-    #                 impression_features[f"{feature_name}-train_validation"] = sp_impressions_feature_train_validation
-    #                 impression_features[f"{feature_name}-test"] = sp_impressions_feature_test
-    #
-    #     return impression_features
+    @property
+    def impressions_features(self) -> dict[str, sp.csr_matrix]:
+        impression_features: dict[str, sp.csr_matrix] = {}
+
+        for evaluation_strategy in [EvaluationStrategy.LEAVE_LAST_K_OUT]:
+            for feature_key, feature_columns in self.data_loader_impression_features.features.items():
+                for feature_column in feature_columns:
+                    folder = os.path.join(self._folder_data, evaluation_strategy.value)
+                    file_paths = [
+                        os.path.join(
+                            folder, f"impressions_features_{feature_key}_{feature_column}_train.npz"
+                        ),
+                        os.path.join(
+                            folder, f"impressions_features_{feature_key}_{feature_column}_validation.npz"
+                        ),
+                        os.path.join(
+                            folder, f"impressions_features_{feature_key}_{feature_column}_train_validation.npz"
+                        ),
+                        os.path.join(
+                            folder, f"impressions_features_{feature_key}_{feature_column}_test.npz"
+                        ),
+                    ]
+
+                    partial_func = functools.partial(
+                        self._impression_features_to_sparse,
+                        evaluation_strategy=evaluation_strategy,
+                        feature_key=feature_key,
+                        feature_column=feature_column
+                    )
+
+                    (
+                        sp_impressions_feature_train,
+                        sp_impressions_feature_validation,
+                        sp_impressions_feature_train_validation,
+                        sp_impressions_feature_test,
+                    ) = self.load_sparse_matrices(
+                        file_paths=file_paths,
+                        to_sparse_matrices_func=partial_func,
+                    )
+
+                    feature_name = f"{evaluation_strategy.value}-{feature_key}-{feature_column}"
+                    impression_features[f"{feature_name}-train"] = sp_impressions_feature_train
+                    impression_features[f"{feature_name}-validation"] = sp_impressions_feature_validation
+                    impression_features[f"{feature_name}-train_validation"] = sp_impressions_feature_train_validation
+                    impression_features[f"{feature_name}-test"] = sp_impressions_feature_test
+
+        return impression_features
 
     def _item_mapper_to_pandas(self) -> pd.DataFrame:
         df_data_filtered = self.data_loader_processed.filtered[
@@ -1312,42 +1524,42 @@ class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin):
 
         return sparse_matrices
 
-    # def _impression_features_to_sparse(
-    #     self, evaluation_strategy: EvaluationStrategy, feature_key: str, feature_column: str
-    # ) -> list[sp.csr_matrix]:
-    #
-    #     sparse_matrices = []
-    #
-    #     splits = self.data_loader_impression_features.user_item_feature(
-    #         evaluation_strategy=evaluation_strategy,
-    #         feature_key=feature_key,
-    #     )
-    #
-    #     for split_name, df_split in splits._asdict().items():
-    #         feature_name = f"{evaluation_strategy.value}-{split_name}-{feature_key}-{feature_column}"
-    #
-    #         logger.debug(
-    #             f"\n* {evaluation_strategy=}"
-    #             f"\n* {feature_key=}"
-    #             f"\n* {feature_column=}"
-    #             f"\n* {split_name=}"
-    #             f"\n* {df_split=}"
-    #             f"\n* {df_split.columns=}"
-    #             f"\n* {feature_name=}"
-    #         )
-    #         sparse_matrix_split = create_sparse_matrix_from_dataframe(
-    #             df=df_split,
-    #             users_column=self.users_column,
-    #             items_column=self.impressions_column,
-    #             data_column=feature_column,
-    #             binarize_interactions=False,
-    #             mapper_user_id_to_index=self.mapper_user_id_to_index,
-    #             mapper_item_id_to_index=self.mapper_item_id_to_index,
-    #         )
-    #
-    #         sparse_matrices.append(sparse_matrix_split)
-    #
-    #     return sparse_matrices
+    def _impression_features_to_sparse(
+        self, evaluation_strategy: EvaluationStrategy, feature_key: str, feature_column: str
+    ) -> list[sp.csr_matrix]:
+
+        sparse_matrices = []
+
+        splits = self.data_loader_impression_features.user_item_feature(
+            evaluation_strategy=evaluation_strategy,
+            feature_key=feature_key,
+        )
+
+        for split_name, df_split in splits._asdict().items():
+            feature_name = f"{evaluation_strategy.value}-{split_name}-{feature_key}-{feature_column}"
+
+            logger.debug(
+                f"\n* {evaluation_strategy=}"
+                f"\n* {feature_key=}"
+                f"\n* {feature_column=}"
+                f"\n* {split_name=}"
+                f"\n* {df_split=}"
+                f"\n* {df_split.columns=}"
+                f"\n* {feature_name=}"
+            )
+            sparse_matrix_split = create_sparse_matrix_from_dataframe(
+                df=df_split,
+                users_column=self.users_column,
+                items_column=self.impressions_column,
+                data_column=feature_column,
+                binarize_interactions=False,
+                mapper_user_id_to_index=self.mapper_user_id_to_index,
+                mapper_item_id_to_index=self.mapper_item_id_to_index,
+            )
+
+            sparse_matrices.append(sparse_matrix_split)
+
+        return sparse_matrices
 
 
 class MINDReader(DataReader):
@@ -1365,6 +1577,9 @@ class MINDReader(DataReader):
             config=config,
         )
         self.data_loader_sparse_data = SparsePandasMINDData(
+            config=config,
+        )
+        self.data_loader_impressions_features = PandasMINDImpressionsFeaturesData(
             config=config,
         )
 
@@ -1406,17 +1621,16 @@ class MINDReader(DataReader):
 
         interactions = self.data_loader_sparse_data.interactions
         impressions = self.data_loader_sparse_data.impressions
-        # impressions_features_sparse_matrices = self.data_loader_sparse_data.impressions_features
-        # impressions_features_dataframes = self.data_loader_impression_features.impressions_features
+        impressions_features_sparse_matrices = self.data_loader_sparse_data.impressions_features
+        impressions_features_dataframes = self.data_loader_impressions_features.impressions_features
 
         return BaseDataset(
             dataset_name=self.DATASET_SUBFOLDER,
-
             dataframes=dataframes,
             interactions=interactions,
             impressions=impressions,
-            # impressions_features_dataframes=impressions_features_dataframes,
-            # impressions_features_sparse_matrices=impressions_features_sparse_matrices,
+            impressions_features_dataframes=impressions_features_dataframes,
+            impressions_features_sparse_matrices=impressions_features_sparse_matrices,
             mapper_user_original_id_to_index=mapper_user_original_id_to_index,
             mapper_item_original_id_to_index=mapper_item_original_id_to_index,
             is_impressions_implicit=self.config.binarize_impressions,
@@ -1435,6 +1649,3 @@ if __name__ == "__main__":
             config=config,
         )
         dataset = data_reader.dataset
-
-        print(dataset.interactions)
-        print(dataset.impressions)
