@@ -16,19 +16,11 @@ from skopt.space import Real
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
 class SearchHyperParametersWeightedUserProfileRecommender(SearchHyperParametersBaseRecommender):
-    reg_urm: Real = attrs.field(
+    reg: Real = attrs.field(
         default=Real(
-            low=1e-2,
-            high=1e2,
-            prior="uniform",
-            base=10,
-        )
-    )
-    reg_uim: Real = attrs.field(
-        default=Real(
-            low=1e-2,
-            high=1e2,
-            prior="uniform",
+            low=1e-5,
+            high=1,
+            prior="log-uniform",
             base=10,
         )
     )
@@ -77,23 +69,20 @@ class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
         self._sparse_similarity: sp.csr_matrix = sp.csr_matrix([], dtype=np.float32)
 
         self._uim_train: sp.csr_matrix = check_matrix(X=uim_train, format="csr", dtype=np.float32)
-        self._reg_urm: float = 0.0
-        self._reg_uim: float = 0.0
+        self.reg: float = 0.0
 
         self.trained_recommender = trained_recommender
 
     def fit(
         self,
-        reg_urm: float,
-        reg_uim: float,
+        reg: float,
         **kwargs,
     ) -> None:
-        self._reg_urm = reg_urm
-        self._reg_uim = reg_uim
+        self.reg = reg
 
         sparse_user_profile = (
-            (self._reg_urm * self.URM_train)
-            + (self._reg_uim * self._uim_train)
+            (self.reg * self.URM_train)
+            + ((1. - self.reg) * self._uim_train)
         )
         self._sparse_user_profile = check_matrix(X=sparse_user_profile, format="csr", dtype=np.float32)
 
