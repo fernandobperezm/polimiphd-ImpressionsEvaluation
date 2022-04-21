@@ -3,12 +3,15 @@ from enum import Enum
 from typing import Type, Literal, Optional, cast, Union
 
 import attrs
+from Evaluation.Evaluator import EvaluatorHoldout
 from Recommenders.BaseRecommender import BaseRecommender
+from recsys_framework_extensions.data.mixins import InteractionsDataSplits
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
 
 from FINNNoReader import FINNNoSlateReader, FinnNoSlatesConfig
 from MINDReader import MINDReader, MINDLargeConfig, MINDSmallConfig
 from ContentWiseImpressionsReader import ContentWiseImpressionsReader, ContentWiseImpressionsConfig
-from recsys_framework_extensions.evaluation import EvaluationStrategy
+from recsys_framework_extensions.evaluation import EvaluationStrategy, exclude_from_evaluation
 from recsys_framework_extensions.data.reader import DataReader
 
 
@@ -62,6 +65,7 @@ DATA_READERS = {
 T_METRIC = Literal["NDCG", "MAP"]
 T_SIMILARITY_TYPE = Literal["cosine", "dice", "jaccard", "asymmetric", "tversky"]
 T_EVALUATE_ON_TEST = Literal["best", "last"]
+T_SAVE_MODEL = Literal["all", "best", "last"]
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -71,8 +75,8 @@ class HyperParameterTuningParameters:
     max_total_time: int = attrs.field(default=60 * 60 * 24 * 14)
     metric_to_optimize: T_METRIC = attrs.field(default="NDCG")
     cutoff_to_optimize: int = attrs.field(default=10)
-    num_cases: int = attrs.field(default=50)
-    num_random_starts: int = attrs.field(default=int(50 / 3), validator=[attrs.validators.instance_of(int)])
+    num_cases: int = attrs.field(default=5, validator=[attrs.validators.instance_of(int)])  # 50 <--> 50 / 3
+    num_random_starts: int = attrs.field(default=int(2), validator=[attrs.validators.instance_of(int)])
     knn_similarity_types: list[T_SIMILARITY_TYPE] = attrs.field(default=[
         "cosine",
         "dice",
@@ -85,7 +89,7 @@ class HyperParameterTuningParameters:
     evaluation_cutoffs: list[int] = attrs.field(default=[5, 10, 20, 30, 40, 50, 100])
     evaluation_min_ratings_per_user: list[int] = attrs.field(default=1)
     evaluation_exclude_seen: bool = attrs.field(default=True)
-    evaluation_ignore_users: Optional[float] = attrs.field(
+    evaluation_percentage_ignore_users: Optional[float] = attrs.field(
         default=None,
         validator=attrs.validators.optional([
             attrs.validators.instance_of(float),
@@ -93,7 +97,7 @@ class HyperParameterTuningParameters:
             attrs.validators.le(1.0)
         ]),
     )
-    evaluation_ignore_items: Optional[float] = attrs.field(
+    evaluation_percentage_ignore_items: Optional[float] = attrs.field(
         default=None,
         validator=attrs.validators.optional([
             attrs.validators.instance_of(float),
@@ -101,6 +105,9 @@ class HyperParameterTuningParameters:
             attrs.validators.le(1.0)
         ]),
     )
+    save_metadata: bool = attrs.field(default=True, validator=[attrs.validators.instance_of(bool)])
+    save_model: T_SAVE_MODEL = attrs.field(default="best")
+    terminate_on_memory_error: bool = attrs.field(default=True, validator=[attrs.validators.instance_of(bool)])
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -117,7 +124,7 @@ class ExperimentBenchmark:
 @attrs.define(frozen=True, kw_only=True)
 class ExperimentRecommender:
     recommender: Type[BaseRecommender] = attrs.field()
-    search_hyper_parameters: Optional[Type[object]] = attrs.field()
+    search_hyper_parameters: Type[SearchHyperParametersBaseRecommender] = attrs.field()
     priority: int = attrs.field()
 
 
@@ -306,6 +313,73 @@ def get_reader_from_benchmark(
         raise ValueError("error fernando-debugger")
 
     return benchmark_reader
+
+
+@attrs.define(frozen=True, kw_only=True, slots=False)
+class Evaluators:
+    validation: EvaluatorHoldout = attrs.field()
+    validation_early_stopping: EvaluatorHoldout = attrs.field()
+    test: EvaluatorHoldout = attrs.field()
+
+
+def get_evaluators(
+    data_splits: InteractionsDataSplits,
+    experiment: Experiment,
+) -> Evaluators:
+    if experiment.hyper_parameter_tuning_parameters.evaluation_percentage_ignore_users is None:
+        users_to_exclude_validation = None
+    else:
+        users_to_exclude_validation = exclude_from_evaluation(
+            urm_test=data_splits.sp_urm_test,
+            frac_to_exclude=experiment.hyper_parameter_tuning_parameters.evaluation_percentage_ignore_users,
+            type_to_exclude="users",
+            seed=experiment.hyper_parameter_tuning_parameters.reproducibility_seed,
+        )
+
+    if experiment.hyper_parameter_tuning_parameters.evaluation_percentage_ignore_items is None:
+        items_to_exclude_validation = None
+    else:
+        items_to_exclude_validation = exclude_from_evaluation(
+            urm_test=data_splits.sp_urm_test,
+            frac_to_exclude=experiment.hyper_parameter_tuning_parameters.evaluation_percentage_ignore_items,
+            type_to_exclude="items",
+            seed=experiment.hyper_parameter_tuning_parameters.reproducibility_seed,
+        )
+
+    evaluator_validation = EvaluatorHoldout(
+        data_splits.sp_urm_validation,
+        cutoff_list=experiment.hyper_parameter_tuning_parameters.evaluation_cutoffs,
+        exclude_seen=experiment.hyper_parameter_tuning_parameters.evaluation_exclude_seen,
+        min_ratings_per_user=experiment.hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
+        verbose=True,
+        ignore_users=users_to_exclude_validation,
+        ignore_items=items_to_exclude_validation,
+    )
+    evaluator_validation_early_stopping = EvaluatorHoldout(
+        data_splits.sp_urm_validation,
+        # The example uses the hyper-param benchmark_config instead of the evaluation cutoff.
+        cutoff_list=[experiment.hyper_parameter_tuning_parameters.cutoff_to_optimize],
+        exclude_seen=experiment.hyper_parameter_tuning_parameters.evaluation_exclude_seen,
+        min_ratings_per_user=experiment.hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
+        verbose=True,
+        ignore_users=users_to_exclude_validation,
+        ignore_items=items_to_exclude_validation,
+    )
+    evaluator_test = EvaluatorHoldout(
+        data_splits.sp_urm_test,
+        cutoff_list=experiment.hyper_parameter_tuning_parameters.evaluation_cutoffs,
+        exclude_seen=experiment.hyper_parameter_tuning_parameters.evaluation_exclude_seen,
+        min_ratings_per_user=experiment.hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
+        verbose=True,
+        ignore_users=None,  # Always consider all users in the test set.
+        ignore_items=None,  # Always consider all items in the test set.
+    )
+
+    return Evaluators(
+        validation=evaluator_validation,
+        validation_early_stopping=evaluator_validation_early_stopping,
+        test=evaluator_test,
+    )
 
 
 def ensure_datasets_exist(
