@@ -1,5 +1,5 @@
 """ MINDSmallReader.py
-This module reads the small or the large version of the Microsoft News Dataset (MIND).
+This module reads the small or the large version of the Microsoft News ExperimentCase (MIND).
 
 The MIND datasets are a collection of users with their interactions and impressions on a News Aggregator Site (
 Microsoft News). In particular, the collection period was between October 12th, 2019 and November 22nd,
@@ -27,7 +27,7 @@ Columns of the dataset
         is the timestamp in which the given tuple occurred, this is associated with the _impression_ and not the
         interactions that occurred on the impression.
     Impression ID
-        MIND Dataset identifier for the impression. THEY DO NOT COME IN ORDER, i.e., a higher impression ID
+        MIND ExperimentCase identifier for the impression. THEY DO NOT COME IN ORDER, i.e., a higher impression ID
         does not mean that the impression occurred later. See user "U1000" where impression "86767" comes first than
         impression "46640", so do not rely on impression ids to partition the dataset. Also, partition id is shuffled
         across users, so two consecutive impression ids might refer to different users.
@@ -1421,5 +1421,5 @@ if __name__ == "__main__":
         )
         dataset = data_reader.dataset
 
-        print(dataset.get_loaded_UIM_names())
-        print(dataset.get_loaded_URM_names())
+        print(dataset.interactions)
+        print(dataset.impressions)
