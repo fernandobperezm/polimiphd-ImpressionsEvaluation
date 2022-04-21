@@ -54,7 +54,7 @@ class FrequencyRecencyRecommender(MixinEmptySaveModel, BaseRecommender):
 
         self._uim_frequency: sp.csr_matrix = uim_frequency.copy()
         self._uim_timestamp: sp.csr_matrix = uim_timestamp.copy()
-        self._rank_method: ERankMethod = ERankMethod.MIN
+        self._rank_method: ERankMethod = ERankMethod.ORDINAL
 
     def _compute_item_score(
         self,

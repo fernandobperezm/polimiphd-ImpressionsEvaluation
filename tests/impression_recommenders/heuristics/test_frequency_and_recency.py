@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import scipy.sparse as sp
 
 from impression_recommenders.heuristics.frequency_and_recency import RecencyRecommender, FrequencyRecencyRecommender
@@ -272,17 +273,17 @@ class TestFrequencyRecencyRecommender:
         test_cutoff = 3
 
         expected_item_scores = np.array([
-            [3., 5., 5., 5., np.NINF, 4., np.NINF],
-            [6., np.NINF, np.NINF, 6., 5., np.NINF, 4.],
-            [5., np.NINF, np.NINF, 5., np.NINF, np.NINF, 5.],
+            [3., 5., 6., 7., np.NINF, 4., np.NINF],
+            [6., np.NINF, np.NINF, 7., 5., np.NINF, 4.],
+            [5., np.NINF, np.NINF, 6., np.NINF, np.NINF, 7.],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
-            [3., 5., 6., 3., np.NINF, 2., 7.],
+            [3., 5., 6., 4., np.NINF, 2., 7.],
             [3., 2., 7., 5., 4., 6., np.NINF],
-            [5., np.NINF, 5., np.NINF, np.NINF, 5., np.NINF],
-            [np.NINF, 3., 5., 7., 3., 5., np.NINF],
+            [5., np.NINF, 6., np.NINF, np.NINF, 7., np.NINF],
+            [np.NINF, 3., 5., 7., 4., 6., np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
-            [np.NINF, 5., np.NINF, np.NINF, 5., np.NINF, 5.]
-        ], dtype=np.float64)
+            [np.NINF, 5., np.NINF, np.NINF, 6., np.NINF, 7.]
+        ], dtype=np.float32)
 
         rec = FrequencyRecencyRecommender(
             urm_train=urm,
@@ -305,8 +306,7 @@ class TestFrequencyRecencyRecommender:
         # assert
         # For this particular recommender, we cannot test recommendations, as there might be several ties (same
         # timestamp for two impressions) and the .recommend handles ties in a non-deterministic way.
-        assert np.array_equal(expected_item_scores, scores)
-        print(recommendations)
+        assert np.allclose(expected_item_scores, scores)
 
     def test_all_users_some_items(
         self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_frequency: sp.csr_matrix,
@@ -317,17 +317,17 @@ class TestFrequencyRecencyRecommender:
         test_cutoff = 3
 
         expected_item_scores = np.array([
-            [np.NINF, 5., 5., np.NINF, np.NINF, 4., np.NINF],
+            [np.NINF, 5., 6., np.NINF, np.NINF, 4., np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
             [np.NINF, 5., 6., np.NINF, np.NINF, 2., np.NINF],
             [np.NINF, 2., 7., np.NINF, np.NINF, 6., np.NINF],
-            [np.NINF, np.NINF, 5., np.NINF, np.NINF, 5., np.NINF],
-            [np.NINF, 3., 5., np.NINF, np.NINF, 5., np.NINF],
+            [np.NINF, np.NINF, 6., np.NINF, np.NINF, 7., np.NINF],
+            [np.NINF, 3., 5., np.NINF, np.NINF, 6., np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
-            [np.NINF, 5., np.NINF, np.NINF, np.NINF, np.NINF, np.NINF]
-        ], dtype=np.float64)
+            [np.NINF, 5., np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
+        ], dtype=np.float32)
 
         rec = FrequencyRecencyRecommender(
             urm_train=urm,
@@ -348,7 +348,7 @@ class TestFrequencyRecencyRecommender:
         )
 
         # assert
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)
 
     def test_all_users_all_items(
         self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_frequency: sp.csr_matrix,
@@ -359,17 +359,17 @@ class TestFrequencyRecencyRecommender:
         test_cutoff = 3
 
         expected_item_scores = np.array([
-            [3., 5., 5., 5., np.NINF, 4., np.NINF],
-            [6., np.NINF, np.NINF, 6., 5., np.NINF, 4.],
-            [5., np.NINF, np.NINF, 5., np.NINF, np.NINF, 5.],
+            [3., 5., 6., 7., np.NINF, 4., np.NINF],
+            [6., np.NINF, np.NINF, 7., 5., np.NINF, 4.],
+            [5., np.NINF, np.NINF, 6., np.NINF, np.NINF, 7.],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
-            [3., 5., 6., 3., np.NINF, 2., 7.],
+            [3., 5., 6., 4., np.NINF, 2., 7.],
             [3., 2., 7., 5., 4., 6., np.NINF],
-            [5., np.NINF, 5., np.NINF, np.NINF, 5., np.NINF],
-            [np.NINF, 3., 5., 7., 3., 5., np.NINF],
+            [5., np.NINF, 6., np.NINF, np.NINF, 7., np.NINF],
+            [np.NINF, 3., 5., 7., 4., 6., np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
-            [np.NINF, 5., np.NINF, np.NINF, 5., np.NINF, 5.]
-        ], dtype=np.float64)
+            [np.NINF, 5., np.NINF, np.NINF, 6., np.NINF, 7.]
+        ], dtype=np.float32)
 
         rec = FrequencyRecencyRecommender(
             urm_train=urm,
@@ -390,7 +390,7 @@ class TestFrequencyRecencyRecommender:
         )
 
         # assert
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)
 
     def test_some_users_no_items(
         self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_frequency: sp.csr_matrix,
@@ -401,14 +401,14 @@ class TestFrequencyRecencyRecommender:
         test_cutoff = 3
 
         expected_item_scores = np.array([
-            [3., 5., 5., 5., np.NINF, 4., np.NINF],
-            [6., np.NINF, np.NINF, 6., 5., np.NINF, 4.],
+            [3., 5., 6., 7., np.NINF, 4., np.NINF],
+            [6., np.NINF, np.NINF, 7., 5., np.NINF, 4.],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
-            [5., np.NINF, 5., np.NINF, np.NINF, 5., np.NINF],
-            [np.NINF, 3., 5., 7., 3., 5., np.NINF],
+            [5., np.NINF, 6., np.NINF, np.NINF, 7., np.NINF],
+            [np.NINF, 3., 5., 7., 4., 6., np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
-            [np.NINF, 5., np.NINF, np.NINF, 5., np.NINF, 5.]
-        ], dtype=np.float64)
+            [np.NINF, 5., np.NINF, np.NINF, 6., np.NINF, 7.]
+        ], dtype=np.float32)
 
         rec = FrequencyRecencyRecommender(
             urm_train=urm,
@@ -431,7 +431,7 @@ class TestFrequencyRecencyRecommender:
         # assert
         # For this particular recommender, we cannot test recommendations, as there might be several ties (same
         # timestamp for two impressions) and the .recommend handles ties in a non-deterministic way.
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)
 
     def test_some_users_some_items(
         self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_frequency: sp.csr_matrix,
@@ -442,14 +442,14 @@ class TestFrequencyRecencyRecommender:
         test_cutoff = 3
 
         expected_item_scores = np.array([
-            [np.NINF, 5., 5., np.NINF, np.NINF, 4., np.NINF],
+            [np.NINF, 5., 6., np.NINF, np.NINF, 4., np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
-            [np.NINF, np.NINF, 5., np.NINF, np.NINF, 5., np.NINF],
-            [np.NINF, 3., 5., np.NINF, np.NINF, 5., np.NINF],
+            [np.NINF, np.NINF, 6., np.NINF, np.NINF, 7., np.NINF],
+            [np.NINF, 3., 5., np.NINF, np.NINF, 6., np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
-            [np.NINF, 5., np.NINF, np.NINF, np.NINF, np.NINF, np.NINF]
-        ], dtype=np.float64)
+            [np.NINF, 5., np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
+        ], dtype=np.float32)
 
         rec = FrequencyRecencyRecommender(
             urm_train=urm,
@@ -470,7 +470,7 @@ class TestFrequencyRecencyRecommender:
         )
 
         # assert
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)
 
     def test_some_users_all_items(
         self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_frequency: sp.csr_matrix,
@@ -481,13 +481,13 @@ class TestFrequencyRecencyRecommender:
         test_cutoff = 3
 
         expected_item_scores = np.array([
-            [3., 5., 5., 5., np.NINF, 4., np.NINF],
-            [6., np.NINF, np.NINF, 6., 5., np.NINF, 4.],
+            [3., 5., 6., 7., np.NINF, 4., np.NINF],
+            [6., np.NINF, np.NINF, 7., 5., np.NINF, 4.],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
-            [5., np.NINF, 5., np.NINF, np.NINF, 5., np.NINF],
-            [np.NINF, 3., 5., 7., 3., 5., np.NINF],
+            [5., np.NINF, 6., np.NINF, np.NINF, 7., np.NINF],
+            [np.NINF, 3., 5., 7., 4., 6., np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
-            [np.NINF, 5., np.NINF, np.NINF, 5., np.NINF, 5.]
+            [np.NINF, 5., np.NINF, np.NINF, 6., np.NINF, 7.]
         ], dtype=np.float64)
 
         rec = FrequencyRecencyRecommender(
