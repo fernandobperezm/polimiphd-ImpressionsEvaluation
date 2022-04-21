@@ -51,7 +51,7 @@ from recsys_framework_extensions.data.splitter import (
 )
 from recsys_framework_extensions.decorators import timeit
 from recsys_framework_extensions.evaluation import EvaluationStrategy
-from recsys_framework_extensions.hashing import compute_sha256_hash_from_object_repr
+from recsys_framework_extensions.hashing.mixins import MixinSHA256Hash
 from recsys_framework_extensions.logging import get_logger
 from recsys_slates_dataset.data_helper import (
     download_data_files as download_finn_no_slate_files,
@@ -155,13 +155,11 @@ class FinnNoSlatesSplits(NamedTuple):
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class FinnNoSlatesConfig:
+class FinnNoSlatesConfig(MixinSHA256Hash):
     """Configuration class used by data readers of the FINN.No dataset"""
     data_folder = os.path.join(
         ".", "data", "FINN-NO-SLATE",
     )
-
-    sha256_hash: str = ""
 
     try_low_memory_usage = True
 
@@ -232,8 +230,6 @@ class FinnNoSlatesConfig:
         # circumvent assignment in immutable classes.
         object.__setattr__(self, "num_data_points", self.num_raw_data_points * self.num_time_steps)
         assert 45_552_900 == self.num_data_points
-
-        object.__setattr__(self, "sha256_hash", compute_sha256_hash_from_object_repr(obj=self))
 
 
 class FINNNoImpressionOrigin(Enum):
@@ -1233,9 +1229,6 @@ class FINNNoSlateReader(DataReader):
         super().__init__()
 
         self.config = config
-        # self.config_hash = compute_sha256_hash_from_object_repr(
-        #     obj=self.benchmark_config,
-        # )
 
         self.data_loader_processed = PandasFinnNoSlateProcessData(
             config=config,
@@ -1248,41 +1241,15 @@ class FINNNoSlateReader(DataReader):
             self.config.data_folder, "data_reader", self.config.sha256_hash, "",
         )
 
-        # self.folder_data_tmp = os.path.join(
-        #     self.DATA_FOLDER, "tmp", "",
-        # )
-
         self._DATA_READER_NAME = "FINNNoSlateReader"
         self.DATASET_SUBFOLDER = "FINN-NO-SLATE/"
         self.IS_IMPLICIT = self.config.binarize_interactions
         self.ORIGINAL_SPLIT_FOLDER = self.DATA_FOLDER
 
-        # self.users_column = "user_id"
-        # self.items_column = "item_id"
-        # self.impressions_column = "impressions"
-
-        # self._user_id_to_index_mapper: dict[int, int] = dict()
-        # self._item_id_to_index_mapper: dict[int, int] = dict()
-
-        # self._interactions: dict[str, sp.csr_matrix] = dict()
-        # self._impressions: dict[str, sp.csr_matrix] = dict()
-        # self._dataframes: dict[str, pd.DataFrame] = dict()
-
-        # self._icms = None
-        # self._icm_mappers = None
-        #
-        # self._ucms = None
-        # self._ucms_mappers = None
-
         os.makedirs(
             self.DATA_FOLDER,
             exist_ok=True
         )
-
-        # os.makedirs(
-        #     self.folder_data_tmp,
-        #     exist_ok=True
-        # )
 
     @property  # type: ignore
     def dataset(self) -> BaseDataset:
@@ -1312,374 +1279,18 @@ class FINNNoSlateReader(DataReader):
             is_interactions_implicit=self.config.binarize_interactions,
         )
 
-    # @property  # type: ignore
-    # # @typed_cache
-    # def _item_id_to_index_mapper(self) -> dict[int, int]:
-    #     # item_mappers = self.load_from_data_io(
-    #     #     file_name="item_id_to_index_mapper.zip",
-    #     #     folder_path=self.folder_data_tmp,
-    #     #     to_dict_func=self._calculate_item_mappers,
-    #     # )
-    #
-    #     item_mappers = self.load_parquet(
-    #         file_path=os.path.join(self.folder_data_tmp, "item_id_to_index_mapper.parquet"),
-    #         to_pandas_func=self._calculate_item_mappers,
-    #     )
-    #
-    #     return {
-    #         row["orig_value"]: row["mapped_value"]
-    #         for idx, row in item_mappers.iterrows()
-    #     }
-    #
-    # @property  # type: ignore
-    # # @typed_cache
-    # def _user_id_to_index_mapper(self) -> dict[int, int]:
-    #     # user_mappers = self.load_from_data_io(
-    #     #     file_name="user_id_to_index_mapper.zip",
-    #     #     folder_path=self.folder_data_tmp,
-    #     #     to_dict_func=self._calculate_user_mappers,
-    #     # )
-    #
-    #     user_mappers = self.load_parquet(
-    #         file_path=os.path.join(self.folder_data_tmp, "user_id_to_index_mapper.parquet"),
-    #         to_pandas_func=self._calculate_user_mappers,
-    #     )
-    #
-    #     return {
-    #         row["orig_value"]: row["mapped_value"]
-    #         for idx, row in user_mappers.iterrows()
-    #     }
-
-    # @property
-    # def _dataframes(self) -> dict[str, pd.DataFrame]:
-    #     df_filtered = self.data_loader_processed.filtered
-    #     leave_last_out_splits = self.data_loader_processed.leave_last_k_out_splits
-    #     time_step_splits = self.data_loader_processed.timestamp_splits
-    #
-    #     return {
-    #         BaseDataset.NAME_DF_FILTERED: df_filtered,
-    #
-    #         BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TRAIN: leave_last_out_splits[0],
-    #         BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_VALIDATION: leave_last_out_splits[1],
-    #         BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TEST: leave_last_out_splits[2],
-    #
-    #         BaseDataset.NAME_DF_TIMESTAMP_TRAIN: time_step_splits[0],
-    #         BaseDataset.NAME_DF_TIMESTAMP_VALIDATION: time_step_splits[1],
-    #         BaseDataset.NAME_DF_TIMESTAMP_TEST: time_step_splits[2],
-    #     }
-
-    # @property
-    # def _interactions(self) -> dict[str, sp.csr_matrix]:
-    #     dict_urm_all = self.load_from_data_io(
-    #         file_name="urm_all.zip",
-    #         folder_path=self.folder_data_tmp,
-    #         to_dict_func=self._calculate_urm_all,
-    #     )
-    #
-    #     dict_urm_leave_last_out_splits = self.load_from_data_io(
-    #         file_name="urm_leave_last_k_out_splits.zip",
-    #         folder_path=self.folder_data_tmp,
-    #         to_dict_func=self._calculate_urm_leave_last_k_out_splits,
-    #     )
-    #
-    #     dict_urm_time_step_splits = self.load_from_data_io(
-    #         file_name="urm_time_step_splits.zip",
-    #         folder_path=self.folder_data_tmp,
-    #         to_dict_func=self._calculate_urm_time_step_splits,
-    #     )
-    #
-    #     return {
-    #         **dict_urm_all,
-    #         **dict_urm_leave_last_out_splits,
-    #         **dict_urm_time_step_splits,
-    #     }
-    #
-    # @property
-    # def _impressions(self) -> dict[str, sp.csr_matrix]:
-    #     dict_uim_all = self.load_from_data_io(
-    #         file_name="uim_all",
-    #         folder_path=self.folder_data_tmp,
-    #         to_dict_func=self._calculate_uim_all,
-    #     )
-    #
-    #     dict_uim_leave_last_out_splits = self.load_from_data_io(
-    #         file_name="uim_leave_last_k_out_splits",
-    #         folder_path=self.folder_data_tmp,
-    #         to_dict_func=self._calculate_uim_leave_last_k_out_splits,
-    #     )
-    #
-    #     dict_uim_time_step_splits = self.load_from_data_io(
-    #         file_name="uim_time_step_splits",
-    #         folder_path=self.folder_data_tmp,
-    #         to_dict_func=self._calculate_uim_time_step_splits,
-    #     )
-    #
-    #     return {
-    #         **dict_uim_all,
-    #         **dict_uim_leave_last_out_splits,
-    #         **dict_uim_time_step_splits,
-    #     }
-
-    # @timeit
-    # # def _compute_item_mappers(self) -> None:
-    # def _calculate_item_mappers(self) -> pd.DataFrame:
-    #     df_data_filtered = self.processed_data_loader.filtered[
-    #         [self.items_column, self.impressions_column]
-    #     ]
-    #
-    #     non_na_items = df_data_filtered[self.items_column].dropna(
-    #         inplace=False,
-    #     )
-    #
-    #     non_na_exploded_impressions = df_data_filtered[self.impressions_column].explode(
-    #         ignore_index=True,
-    #     ).dropna(
-    #         inplace=False,
-    #     )
-    #
-    #     unique_items = set(non_na_items).union(non_na_exploded_impressions)
-    #
-    #     df_orig_to_mapped_value = pd.DataFrame(
-    #         data={
-    #             "orig_value": list(unique_items),
-    #             "mapped_value": np.arange(start=0, stop=len(unique_items), step=1)
-    #         }
-    #     )
-    #
-    #     # self._item_id_to_index_mapper = {
-    #     #     int(orig_value): int(mapped_value)
-    #     #     for mapped_value, orig_value in enumerate(unique_items)
-    #     # }
-    #     return df_orig_to_mapped_value
-
-    # @timeit
-    # # def _compute_user_mappers(self) -> None:
-    # def _calculate_user_mappers(self) -> pd.DataFrame:
-    #     df_data_filtered = self.processed_data_loader.filtered
-    #
-    #     non_na_users = df_data_filtered[self.users_column].dropna(
-    #         inplace=False,
-    #     )
-    #
-    #     unique_users = set(non_na_users)
-    #
-    #     # self._user_id_to_index_mapper = {
-    #     #     int(orig_value): int(mapped_value)
-    #     #     for mapped_value, orig_value in enumerate(unique_users)
-    #     # }
-    #
-    #     # return {
-    #     #    int(orig_value): int(mapped_value)
-    #     #    for mapped_value, orig_value in enumerate(unique_users)
-    #     # }
-    #
-    #     df_orig_to_mapped_value = pd.DataFrame(
-    #         data={
-    #             "orig_value": list(unique_users),
-    #             "mapped_value": np.arange(start=0, stop=len(unique_users), step=1)
-    #         }
-    #     )
-    #     return df_orig_to_mapped_value
-
-    # @timeit
-    # def _calculate_urm_all(self) -> dict[str, sp.csr_matrix]:
-    #     logger.info(
-    #         f"Building URM with name {BaseDataset.NAME_URM_ALL}."
-    #     )
-    #
-    #     df_data_filtered = self.processed_data_loader.filtered[
-    #         [self.users_column, self.items_column]
-    #     ]
-    #
-    #     urm_all = create_sparse_matrix_from_dataframe(
-    #         df=df_data_filtered,
-    #         users_column=self.users_column,
-    #         items_column=self.items_column,
-    #         binarize_interactions=self.config.binarize_interactions,
-    #         mapper_user_id_to_index=self._user_id_to_index_mapper,
-    #         mapper_item_id_to_index=self._item_id_to_index_mapper,
-    #     )
-    #
-    #     # self._interactions[BaseDataset.NAME_URM_ALL] = urm_all
-    #
-    #     return {
-    #         BaseDataset.NAME_URM_ALL: urm_all.copy()
-    #     }
-
-    # @timeit
-    # def _calculate_uim_all(self) -> dict[str, sp.csr_matrix]:
-    #     logger.info(
-    #         f"Building UIM with name {BaseDataset.NAME_UIM_ALL}."
-    #     )
-    #
-    #     uim_all = create_sparse_matrix_from_iter_dataframe(
-    #         df=self.processed_data_loader.filtered,
-    #         users_column=self.users_column,
-    #         items_column=self.impressions_column,
-    #         binarize_interactions=self.config.binarize_impressions,
-    #         mapper_user_id_to_index=self._user_id_to_index_mapper,
-    #         mapper_item_id_to_index=self._item_id_to_index_mapper,
-    #     )
-    #
-    #     # self._impressions[BaseDataset.NAME_UIM_ALL] = uim_all.copy()
-    #     return {
-    #         BaseDataset.NAME_UIM_ALL: uim_all.copy()
-    #     }
-
-    # @timeit
-    # # def _calculate_urm_leave_last_k_out_splits(self) -> None:
-    # def _calculate_urm_leave_last_k_out_splits(self) -> dict[str, sp.csr_matrix]:
-    #     df_train, df_validation, df_test = self.processed_data_loader.leave_last_k_out_splits
-    #
-    #     names = [
-    #         BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TRAIN,
-    #         BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_VALIDATION,
-    #         BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TEST,
-    #     ]
-    #     splits = [
-    #         df_train,
-    #         df_validation,
-    #         df_test,
-    #     ]
-    #
-    #     logger.info(
-    #         f"Building URMs with name {names}."
-    #     )
-    #     interactions = {}
-    #     for name, df_split in zip(names, splits):
-    #         urm_split = create_sparse_matrix_from_dataframe(
-    #             df=df_split,
-    #             users_column=self.users_column,
-    #             items_column=self.items_column,
-    #             binarize_interactions=self.config.binarize_impressions,
-    #             mapper_user_id_to_index=self._user_id_to_index_mapper,
-    #             mapper_item_id_to_index=self._item_id_to_index_mapper,
-    #         )
-    #         # self._interactions[name] = urm_split.copy()
-    #
-    #         interactions[name] = urm_split.copy()
-    #
-    #     return interactions
-
-    # @timeit
-    # # def _calculate_uim_leave_last_k_out_splits(self) -> None:
-    # def _calculate_uim_leave_last_k_out_splits(self) -> dict[str, sp.csr_matrix]:
-    #     df_train, df_validation, df_test = self.processed_data_loader.leave_last_k_out_splits
-    #
-    #     names = [
-    #         BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TRAIN,
-    #         BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_VALIDATION,
-    #         BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TEST,
-    #     ]
-    #     splits = [
-    #         df_train,
-    #         df_validation,
-    #         df_test,
-    #     ]
-    #
-    #     logger.info(
-    #         f"Building UIMs with name {names}."
-    #     )
-    #     impressions = {}
-    #     for name, df_split in zip(names, splits):
-    #         uim_split = create_sparse_matrix_from_iter_dataframe(
-    #             df=df_split,
-    #             users_column=self.users_column,
-    #             items_column=self.impressions_column,
-    #             binarize_interactions=self.config.binarize_impressions,
-    #             mapper_user_id_to_index=self._user_id_to_index_mapper,
-    #             mapper_item_id_to_index=self._item_id_to_index_mapper,
-    #         )
-    #
-    #         # self._impressions[name] = uim_split.copy()
-    #
-    #         impressions[name] = uim_split.copy()
-    #
-    #     return impressions
-
-    # @timeit
-    # # def _calculate_urm_time_step_splits(self) -> None:
-    # def _calculate_urm_time_step_splits(self) -> dict[str, sp.csr_matrix]:
-    #     df_train, df_validation, df_test = self.processed_data_loader.timestamp_splits
-    #
-    #     names = [
-    #         BaseDataset.NAME_URM_TIMESTAMP_TRAIN,
-    #         BaseDataset.NAME_URM_TIMESTAMP_VALIDATION,
-    #         BaseDataset.NAME_URM_TIMESTAMP_TEST,
-    #     ]
-    #     splits = [
-    #         df_train,
-    #         df_validation,
-    #         df_test
-    #     ]
-    #
-    #     logger.info(
-    #         f"Building URMs with name {names}."
-    #     )
-    #     interactions = {}
-    #     for name, df_split in zip(names, splits):
-    #         urm_split = create_sparse_matrix_from_dataframe(
-    #             df=df_split,
-    #             users_column=self.users_column,
-    #             items_column=self.items_column,
-    #             binarize_interactions=self.config.binarize_impressions,
-    #             mapper_user_id_to_index=self._user_id_to_index_mapper,
-    #             mapper_item_id_to_index=self._item_id_to_index_mapper,
-    #         )
-    #
-    #         # self._interactions[name] = urm_split.copy()
-    #         interactions[name] = urm_split.copy()
-    #
-    #     return interactions
-
-    # @timeit
-    # # def _calculate_uim_time_step_splits(self) -> None:
-    # def _calculate_uim_time_step_splits(self) -> dict[str, sp.csr_matrix]:
-    #     df_train, df_validation, df_test = self.processed_data_loader.timestamp_splits
-    #
-    #     names = [
-    #         BaseDataset.NAME_UIM_TIMESTAMP_TRAIN,
-    #         BaseDataset.NAME_UIM_TIMESTAMP_VALIDATION,
-    #         BaseDataset.NAME_UIM_TIMESTAMP_TEST,
-    #     ]
-    #     splits = [
-    #         df_train,
-    #         df_validation,
-    #         df_test,
-    #     ]
-    #
-    #     logger.info(
-    #         f"Building UIMs with name {names}."
-    #     )
-    #     impressions = {}
-    #     for name, df_split in zip(names, splits):
-    #         uim_split = create_sparse_matrix_from_iter_dataframe(
-    #             df=df_split,
-    #             users_column=self.users_column,
-    #             items_column=self.impressions_column,
-    #             binarize_interactions=self.config.binarize_impressions,
-    #             mapper_user_id_to_index=self._user_id_to_index_mapper,
-    #             mapper_item_id_to_index=self._item_id_to_index_mapper,
-    #         )
-    #
-    #         # self._impressions[name] = uim_split.copy()
-    #
-    #         impressions[name] = uim_split.copy()
-    #
-    #     return impressions
-
 
 if __name__ == "__main__":
     config = FinnNoSlatesConfig(
         frac_users_to_keep=0.05,
     )
 
-    import pdb
-    pdb.set_trace()
-
     data_reader = FINNNoSlateReader(
         config=config,
     )
 
     dataset = data_reader.dataset
+
+    import pdb
+    pdb.set_trace()
     print(dataset)
