@@ -5,6 +5,7 @@ from typing import Type, Literal, Optional, cast, Union
 import attrs
 from Evaluation.Evaluator import EvaluatorHoldout
 from Recommenders.BaseRecommender import BaseRecommender
+from recsys_framework_extensions.data.io import attach_to_extended_json_decoder
 from recsys_framework_extensions.data.mixins import InteractionsDataSplits
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
 
@@ -48,11 +49,41 @@ class ImpressionsFeatureColumnsLastSeen(Enum):
     TOTAL_WEEKS = "feature_last_seen_total_weeks"
 
 
+@attach_to_extended_json_decoder
 class Benchmarks(Enum):
     MINDSmall = "MINDSmall"
     MINDLarge = "MINDLarge"
     FINNNoSlates = "FINNNoSlates"
     ContentWiseImpressions = "ContentWiseImpressions"
+
+
+@attach_to_extended_json_decoder
+class RecommenderBaseline(Enum):
+    RANDOM = "RANDOM"
+    TOP_POPULAR = "TOP_POPULAR"
+    USER_KNN = "USER_KNN"
+    ITEM_KNN = "ITEM_KNN"
+    PURE_SVD = "PURE_SVD"
+    NMF = "NMF"
+    RP3_BETA = "RP3_BETA"
+    MF_BPR = "MF_BPR"
+    SLIM_ELASTIC_NET = "SLIM_ELASTIC_NET"
+    SLIM_BPR = "SLIM_BPR"
+    LIGHT_FM = "LIGHT_FM"
+    MULT_VAE = "MULT_VAE"
+    IALS = "IALS"
+    EASE_R = "EASE_R"
+    FOLDED = "FOLDED"
+
+
+@attach_to_extended_json_decoder
+class RecommenderImpressions(Enum):
+    LAST_IMPRESSIONS = "LAST_IMPRESSIONS"
+    FREQUENCY_RECENCY = "FREQUENCY_RECENCY"
+    RECENCY = "RECENCY"
+    CYCLING = "CYCLING"
+    USER_WEIGHTED_USER_PROFILE = "USER_WEIGHTED_USER_PROFILE"
+    ITEM_WEIGHTED_USER_PROFILE = "ITEM_WEIGHTED_USER_PROFILE"
 
 
 DATA_READERS = {

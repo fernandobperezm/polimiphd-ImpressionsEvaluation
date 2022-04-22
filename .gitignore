@@ -131,3 +131,6 @@ ENV/
 # Backups
 **/bk/*
 
+# Gmail Credentials
+credentials.json
+token.json
