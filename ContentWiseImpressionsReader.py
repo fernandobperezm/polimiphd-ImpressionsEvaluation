@@ -411,6 +411,7 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
             exist_ok=True,
         )
 
+    def backup_config(self) -> None:
         self.save_config(
             config=self.config,
             folder_path=self._dataset_folder,
@@ -683,6 +684,7 @@ class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, Data
                     exist_ok=True,
                 )
 
+    def backup_config(self) -> None:
         self.save_config(
             config=self.config,
             folder_path=self._folder_dataset,
@@ -891,6 +893,7 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
         os.makedirs(self._folder_leave_last_out_data, exist_ok=True)
         os.makedirs(self._folder_timestamp_data, exist_ok=True)
 
+    def backup_config(self) -> None:
         self.save_config(
             config=self.config,
             folder_path=self._folder_data,
@@ -1276,6 +1279,7 @@ class ContentWiseImpressionsReader(DatasetConfigBackupMixin, DataReader):
         self.DATASET_SUBFOLDER = "ContentWiseImpressionsReader"
         self.IS_IMPLICIT = self.config.binarize_interactions
 
+    def backup_config(self) -> None:
         self.save_config(
             config=self.config,
             folder_path=self.DATA_FOLDER,
@@ -1302,6 +1306,12 @@ class ContentWiseImpressionsReader(DatasetConfigBackupMixin, DataReader):
         impressions = self.data_loader_sparse_data.impressions
         impressions_features_sparse_matrices = self.data_loader_sparse_data.impressions_features
         impressions_features_dataframes = self.data_loader_impression_features.impressions_features
+
+        # backup all configs that created this dataset.
+        self.data_loader_processed.backup_config()
+        self.data_loader_impression_features.backup_config()
+        self.data_loader_sparse_data.backup_config()
+        self.backup_config()
 
         return BaseDataset(
             dataset_name="ContentWiseImpressions",

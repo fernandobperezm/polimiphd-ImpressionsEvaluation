@@ -550,9 +550,10 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
             exist_ok=True,
         )
 
+    def backup_config(self) -> None:
         self.save_config(
-            folder_path=self._folder_dataset,
             config=self.config,
+            folder_path=self._folder_dataset,
         )
 
     @property
@@ -880,6 +881,7 @@ class PandasFinnNoSlateImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBa
                     exist_ok=True,
                 )
 
+    def backup_config(self) -> None:
         self.save_config(
             config=self.config,
             folder_path=self._folder_dataset,
@@ -1081,6 +1083,7 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
         os.makedirs(self._folder_leave_last_out_data, exist_ok=True)
         os.makedirs(self._folder_timestamp_data, exist_ok=True)
 
+    def backup_config(self) -> None:
         self.save_config(
             config=self.config,
             folder_path=self._folder_data,
@@ -1472,6 +1475,7 @@ class FINNNoSlateReader(DatasetConfigBackupMixin, DataReader):
             exist_ok=True
         )
 
+    def backup_config(self) -> None:
         self.save_config(
             config=self.config,
             folder_path=self.DATA_FOLDER,
@@ -1496,6 +1500,12 @@ class FINNNoSlateReader(DatasetConfigBackupMixin, DataReader):
 
         impressions_features_dataframes = self.data_loader_impressions_features.impressions_features
         impressions_features_sparse_matrices = self.data_loader_sparse.impressions_features
+
+        # backup all configs that created this dataset.
+        self.data_loader_processed.backup_config()
+        self.data_loader_impressions_features.backup_config()
+        self.data_loader_sparse.backup_config()
+        self.backup_config()
 
         return BaseDataset(
             dataset_name="FINNNoSlate",

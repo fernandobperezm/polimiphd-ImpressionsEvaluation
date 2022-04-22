@@ -826,9 +826,10 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
             exist_ok=True,
         )
 
+    def backup_config(self) -> None:
         self.save_config(
-            folder_path=self._folder_dataset,
             config=self.config,
+            folder_path=self._folder_dataset,
         )
 
     @property  # type: ignore
@@ -1096,9 +1097,10 @@ class PandasMINDImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBackupMix
                     exist_ok=True,
                 )
 
+    def backup_config(self) -> None:
         self.save_config(
-            folder_path=self._folder_dataset,
             config=self.config,
+            folder_path=self._folder_dataset,
         )
 
     @property
@@ -1293,9 +1295,10 @@ class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin, DatasetConfigBacku
         os.makedirs(self._folder_data, exist_ok=True)
         os.makedirs(self._folder_leave_last_out_data, exist_ok=True)
 
+    def backup_config(self) -> None:
         self.save_config(
-            folder_path=self._folder_data,
             config=self.config,
+            folder_path=self._folder_data,
         )
 
     @functools.cached_property
@@ -1618,9 +1621,10 @@ class MINDReader(DatasetConfigBackupMixin, DataReader):
 
         self.IS_IMPLICIT = self.config.binarize_interactions
 
+    def backup_config(self) -> None:
         self.save_config(
-            folder_path=self.DATA_FOLDER,
             config=self.config,
+            folder_path=self.DATA_FOLDER,
         )
 
     @property  # type: ignore
@@ -1643,6 +1647,12 @@ class MINDReader(DatasetConfigBackupMixin, DataReader):
         impressions = self.data_loader_sparse_data.impressions
         impressions_features_sparse_matrices = self.data_loader_sparse_data.impressions_features
         impressions_features_dataframes = self.data_loader_impressions_features.impressions_features
+
+        # backup all configs that created this dataset.
+        self.data_loader_processed.backup_config()
+        self.data_loader_impressions_features.backup_config()
+        self.data_loader_sparse_data.backup_config()
+        self.backup_config()
 
         return BaseDataset(
             dataset_name=self.DATASET_SUBFOLDER,
