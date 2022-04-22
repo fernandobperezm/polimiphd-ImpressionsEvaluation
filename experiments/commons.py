@@ -425,7 +425,8 @@ def ensure_datasets_exist(
         loaded_dataset = benchmark_reader.dataset
 
         print(f"{loaded_dataset.interactions=}")
-        print(f"{loaded_dataset.is_interactions_implicit=}")
+        print(f"{loaded_dataset.impressions=}")
+        print(f"{loaded_dataset.sparse_matrices_available_features()=}")
 
 
 def plot_popularity_of_datasets(
