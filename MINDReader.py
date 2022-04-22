@@ -1646,6 +1646,8 @@ class MINDReader(DatasetConfigBackupMixin, DataReader):
 
         return BaseDataset(
             dataset_name=self.DATASET_SUBFOLDER,
+            dataset_config=attrs.asdict(self.config),
+            dataset_sha256_hash=self.config.sha256_hash,
             dataframes=dataframes,
             interactions=interactions,
             impressions=impressions,
