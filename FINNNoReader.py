@@ -74,7 +74,6 @@ logger = get_logger(
 
 
 _MIN_ITEM_ID = 3
-_NUM_ITEMS_IN_IMPRESSIONS_RAW_DATA = 25
 
 
 @jit(nopython=True, parallel=False)

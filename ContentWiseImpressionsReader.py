@@ -38,7 +38,7 @@ from recsys_framework_extensions.data.dataset import BaseDataset
 from recsys_framework_extensions.data.features import extract_frequency_user_item, extract_last_seen_user_item, \
     extract_position_user_item, extract_timestamp_user_item
 from recsys_framework_extensions.data.mixins import ParquetDataMixin, DaskParquetDataMixin, DatasetStatisticsMixin, \
-    SparseDataMixin
+    SparseDataMixin, DatasetConfigBackupMixin
 from recsys_framework_extensions.data.reader import DataReader
 from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe
 from recsys_framework_extensions.data.splitter import (
@@ -366,7 +366,7 @@ class PandasContentWiseImpressionsRawData(ParquetDataMixin):
         return df_data
 
 
-class PandasContentWiseImpressionsProcessData(ParquetDataMixin):
+class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -409,6 +409,11 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin):
         os.makedirs(
             name=self.file_timestamp_folder,
             exist_ok=True,
+        )
+
+        self.save_config(
+            config=self.config,
+            folder_path=self._dataset_folder,
         )
 
     @property  # type: ignore
@@ -603,7 +608,7 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin):
         return [df_data_train, df_data_validation, df_data_train_validation, df_data_test]
 
 
-class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin):
+class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBackupMixin):
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -677,6 +682,11 @@ class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin):
                     name=os.path.join(folder, sub_folder),
                     exist_ok=True,
                 )
+
+        self.save_config(
+            config=self.config,
+            folder_path=self._folder_dataset,
+        )
 
     @property
     def features(self) -> dict[str, list[str]]:
@@ -815,7 +825,7 @@ class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin):
         ]
 
 
-class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin):
+class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, DatasetConfigBackupMixin):
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -880,6 +890,11 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin):
         os.makedirs(self._folder_data, exist_ok=True)
         os.makedirs(self._folder_leave_last_out_data, exist_ok=True)
         os.makedirs(self._folder_timestamp_data, exist_ok=True)
+
+        self.save_config(
+            config=self.config,
+            folder_path=self._folder_data,
+        )
 
     @functools.cached_property
     def mapper_user_id_to_index(self) -> dict[int, int]:
@@ -1234,7 +1249,7 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin):
         return sparse_matrices
 
 
-class ContentWiseImpressionsReader(DataReader):
+class ContentWiseImpressionsReader(DatasetConfigBackupMixin, DataReader):
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -1260,6 +1275,11 @@ class ContentWiseImpressionsReader(DataReader):
         self._DATA_READER_NAME = "ContentWiseImpressionsReader"
         self.DATASET_SUBFOLDER = "ContentWiseImpressionsReader"
         self.IS_IMPLICIT = self.config.binarize_interactions
+
+        self.save_config(
+            config=self.config,
+            folder_path=self.DATA_FOLDER,
+        )
 
     @property  # type: ignore
     @typed_cache
@@ -1477,6 +1497,8 @@ class ContentWiseImpressionsReader(DataReader):
 
 if __name__ == "__main__":
     config = ContentWiseImpressionsConfig()
+
+    dataset = ContentWiseImpressionsReader(config=config).dataset
 
     # print(dataset.get_loaded_UIM_names())
     # print(dataset.get_loaded_URM_names())

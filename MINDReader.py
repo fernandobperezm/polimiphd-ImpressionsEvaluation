@@ -58,7 +58,7 @@ import scipy.sparse as sp
 from recsys_framework_extensions.data.dataset import BaseDataset
 from recsys_framework_extensions.data.features import extract_frequency_user_item, extract_last_seen_user_item, \
     extract_position_user_item, extract_timestamp_user_item
-from recsys_framework_extensions.data.mixins import ParquetDataMixin, SparseDataMixin
+from recsys_framework_extensions.data.mixins import ParquetDataMixin, SparseDataMixin, DatasetConfigBackupMixin
 from recsys_framework_extensions.data.reader import DataReader
 from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe
 from recsys_framework_extensions.data.splitter import (
@@ -782,7 +782,7 @@ class PandasMINDRawData(ParquetDataMixin):
         return df_historical_interactions
 
 
-class PandasMINDProcessedData(ParquetDataMixin):
+class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
     def __init__(
         self,
         config: MINDSmallConfig,
@@ -824,6 +824,11 @@ class PandasMINDProcessedData(ParquetDataMixin):
         os.makedirs(
             name=self._folder_leave_last_out,
             exist_ok=True,
+        )
+
+        self.save_config(
+            folder_path=self._folder_dataset,
+            config=self.config,
         )
 
     @property  # type: ignore
@@ -1024,7 +1029,7 @@ class PandasMINDProcessedData(ParquetDataMixin):
         return [df_data_train, df_data_validation, df_data_train_validation, df_data_test]
 
 
-class PandasMINDImpressionsFeaturesData(ParquetDataMixin):
+class PandasMINDImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBackupMixin):
     def __init__(
         self,
         config: MINDSmallConfig,
@@ -1090,6 +1095,11 @@ class PandasMINDImpressionsFeaturesData(ParquetDataMixin):
                     name=os.path.join(folder, sub_folder),
                     exist_ok=True,
                 )
+
+        self.save_config(
+            folder_path=self._folder_dataset,
+            config=self.config,
+        )
 
     @property
     def features(self) -> dict[str, list[str]]:
@@ -1234,7 +1244,7 @@ class PandasMINDImpressionsFeaturesData(ParquetDataMixin):
         ]
 
 
-class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin):
+class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin, DatasetConfigBackupMixin):
     def __init__(
         self,
         config: MINDSmallConfig,
@@ -1282,6 +1292,11 @@ class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin):
 
         os.makedirs(self._folder_data, exist_ok=True)
         os.makedirs(self._folder_leave_last_out_data, exist_ok=True)
+
+        self.save_config(
+            folder_path=self._folder_data,
+            config=self.config,
+        )
 
     @functools.cached_property
     def mapper_user_id_to_index(self) -> dict[str, int]:
@@ -1562,7 +1577,7 @@ class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin):
         return sparse_matrices
 
 
-class MINDReader(DataReader):
+class MINDReader(DatasetConfigBackupMixin, DataReader):
     def __init__(
         self,
         config: MINDSmallConfig,
@@ -1602,6 +1617,11 @@ class MINDReader(DataReader):
         )
 
         self.IS_IMPLICIT = self.config.binarize_interactions
+
+        self.save_config(
+            folder_path=self.DATA_FOLDER,
+            config=self.config,
+        )
 
     @property  # type: ignore
     @typed_cache
