@@ -59,10 +59,9 @@ from recsys_framework_extensions.data.splitter import (
 from recsys_framework_extensions.decorators import timeit
 from recsys_framework_extensions.evaluation import EvaluationStrategy
 from recsys_framework_extensions.hashing.mixins import MixinSHA256Hash
+from recsys_framework_extensions.http import download_remote_file
 from recsys_framework_extensions.logging import get_logger
-from recsys_slates_dataset.data_helper import (
-    download_data_files as download_finn_no_slate_files,
-)
+
 from tqdm import tqdm
 
 tqdm.pandas()
@@ -294,15 +293,8 @@ class FINNNoSlateRawData:
         self._original_dataset_data_file = os.path.join(
             self._original_dataset_folder, "data.npz",
         )
-        self._original_dataset_mapper_file = os.path.join(
-            self._original_dataset_folder, "ind2val.json",
-        )
-        self._original_dataset_item_attr_file = os.path.join(
-            self._original_dataset_folder, "itemattr.npz",
-        )
-        self._original_dataset_pandas_file = os.path.join(
-            self._original_dataset_folder, "raw_data.parquet"
-        )
+
+        self._remote_url_dataset = "https://github.com/finn-no/recsys_slates_dataset/raw/v1.0.0/data/data.npz"
 
     @property  # type: ignore
     def raw_data(self) -> tuple[
@@ -347,21 +339,11 @@ class FINNNoSlateRawData:
             exist_ok=True,
         )
 
-        if not os.path.exists(self._original_dataset_data_file):
-            logger.info(
-                "Downloading dataset from the original source and creating parquet parts."
-            )
-
-            # This function is provided by the dataset's author. It downloads three files:
-            # * data.npz
-            # * ind2val.json
-            # * itemattr.npz
-            download_finn_no_slate_files(
-                data_dir=self._original_dataset_folder,
-                overwrite=False,
-                progbar=False,
-                use_int32=True,
-            )
+        download_remote_file(
+            url=self._remote_url_dataset,
+            destination_filename=self._original_dataset_data_file,
+            force_download=False,
+        )
 
 
 class PandasFinnNoSlateRawData(ParquetDataMixin, NumpyDataMixin):
@@ -1532,7 +1514,6 @@ if __name__ == "__main__":
     data_reader = FINNNoSlateReader(
         config=config,
     )
-
     dataset = data_reader.dataset
 
     print(dataset.dataframe_available_features())
