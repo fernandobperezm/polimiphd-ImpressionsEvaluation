@@ -106,8 +106,8 @@ class HyperParameterTuningParameters:
     max_total_time: int = attrs.field(default=60 * 60 * 24 * 14)
     metric_to_optimize: T_METRIC = attrs.field(default="NDCG")
     cutoff_to_optimize: int = attrs.field(default=10)
-    num_cases: int = attrs.field(default=5, validator=[attrs.validators.instance_of(int)])  # 50 <--> 50 / 3
-    num_random_starts: int = attrs.field(default=int(2), validator=[attrs.validators.instance_of(int)])
+    num_cases: int = attrs.field(default=50, validator=[attrs.validators.instance_of(int)])
+    num_random_starts: int = attrs.field(default=int(50 / 3), validator=[attrs.validators.instance_of(int)])
     knn_similarity_types: list[T_SIMILARITY_TYPE] = attrs.field(default=[
         "cosine",
         "dice",
@@ -167,20 +167,6 @@ class Experiment:
 
 
 @attrs.define(frozen=True, kw_only=True)
-class Case:
-    evaluation_strategy: EvaluationStrategy = attrs.field()
-    recommender: Type[BaseRecommender] = attrs.field()
-    benchmark: Benchmarks = attrs.field()
-    config: object = attrs.field()
-    priority: int = attrs.field()
-    hyper_parameter_tuning_parameters: HyperParameterTuningParameters = attrs.field()
-    reader_class: Type[DataReader] = attrs.field(init=False)
-
-    def __attrs_post_init__(self):
-        object.__setattr__(self, "reader_class", DATA_READERS[self.benchmark])
-
-
-@attrs.define(frozen=True, kw_only=True)
 class ExperimentCasesInterface:
     experiments: list[Experiment] = attrs.field()
 
@@ -197,68 +183,6 @@ class ExperimentCasesInterface:
             exp.hyper_parameter_tuning_parameters.evaluation_strategy
             for exp in self.experiments
         ]
-
-    # @property
-    # def cases(self) -> List[]:
-    # def __init__(
-    #     self,
-    #     experiments: list[Experiment],
-    #     # benchmarks: list[Benchmarks],
-    #     # priorities_benchmarks: list[int],
-    #     # recommenders: list[list[Type[BaseRecommender]]],
-    #     # priorities_recommenders: list[list[int]],
-    #     # configs: list[object],
-    #     # evaluations: list[EvaluationStrategy],
-    #     # hyper_parameter_tuning_parameters: list[HyperParameterTuningParameters],
-    #
-    # ):
-    #     assert len(benchmarks) == len(configs)
-    #     assert len(benchmarks) == len(evaluations)
-    #     assert len(benchmarks) == len(recommenders)
-    #     assert len(benchmarks) == len(priorities_benchmarks)
-    #     assert len(benchmarks) == len(priorities_recommenders)
-    #     assert len(benchmarks) == len(hyper_parameter_tuning_parameters)
-    #     assert all(
-    #         len(priority_recs) == len(recs)
-    #         for priority_recs, recs in zip(priorities_recommenders, recommenders)
-    #     )
-    #
-    #     self.benchmarks = benchmarks
-    #     self.configs = configs
-    #     self.evaluation_strategies = evaluations
-    #     self.recommenders = recommenders
-    #     self.priorities_benchmarks = priorities_benchmarks
-    #     self.priorities_recommenders = priorities_recommenders
-    #     self.hyper_parameter_tuning_parameters = hyper_parameter_tuning_parameters
-    #
-    # @property  # type: ignore
-    # def experiment_cases(self) -> list[ExperimentCase]:
-    #     cases = []
-    #     for idx_experiment in range(len(self.benchmarks)):
-    #
-    #         benchmark = self.benchmarks[idx_experiment]
-    #         priority_benchmark = self.priorities_benchmarks[idx_experiment]
-    #
-    #         list_recommenders = self.recommenders[idx_experiment]
-    #         list_priorities_recommenders = self.priorities_recommenders[idx_experiment]
-    #
-    #         config = self.configs[idx_experiment]
-    #         evaluation_strategy = self.evaluation_strategies[idx_experiment]
-    #         hyper_parameter_tuning_parameters = self.hyper_parameter_tuning_parameters[idx_experiment]
-    #
-    #         for recommender, priority_recommender in zip(list_recommenders, list_priorities_recommenders):
-    #             cases.append(
-    #                 ExperimentCase(
-    #                     benchmark=benchmark,
-    #                     priority=priority_benchmark * priority_recommender,
-    #                     config=config,
-    #                     evaluation_strategy=evaluation_strategy,
-    #                     recommender=recommender,
-    #                     hyper_parameter_tuning_parameters=hyper_parameter_tuning_parameters,
-    #                 )
-    #             )
-    #
-    #     return cases
 
 
 RESULTS_EXPERIMENTS_DIR = os.path.join(

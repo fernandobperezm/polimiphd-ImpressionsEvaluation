@@ -39,11 +39,6 @@ from impression_recommenders.user_profile.weighted import (
 
 
 class ConsoleArguments(Tap):
-    run_evaluation: bool = False
-    """Run Hyper-parameter tuning of recommenders on the Ciao, ML100K, and ML1M datasets. Which recommenders are 
-    tuned depend on the presence of the options --include_baselines and --include_cfgan.
-    """
-
     create_datasets: bool = False
     """TODO: fernando-debugger."""
 
@@ -93,7 +88,7 @@ _AVAILABLE_BENCHMARKS = {
 
     Benchmarks.FINNNoSlates: ExperimentBenchmark(
         benchmark=Benchmarks.FINNNoSlates,
-        config=FinnNoSlatesConfig(),
+        config=FinnNoSlatesConfig(frac_users_to_keep=0.05),
         priority=10,
     ),
 }
@@ -214,8 +209,8 @@ _AVAILABLE_RECOMMENDERS = {
 
 _TO_USE_BENCHMARKS = [
     Benchmarks.ContentWiseImpressions,
-    # Benchmarks.MINDSmall,
-    # Benchmarks.FINNNoSlates,
+    Benchmarks.MINDSmall,
+    Benchmarks.FINNNoSlates,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE = list(RecommenderBaseline)
