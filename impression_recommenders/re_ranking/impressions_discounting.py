@@ -20,7 +20,7 @@ class EImpressionsDiscountingFunctions(enum.Enum):
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class SearchHyperParametersCyclingRecommender(SearchHyperParametersBaseRecommender):
+class SearchHyperParametersImpressionsDiscountingRecommender(SearchHyperParametersBaseRecommender):
     # Check UIM frequency and have a look at the scale range.
     reg_user_frequency: Real = attrs.field(
         default=Real(
@@ -135,17 +135,18 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
         self._user_frequency: np.ndarray = np.ediff1d(
             self.URM_train.indptr
         ).astype(
-            np.float32
+            np.float64
         ).reshape((self.n_users, 1))
-        self._uim_frequency = check_matrix(X=uim_frequency, format="csr", dtype=np.float32)
-        self._uim_position = check_matrix(X=uim_position, format="csr", dtype=np.float32)
-        self._uim_last_seen = check_matrix(X=uim_last_seen, format="csr", dtype=np.float32)
+        self._uim_frequency = check_matrix(X=uim_frequency, format="csr", dtype=np.float64)
+        self._uim_position = check_matrix(X=uim_position, format="csr", dtype=np.float64)
+        self._uim_last_seen = check_matrix(X=uim_last_seen, format="csr", dtype=np.float64)
 
-        self._arr_user_frequency_scores = np.array([], dtype=np.float32)
-        self._matrix_uim_frequency_scores = sp.csr_matrix(np.array([], dtype=np.float32))
-        self._matrix_uim_position_scores = sp.csr_matrix(np.array([], dtype=np.float32))
-        self._matrix_uim_last_seen_scores = sp.csr_matrix(np.array([], dtype=np.float32))
-        self._arr_impressions_discounting_scores = np.array([], dtype=np.float32)
+        self._arr_user_frequency_scores = np.array([], dtype=np.float64)
+        self._matrix_uim_frequency_scores = sp.csr_matrix(np.array([], dtype=np.float64))
+        self._matrix_uim_position_scores = sp.csr_matrix(np.array([], dtype=np.float64))
+        self._matrix_uim_last_seen_scores = sp.csr_matrix(np.array([], dtype=np.float64))
+
+        self._max_discounting_score: float = 1.
 
         self._reg_user_frequency: float = 1.0
         self._reg_uim_frequency: float = 1.0
@@ -163,22 +164,6 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
         items_to_compute: Optional[list[int]] = None,
     ) -> np.ndarray:
         """
-        This function computes the item scores using the definition of cycling.
-
-        Cycling holds two arrays `arr_scores_presentation` and `arr_scores_relevance`. The first tells how many times
-        each item (columns) has been impressed to the users (rows). The second is the relevance score given by the
-        trained recommender to each user-item pair (users in rows, items in columns).
-
-        The new relevance score is computed by assigning the rank (higher is more relevant) to each user-item pair. To
-        assign this rank for each user, items are sorted first by their presentation score `arr_scores_presentation`
-        in ascending order and then by their relevance score `arr_scores_relevance` in ascending order as well.
-
-        Cycling implies that items with fewer impressions will get low rank scores (therefore, highly unlikely to be
-        recommended)
-
-        This method assigns ranks (and does return sorted item indices) to comply with the `recommend` function in
-        BaseRecommender, i.e., the `recommend` function expects that each user-item pair holds a relevance score,
-        where items with the highest scores are recommended.
 
         Returns
         -------
@@ -197,16 +182,25 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
             user_id_array=user_id_array,
             items_to_compute=items_to_compute,
         )
-        arr_scores_impressions_discounting: np.ndarray = self._arr_impressions_discounting_scores[user_id_array, :]
 
-        assert (num_score_users, num_score_items) == arr_scores_impressions_discounting.shape
+        # Compute the discounting scores for the current users. This results in a dense matrix array with shape
+        # (num_score_users, num_score_items)
+        arr_impressions_discounting_scores: np.ndarray = np.asarray(
+            (
+                self._arr_user_frequency_scores[user_id_array, :]
+                + self._matrix_uim_frequency_scores[user_id_array, :]
+                + self._matrix_uim_position_scores[user_id_array, :]
+                + self._matrix_uim_last_seen_scores[user_id_array, :]
+            )
+            / self._max_discounting_score
+        )
+
+        assert (num_score_users, num_score_items) == arr_impressions_discounting_scores.shape
         assert (num_score_users, num_score_items) == arr_scores_relevance.shape
 
-        # Note: `rank_data_by_row` requires that the most important array are place right-most in the tuple. In  this
-        # case, we want to sort first by `arr_scores_presentation` and then by `arr_scores_relevance`.
         new_item_scores = (
             arr_scores_relevance
-            * arr_scores_impressions_discounting
+            * arr_impressions_discounting_scores
         )
 
         # If we are computing scores to a specific set of items, then we must set items outside this set to np.NINF,
@@ -256,38 +250,51 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
         self._func_uim_position = func_uim_position
         self._func_uim_last_seen = func_uim_last_seen
 
+        # Compute the different arrays and matrices used in the calculation of the discounting function.
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_user_frequency]
-        self._arr_user_frequency_scores = self._reg_user_frequency * selected_func(
+        self._arr_user_frequency_scores: np.ndarray = self._reg_user_frequency * selected_func(
             self._user_frequency
         )
 
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_uim_frequency]
-        self._matrix_uim_frequency_scores = self._reg_uim_frequency * selected_func(
+        self._matrix_uim_frequency_scores: np.ndarray = self._reg_uim_frequency * selected_func(
             self._uim_frequency
         )
 
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_uim_position]
-        self._matrix_uim_position_scores = self._reg_uim_position * selected_func(
+        self._matrix_uim_position_scores: np.ndarray = self._reg_uim_position * selected_func(
             self._uim_position
         )
 
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_uim_last_seen]
-        self._matrix_uim_last_seen_scores = self._reg_uim_last_seen * selected_func(
+        self._matrix_uim_last_seen_scores: np.ndarray = self._reg_uim_last_seen * selected_func(
             self._uim_last_seen
         )
 
-        # Given that `self._arr_user_frequency_scores` sums on all rows, it converts the sparse matrix into a dense one.
-        # We then keep the numpy array from here on.
-        arr_impressions_discounting_scores: np.ndarray = (
-            self._arr_user_frequency_scores
-            + self._matrix_uim_frequency_scores
+        # `_arr_user_frequency_scores` is a column array that is added to the other sparse matrices.
+        # However, doing this is space inefficient, as it breaks the sparsity of these matrices and converts them into
+        # a dense array of possibly millions of users/items. We can compute the discounting factor on the fly when
+        # computing the scores. To do that, we need the maximum discounting score.
+        # We compute the maximum discounting score by assuming two things.
+        # 1. All sparse matrices and arrays are non-negative.
+        # 2. Computing the maximum over non-zero cells yields the same result as computing it on the dense matrix.
+
+        # Step 1. Compute the row-wise maximum over all sparse matrices.
+        sparse_matrices_scores: sp.csr_matrix = (
+            self._matrix_uim_frequency_scores
             + self._matrix_uim_position_scores
             + self._matrix_uim_last_seen_scores
-        ).A
-        # We use a min here as the matrix may be full of zeroes. We avoid a division by zero if this is the case.
-        max_score = arr_impressions_discounting_scores.max(initial=0.) + 1e-6  # to avoid division by zero.
+        )
+        arr_max_matrices_score_by_row: np.ndarray = sparse_matrices_scores.max(axis=1).toarray()
 
-        self._arr_impressions_discounting_scores = arr_impressions_discounting_scores / max_score
+        assert self._arr_user_frequency_scores.shape == arr_max_matrices_score_by_row.shape
+
+        # Step 2. Sum both column arrays, `arr_max_matrices_score_by_row` is the maximum score for each user, while
+        # `self._arr_user_frequency_scores` is the remaining score array to sum.
+        arr_scores: np.ndarray = self._arr_user_frequency_scores + arr_max_matrices_score_by_row
+
+        # Step 3. Compute the maximum of this new array.
+        self._max_discounting_score: float = arr_scores.max(initial=0.) + 1e-6  # type: ignore
 
     def save_model(self, folder_path, file_name=None):
         if file_name is None:
@@ -297,13 +304,6 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
             folder_path=folder_path,
             file_name=file_name,
             data_dict_to_save={
-                "_arr_impressions_discounting_scores": self._arr_impressions_discounting_scores,
-
-                "_arr_user_frequency_scores": self._arr_user_frequency_scores,
-                "_matrix_uim_frequency_scores": self._matrix_uim_frequency_scores,
-                "_matrix_uim_position_scores": self._matrix_uim_position_scores,
-                "_matrix_uim_last_seen_scores": self._matrix_uim_last_seen_scores,
-
                 "_reg_user_frequency": self._reg_user_frequency,
                 "_reg_uim_frequency": self._reg_uim_frequency,
                 "_reg_uim_position": self._reg_uim_position,
@@ -313,6 +313,13 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
                 "_func_uim_frequency": self._func_uim_frequency,
                 "_func_uim_position": self._func_uim_position,
                 "_func_uim_last_seen": self._func_uim_last_seen,
+
+                "_arr_user_frequency_scores": self._arr_user_frequency_scores,
+                "_matrix_uim_frequency_scores": self._matrix_uim_frequency_scores,
+                "_matrix_uim_position_scores": self._matrix_uim_position_scores,
+                "_matrix_uim_last_seen_scores": self._matrix_uim_last_seen_scores,
+
+                "_max_discounting_score": self._max_discounting_score,
             }
         )
 
@@ -326,4 +333,9 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
             file_name=file_name,
         )
 
-        assert hasattr(self, "_arr_impressions_discounting_scores")
+        assert hasattr(self, "_arr_user_frequency_scores")
+        assert hasattr(self, "_matrix_uim_frequency_scores")
+        assert hasattr(self, "_matrix_uim_position_scores")
+        assert hasattr(self, "_matrix_uim_last_seen_scores")
+
+        assert hasattr(self, "_max_discounting_score")
