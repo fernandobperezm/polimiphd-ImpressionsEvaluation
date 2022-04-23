@@ -30,6 +30,8 @@ from impression_recommenders.heuristics.frequency_and_recency import FrequencyRe
 from impression_recommenders.heuristics.latest_impressions import LastImpressionsRecommender, \
     SearchHyperParametersLastImpressionsRecommender
 from impression_recommenders.re_ranking.cycling import CyclingRecommender, SearchHyperParametersCyclingRecommender
+from impression_recommenders.re_ranking.impressions_discounting import ImpressionsDiscountingRecommender, \
+    SearchHyperParametersImpressionsDiscountingRecommender
 from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender, \
     SearchHyperParametersFoldedMatrixFactorizationRecommender
 from impression_recommenders.user_profile.weighted import (
@@ -79,13 +81,11 @@ _AVAILABLE_BENCHMARKS = {
         config=ContentWiseImpressionsConfig(),
         priority=10,
     ),
-
     Benchmarks.MINDSmall: ExperimentBenchmark(
         benchmark=Benchmarks.MINDSmall,
         config=MINDSmallConfig(),
         priority=10,
     ),
-
     Benchmarks.FINNNoSlates: ExperimentBenchmark(
         benchmark=Benchmarks.FINNNoSlates,
         config=FinnNoSlatesConfig(frac_users_to_keep=0.05),
@@ -193,6 +193,11 @@ _AVAILABLE_RECOMMENDERS = {
         search_hyper_parameters=SearchHyperParametersCyclingRecommender,
         priority=10,
     ),
+    RecommenderImpressions.IMPRESSIONS_DISCOUNTING: ExperimentRecommender(
+        recommender=ImpressionsDiscountingRecommender,
+        search_hyper_parameters=SearchHyperParametersImpressionsDiscountingRecommender,
+        priority=10,
+    ),
 
     # IMPRESSIONS APPROACHES: USER PROFILES
     RecommenderImpressions.USER_WEIGHTED_USER_PROFILE: ExperimentRecommender(
@@ -209,8 +214,8 @@ _AVAILABLE_RECOMMENDERS = {
 
 _TO_USE_BENCHMARKS = [
     Benchmarks.ContentWiseImpressions,
-    Benchmarks.MINDSmall,
-    Benchmarks.FINNNoSlates,
+    # Benchmarks.MINDSmall,
+    # Benchmarks.FINNNoSlates,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE = list(RecommenderBaseline)
@@ -222,7 +227,8 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS = [
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING = [
-    RecommenderImpressions.CYCLING,
+    # RecommenderImpressions.CYCLING,
+    RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES = [
@@ -297,7 +303,7 @@ if __name__ == '__main__':
                 benchmark=_AVAILABLE_BENCHMARKS[benchmark],
                 recommenders=[
                     _AVAILABLE_RECOMMENDERS[recommender]
-                    for recommender in _TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING
+                    for recommender in _TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES
                 ],
             )
             for benchmark in _TO_USE_BENCHMARKS

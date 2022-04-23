@@ -205,6 +205,46 @@ def _run_impressions_re_ranking_hyper_parameter_tuning(
         )
     )
 
+    if commons.Benchmarks.FINNNoSlates == experiment_re_ranking.benchmark:
+        impressions_feature_last_seen_train = dataset.sparse_matrix_impression_feature(
+            feature=commons.get_feature_key_by_benchmark(
+                benchmark=experiment_re_ranking.benchmark.benchmark,
+                evaluation_strategy=experiment_re_ranking.hyper_parameter_tuning_parameters.evaluation_strategy,
+                impressions_feature=commons.ImpressionsFeatures.USER_ITEM_LAST_SEEN,
+                impressions_feature_column=commons.ImpressionsFeatureColumnsLastSeen.EUCLIDEAN,
+                impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN,
+            )
+        )
+        impressions_feature_last_seen_train_validation = dataset.sparse_matrix_impression_feature(
+            feature=commons.get_feature_key_by_benchmark(
+                benchmark=experiment_re_ranking.benchmark.benchmark,
+                evaluation_strategy=experiment_re_ranking.hyper_parameter_tuning_parameters.evaluation_strategy,
+                impressions_feature=commons.ImpressionsFeatures.USER_ITEM_LAST_SEEN,
+                impressions_feature_column=commons.ImpressionsFeatureColumnsLastSeen.EUCLIDEAN,
+                impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN_VALIDATION,
+            )
+        )
+
+    else:
+        impressions_feature_last_seen_train = dataset.sparse_matrix_impression_feature(
+            feature=commons.get_feature_key_by_benchmark(
+                benchmark=experiment_re_ranking.benchmark.benchmark,
+                evaluation_strategy=experiment_re_ranking.hyper_parameter_tuning_parameters.evaluation_strategy,
+                impressions_feature=commons.ImpressionsFeatures.USER_ITEM_LAST_SEEN,
+                impressions_feature_column=commons.ImpressionsFeatureColumnsLastSeen.TOTAL_HOURS,
+                impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN,
+            )
+        )
+        impressions_feature_last_seen_train_validation = dataset.sparse_matrix_impression_feature(
+            feature=commons.get_feature_key_by_benchmark(
+                benchmark=experiment_re_ranking.benchmark.benchmark,
+                evaluation_strategy=experiment_re_ranking.hyper_parameter_tuning_parameters.evaluation_strategy,
+                impressions_feature=commons.ImpressionsFeatures.USER_ITEM_LAST_SEEN,
+                impressions_feature_column=commons.ImpressionsFeatureColumnsLastSeen.TOTAL_HOURS,
+                impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN_VALIDATION,
+            )
+        )
+
     baseline_recommender_trained_train = load_trained_recommender(
         experiment=experiment_baseline,
         experiment_recommender=experiment_baseline_recommender,
@@ -265,6 +305,7 @@ def _run_impressions_re_ranking_hyper_parameter_tuning(
             "uim_frequency": impressions_feature_frequency_train,
             "uim_position": impressions_feature_position_train,
             "uim_timestamp": impressions_feature_timestamp_train,
+            "uim_last_seen": impressions_feature_last_seen_train,
             "seed": experiment_re_ranking.hyper_parameter_tuning_parameters.reproducibility_seed,
             "trained_recommender": baseline_recommender_trained_train,
         },
@@ -280,6 +321,7 @@ def _run_impressions_re_ranking_hyper_parameter_tuning(
             "uim_frequency": impressions_feature_frequency_train_validation,
             "uim_position": impressions_feature_position_train_validation,
             "uim_timestamp": impressions_feature_timestamp_train_validation,
+            "uim_last_seen": impressions_feature_last_seen_train_validation,
             "seed": experiment_re_ranking.hyper_parameter_tuning_parameters.reproducibility_seed,
             "trained_recommender": baseline_recommender_trained_train_validation,
         },
