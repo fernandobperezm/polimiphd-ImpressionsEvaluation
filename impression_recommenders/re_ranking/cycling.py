@@ -8,16 +8,16 @@ from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
 from recsys_framework_extensions.recommenders.rank import rank_data_by_row
-from skopt.space import Real
+from skopt.space import Integer
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
 class SearchHyperParametersCyclingRecommender(SearchHyperParametersBaseRecommender):
     # Check UIM frequency and have a look at the scale range.
-    weight: Real = attrs.field(
-        default=Real(
-            low=1e-5,
-            high=1e2,
+    weight: Integer = attrs.field(
+        default=Integer(
+            low=1,
+            high=100,
             prior="uniform",
             base=10,
         )
@@ -118,6 +118,7 @@ class CyclingRecommender(BaseRecommender):
         weight: float,
         **kwargs,
     ):
+        assert weight > 0.
         self._cycling_weight = weight
 
         matrix_presentation_scores = (self._uim_frequency / self._cycling_weight)
