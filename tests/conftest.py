@@ -201,6 +201,32 @@ def uim_frequency(df: pd.DataFrame) -> sp.csr_matrix:
 
 
 @fixture
+def uim_last_seen(df: pd.DataFrame) -> sp.csr_matrix:
+    """Last seen hours."""
+    from recsys_framework_extensions.data.features import extract_last_seen_user_item
+
+    df_keep, _ = extract_last_seen_user_item(
+        df=df,
+        users_column="user_id",
+        items_column="impressions",
+        timestamp_column="timestamp"
+    )
+
+    arr_user_id = df_keep["user_id"].to_numpy()
+    arr_item_id = df_keep["impressions"].to_numpy()
+    arr_data = df_keep["feature_last_seen_total_hours"].to_numpy()
+
+    return sp.csr_matrix(
+        (
+            arr_data,
+            (arr_user_id, arr_item_id),
+        ),
+        shape=(NUM_USERS, NUM_ITEMS),
+        dtype=np.int32,
+    )
+
+
+@fixture
 def uim(df: pd.DataFrame) -> sp.csr_matrix:
     df = df.set_index(
         ["timestamp", "user_id", "item_id"]
