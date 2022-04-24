@@ -1,43 +1,22 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import Recommenders.Recommender_import_list as recommenders
 from recsys_framework_extensions.dask import configure_dask_cluster
 from recsys_framework_extensions.logging import get_logger
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
 from tap import Tap
 
-from ContentWiseImpressionsReader import ContentWiseImpressionsConfig
-from FINNNoReader import FinnNoSlatesConfig
-from MINDReader import MINDSmallConfig
 from experiments.baselines import run_baselines_experiments, run_baselines_folded
 from experiments.commons import (
     create_necessary_folders,
     ExperimentCasesInterface,
     Benchmarks,
     HyperParameterTuningParameters,
-    Experiment,
-    ExperimentBenchmark,
-    ExperimentRecommender,
     plot_popularity_of_datasets,
-    ensure_datasets_exist, RecommenderBaseline, RecommenderImpressions, RecommenderFolded,
+    ensure_datasets_exist, RecommenderBaseline, RecommenderImpressions, EHyperParameterTuningParameters,
 )
 from experiments.heuristics import run_impressions_heuristics_experiments
 from experiments.re_ranking import run_impressions_re_ranking_experiments
 from experiments.user_profiles import run_impressions_user_profiles_experiments
-from impression_recommenders.heuristics.frequency_and_recency import FrequencyRecencyRecommender, RecencyRecommender, \
-    SearchHyperParametersFrequencyRecencyRecommender, SearchHyperParametersRecencyRecommender
-from impression_recommenders.heuristics.latest_impressions import LastImpressionsRecommender, \
-    SearchHyperParametersLastImpressionsRecommender
-from impression_recommenders.re_ranking.cycling import CyclingRecommender, SearchHyperParametersCyclingRecommender
-from impression_recommenders.re_ranking.impressions_discounting import ImpressionsDiscountingRecommender, \
-    SearchHyperParametersImpressionsDiscountingRecommender
-from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender, \
-    SearchHyperParametersFoldedMatrixFactorizationRecommender
-from impression_recommenders.user_profile.weighted import (
-    UserWeightedUserProfileRecommender,
-    ItemWeightedUserProfileRecommender, SearchHyperParametersWeightedUserProfileRecommender,
-)
 
 
 class ConsoleArguments(Tap):
@@ -75,170 +54,10 @@ class ConsoleArguments(Tap):
 #                                            MAIN                                                  #
 ####################################################################################################
 ####################################################################################################
-_AVAILABLE_BENCHMARKS = {
-    Benchmarks.ContentWiseImpressions: ExperimentBenchmark(
-        benchmark=Benchmarks.ContentWiseImpressions,
-        config=ContentWiseImpressionsConfig(),
-        priority=10,
-    ),
-    Benchmarks.MINDSmall: ExperimentBenchmark(
-        benchmark=Benchmarks.MINDSmall,
-        config=MINDSmallConfig(),
-        priority=10,
-    ),
-    Benchmarks.FINNNoSlates: ExperimentBenchmark(
-        benchmark=Benchmarks.FINNNoSlates,
-        config=FinnNoSlatesConfig(frac_users_to_keep=0.05),
-        priority=10,
-    ),
-}
-
-_AVAILABLE_RECOMMENDERS = {
-    RecommenderBaseline.RANDOM: ExperimentRecommender(
-        recommender=recommenders.Random,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=30,
-    ),
-    RecommenderBaseline.TOP_POPULAR: ExperimentRecommender(
-        recommender=recommenders.TopPop,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=30,
-    ),
-    RecommenderBaseline.GLOBAL_EFFECTS: ExperimentRecommender(
-        recommender=recommenders.GlobalEffects,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=30,
-    ),
-    RecommenderBaseline.USER_KNN: ExperimentRecommender(
-        recommender=recommenders.UserKNNCFRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=20,
-    ),
-    RecommenderBaseline.ITEM_KNN: ExperimentRecommender(
-        recommender=recommenders.ItemKNNCFRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=20,
-    ),
-    RecommenderBaseline.ASYMMETRIC_SVD: ExperimentRecommender(
-        recommender=recommenders.MatrixFactorization_AsySVD_Cython,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=20,
-    ),
-    RecommenderBaseline.FUNK_SVD: ExperimentRecommender(
-        recommender=recommenders.MatrixFactorization_FunkSVD_Cython,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=20,
-    ),
-    RecommenderBaseline.PURE_SVD: ExperimentRecommender(
-        recommender=recommenders.PureSVDRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=20,
-    ),
-    RecommenderBaseline.NMF: ExperimentRecommender(
-        recommender=recommenders.NMFRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=10,
-    ),
-    RecommenderBaseline.IALS: ExperimentRecommender(
-        recommender=recommenders.IALSRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=1,
-    ),
-    RecommenderBaseline.MF_BPR: ExperimentRecommender(
-        recommender=recommenders.MatrixFactorization_BPR_Cython,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=10,
-    ),
-    RecommenderBaseline.P3_ALPHA: ExperimentRecommender(
-        recommender=recommenders.RP3betaRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=10,
-    ),
-    RecommenderBaseline.RP3_BETA: ExperimentRecommender(
-        recommender=recommenders.RP3betaRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=10,
-    ),
-
-    RecommenderBaseline.SLIM_ELASTIC_NET: ExperimentRecommender(
-        recommender=recommenders.SLIMElasticNetRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=5,
-    ),
-    RecommenderBaseline.SLIM_BPR: ExperimentRecommender(
-        recommender=recommenders.SLIM_BPR_Cython,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=4,
-    ),
-    RecommenderBaseline.LIGHT_FM: ExperimentRecommender(
-        recommender=recommenders.LightFMCFRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=4,
-    ),
-    RecommenderBaseline.MULT_VAE: ExperimentRecommender(
-        recommender=recommenders.MultVAERecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=4,
-    ),
-    RecommenderBaseline.EASE_R: ExperimentRecommender(
-        recommender=recommenders.EASE_R_Recommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=1,
-    ),
-
-    # IMPRESSIONS_FOLDING
-    RecommenderFolded.FOLDED: ExperimentRecommender(
-        recommender=FoldedMatrixFactorizationRecommender,
-        search_hyper_parameters=SearchHyperParametersFoldedMatrixFactorizationRecommender,
-        priority=10,
-    ),
-
-    # IMPRESSIONS APPROACHES: HEURISTIC
-    RecommenderImpressions.LAST_IMPRESSIONS: ExperimentRecommender(
-        recommender=LastImpressionsRecommender,
-        search_hyper_parameters=SearchHyperParametersLastImpressionsRecommender,
-        priority=10,
-    ),
-    RecommenderImpressions.FREQUENCY_RECENCY: ExperimentRecommender(
-        recommender=FrequencyRecencyRecommender,
-        search_hyper_parameters=SearchHyperParametersFrequencyRecencyRecommender,
-        priority=10,
-    ),
-    RecommenderImpressions.RECENCY: ExperimentRecommender(
-        recommender=RecencyRecommender,
-        search_hyper_parameters=SearchHyperParametersRecencyRecommender,
-        priority=10,
-    ),
-
-    # IMPRESSIONS APPROACHES: RE RANKING
-    RecommenderImpressions.CYCLING: ExperimentRecommender(
-        recommender=CyclingRecommender,
-        search_hyper_parameters=SearchHyperParametersCyclingRecommender,
-        priority=10,
-    ),
-    RecommenderImpressions.IMPRESSIONS_DISCOUNTING: ExperimentRecommender(
-        recommender=ImpressionsDiscountingRecommender,
-        search_hyper_parameters=SearchHyperParametersImpressionsDiscountingRecommender,
-        priority=10,
-    ),
-
-    # IMPRESSIONS APPROACHES: USER PROFILES
-    RecommenderImpressions.USER_WEIGHTED_USER_PROFILE: ExperimentRecommender(
-        recommender=UserWeightedUserProfileRecommender,
-        search_hyper_parameters=SearchHyperParametersWeightedUserProfileRecommender,
-        priority=10,
-    ),
-    RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE: ExperimentRecommender(
-        recommender=ItemWeightedUserProfileRecommender,
-        search_hyper_parameters=SearchHyperParametersWeightedUserProfileRecommender,
-        priority=10,
-    ),
-}
-
 _TO_USE_BENCHMARKS = [
-    Benchmarks.ContentWiseImpressions,
+    # Benchmarks.ContentWiseImpressions,
     # Benchmarks.MINDSmall,
-    # Benchmarks.FINNNoSlates,
+    Benchmarks.FINNNoSlates,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE = [
@@ -251,20 +70,20 @@ _TO_USE_RECOMMENDERS_BASELINE = [
 
     RecommenderBaseline.PURE_SVD,
     RecommenderBaseline.NMF,
-    RecommenderBaseline.MF_BPR,
-    RecommenderBaseline.IALS,
-    RecommenderBaseline.FUNK_SVD,
-    RecommenderBaseline.ASYMMETRIC_SVD,
+    # RecommenderBaseline.MF_BPR,
+    # RecommenderBaseline.IALS,
+    # RecommenderBaseline.FUNK_SVD,
+    # RecommenderBaseline.ASYMMETRIC_SVD,
 
-    RecommenderBaseline.P3_ALPHA,
+    # RecommenderBaseline.P3_ALPHA,
     RecommenderBaseline.RP3_BETA,
 
-    RecommenderBaseline.SLIM_ELASTIC_NET,
-    RecommenderBaseline.SLIM_BPR,
+    # RecommenderBaseline.SLIM_ELASTIC_NET,
+    # RecommenderBaseline.SLIM_BPR,
 
-    RecommenderBaseline.LIGHT_FM,
-    RecommenderBaseline.MULT_VAE,
-    RecommenderBaseline.EASE_R,
+    # RecommenderBaseline.LIGHT_FM,
+    # RecommenderBaseline.MULT_VAE,
+    # RecommenderBaseline.EASE_R,
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS = [
@@ -283,11 +102,38 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES = [
     RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE,
 ]
 
+_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS = [
+    EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
+]
+
 
 if __name__ == '__main__':
     input_flags = ConsoleArguments().parse_args()
 
     logger = get_logger(__name__)
+
+    if input_flags.send_email:
+        from recsys_framework_extensions.data.io import ExtendedJSONEncoderDecoder
+        from recsys_framework_extensions.email.gmail import GmailEmailNotifier
+        import json
+
+        GmailEmailNotifier.send_email(
+            subject="[Impressions Datasets] Execution Started",
+            body=f"""An execution with the following properties just started:
+            \n\t* Input Flags: {json.dumps(input_flags.as_dict(), default=ExtendedJSONEncoderDecoder.to_json)} 
+            \n\t* Benchmarks: {json.dumps(_TO_USE_BENCHMARKS, default=ExtendedJSONEncoderDecoder.to_json)} 
+            \n\t* Hyper-parameters: {json.dumps(_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS, default=ExtendedJSONEncoderDecoder.to_json)} 
+            \n\t* Baselines: {json.dumps(_TO_USE_RECOMMENDERS_BASELINE, default=ExtendedJSONEncoderDecoder.to_json)} 
+            \n\t* Impressions Heuristics: {json.dumps(_TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS, default=ExtendedJSONEncoderDecoder.to_json)} 
+            \n\t* Impressions Re Ranking: {json.dumps(_TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING, default=ExtendedJSONEncoderDecoder.to_json)} 
+            \n\t* Impressions User Profiles: {json.dumps(_TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES, default=ExtendedJSONEncoderDecoder.to_json)} 
+            """,
+            sender="mistermaurera@gmail.com",
+            receivers=[
+                "fperezmaurera@gmail.com",
+                "fernandobenjamin.perez@polimi.it",
+            ],
+        )
 
     dask_interface = configure_dask_cluster()
 
@@ -302,59 +148,27 @@ if __name__ == '__main__':
     # MINDLarge - EASE_R - 29.3GB Training - 450sec/it
     # FINNNoSlates - EASE R - 12.4TB Training - No Training.
     experiments_interface_baselines = ExperimentCasesInterface(
-        experiments=[
-            Experiment(
-                hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
-                benchmark=_AVAILABLE_BENCHMARKS[benchmark],
-                recommenders=[
-                    _AVAILABLE_RECOMMENDERS[recommender]
-                    for recommender in _TO_USE_RECOMMENDERS_BASELINE
-                ],
-            )
-            for benchmark in _TO_USE_BENCHMARKS
-        ],
+        to_use_benchmarks=_TO_USE_BENCHMARKS,
+        to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        to_use_recommenders=_TO_USE_RECOMMENDERS_BASELINE,
     )
 
     experiments_impressions_heuristics_interface = ExperimentCasesInterface(
-        experiments=[
-            Experiment(
-                hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
-                benchmark=_AVAILABLE_BENCHMARKS[benchmark],
-                recommenders=[
-                    _AVAILABLE_RECOMMENDERS[recommender]
-                    for recommender in _TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS
-                ],
-            )
-            for benchmark in _TO_USE_BENCHMARKS
-        ],
+        to_use_benchmarks=_TO_USE_BENCHMARKS,
+        to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        to_use_recommenders=_TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS,
     )
 
     experiments_impressions_re_ranking_interface = ExperimentCasesInterface(
-        experiments=[
-            Experiment(
-                hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
-                benchmark=_AVAILABLE_BENCHMARKS[benchmark],
-                recommenders=[
-                    _AVAILABLE_RECOMMENDERS[recommender]
-                    for recommender in _TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING
-                ],
-            )
-            for benchmark in _TO_USE_BENCHMARKS
-        ],
+        to_use_benchmarks=_TO_USE_BENCHMARKS,
+        to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        to_use_recommenders=_TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING,
     )
 
     experiments_impressions_user_profiles_interface = ExperimentCasesInterface(
-        experiments=[
-            Experiment(
-                hyper_parameter_tuning_parameters=common_hyper_parameter_tuning_parameters,
-                benchmark=_AVAILABLE_BENCHMARKS[benchmark],
-                recommenders=[
-                    _AVAILABLE_RECOMMENDERS[recommender]
-                    for recommender in _TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES
-                ],
-            )
-            for benchmark in _TO_USE_BENCHMARKS
-        ],
+        to_use_benchmarks=_TO_USE_BENCHMARKS,
+        to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        to_use_recommenders=_TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES,
     )
 
     create_necessary_folders(
@@ -364,7 +178,7 @@ if __name__ == '__main__':
 
     if input_flags.create_datasets:
         ensure_datasets_exist(
-            dataset_interface=experiments_interface_baselines,
+            experiment_cases_interface=experiments_interface_baselines,
         )
 
     if input_flags.include_baselines:
@@ -384,7 +198,6 @@ if __name__ == '__main__':
     if input_flags.include_folded:
         run_baselines_folded(
             dask_interface=dask_interface,
-            recommender_folded=_AVAILABLE_RECOMMENDERS[RecommenderFolded.FOLDED],
             experiment_cases_interface=experiments_interface_baselines,
         )
 
@@ -426,6 +239,7 @@ if __name__ == '__main__':
             body=f"""An execution with the following properties just finished:
             \n\t* Input Flags: {json.dumps(input_flags.as_dict(), default=ExtendedJSONEncoderDecoder.to_json)} 
             \n\t* Benchmarks: {json.dumps(_TO_USE_BENCHMARKS, default=ExtendedJSONEncoderDecoder.to_json)} 
+            \n\t* Hyper-parameters: {json.dumps(_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS, default=ExtendedJSONEncoderDecoder.to_json)} 
             \n\t* Baselines: {json.dumps(_TO_USE_RECOMMENDERS_BASELINE, default=ExtendedJSONEncoderDecoder.to_json)} 
             \n\t* Impressions Heuristics: {json.dumps(_TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS, default=ExtendedJSONEncoderDecoder.to_json)} 
             \n\t* Impressions Re Ranking: {json.dumps(_TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING, default=ExtendedJSONEncoderDecoder.to_json)} 
