@@ -61,18 +61,26 @@ class Benchmarks(Enum):
 class RecommenderBaseline(Enum):
     RANDOM = "RANDOM"
     TOP_POPULAR = "TOP_POPULAR"
+    GLOBAL_EFFECTS = "GLOBAL_EFFECTS"
     USER_KNN = "USER_KNN"
     ITEM_KNN = "ITEM_KNN"
+    ASYMMETRIC_SVD = "ASYMMETRIC_SVD"
+    FUNK_SVD = "FUNK_SVD"
     PURE_SVD = "PURE_SVD"
     NMF = "NMF"
-    RP3_BETA = "RP3_BETA"
+    IALS = "IALS"
     MF_BPR = "MF_BPR"
+    P3_ALPHA = "P3_ALPHA"
+    RP3_BETA = "RP3_BETA"
     SLIM_ELASTIC_NET = "SLIM_ELASTIC_NET"
     SLIM_BPR = "SLIM_BPR"
     LIGHT_FM = "LIGHT_FM"
     MULT_VAE = "MULT_VAE"
-    IALS = "IALS"
     EASE_R = "EASE_R"
+
+
+@attach_to_extended_json_decoder
+class RecommenderFolded(Enum):
     FOLDED = "FOLDED"
 
 

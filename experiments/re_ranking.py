@@ -4,18 +4,13 @@ from typing import Type, Optional, Sequence
 
 import Recommenders.Recommender_import_list as recommenders
 import attrs
-from Evaluation.Evaluator import EvaluatorHoldout
 from HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
 from HyperparameterTuning.SearchBayesianSkopt import SearchBayesianSkopt
-from HyperparameterTuning.SearchSingleCase import SearchSingleCase
 from Recommenders.BaseRecommender import BaseRecommender
 from recsys_framework_extensions.dask import DaskInterface
-from recsys_framework_extensions.evaluation import exclude_from_evaluation
-from recsys_framework_extensions.hyper_parameter_search import run_hyper_parameter_search_collaborative
 from recsys_framework_extensions.logging import get_logger
 
 import experiments.commons as commons
-# from experiments.baselines import load_trained_recommender
 from experiments.baselines import load_trained_recommender, TrainedRecommenderType
 
 logger = get_logger(__name__)
@@ -231,7 +226,7 @@ def _run_impressions_re_ranking_hyper_parameter_tuning(
                 benchmark=experiment_re_ranking.benchmark.benchmark,
                 evaluation_strategy=experiment_re_ranking.hyper_parameter_tuning_parameters.evaluation_strategy,
                 impressions_feature=commons.ImpressionsFeatures.USER_ITEM_LAST_SEEN,
-                impressions_feature_column=commons.ImpressionsFeatureColumnsLastSeen.TOTAL_HOURS,
+                impressions_feature_column=commons.ImpressionsFeatureColumnsLastSeen.TOTAL_DAYS,
                 impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN,
             )
         )
@@ -240,17 +235,21 @@ def _run_impressions_re_ranking_hyper_parameter_tuning(
                 benchmark=experiment_re_ranking.benchmark.benchmark,
                 evaluation_strategy=experiment_re_ranking.hyper_parameter_tuning_parameters.evaluation_strategy,
                 impressions_feature=commons.ImpressionsFeatures.USER_ITEM_LAST_SEEN,
-                impressions_feature_column=commons.ImpressionsFeatureColumnsLastSeen.TOTAL_HOURS,
+                impressions_feature_column=commons.ImpressionsFeatureColumnsLastSeen.TOTAL_DAYS,
                 impressions_feature_split=commons.ImpressionsFeaturesSplit.TRAIN_VALIDATION,
             )
         )
 
+    # The experiments will be done on all recommenders. However, in order for the impression methods to be comparable
+    # within each other, all matrix factorization approaches will be folded-in. This is because the user.profile
+    # experiments always need a similarity recommender.
     baseline_recommender_trained_train = load_trained_recommender(
         experiment=experiment_baseline,
         experiment_recommender=experiment_baseline_recommender,
         data_splits=interactions_data_splits,
         similarity=experiment_baseline_similarity,
         model_type=TrainedRecommenderType.TRAIN,
+        try_folded_recommender=True,
     )
 
     baseline_recommender_trained_train_validation = load_trained_recommender(
@@ -259,6 +258,7 @@ def _run_impressions_re_ranking_hyper_parameter_tuning(
         data_splits=interactions_data_splits,
         similarity=experiment_baseline_similarity,
         model_type=TrainedRecommenderType.TRAIN_VALIDATION,
+        try_folded_recommender=True,
     )
 
     assert baseline_recommender_trained_train.RECOMMENDER_NAME == baseline_recommender_trained_train_validation.RECOMMENDER_NAME

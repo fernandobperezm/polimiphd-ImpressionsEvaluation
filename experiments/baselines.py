@@ -12,7 +12,9 @@ from Recommenders.BaseRecommender import BaseRecommender
 from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.data.io import DataIO
 from recsys_framework_extensions.data.mixins import InteractionsDataSplits
-from recsys_framework_extensions.hyper_parameter_search import run_hyper_parameter_search_collaborative
+from recsys_framework_extensions.hyper_parameter_search import (
+    run_hyper_parameter_search_collaborative,
+)
 from recsys_framework_extensions.logging import get_logger
 
 import experiments.commons as commons
@@ -167,24 +169,27 @@ def load_trained_recommender(
     data_splits: InteractionsDataSplits,
     similarity: Optional[str],
     model_type: TrainedRecommenderType,
+    try_folded_recommender: bool,
 ) -> BaseRecommender:
+    """Loads to memory an already-trained recommender.
 
+    This function loads the requested recommender (`experiment_recommender`) on disk. It can load a folded-in
+    or the original version of the recommender.
+
+    """
+    recommender_name = f"{experiment_recommender.recommender.RECOMMENDER_NAME}"
     if experiment_recommender.recommender in [recommenders.ItemKNNCFRecommender, recommenders.UserKNNCFRecommender]:
         assert similarity is not None
         assert similarity in experiment.hyper_parameter_tuning_parameters.knn_similarity_types
 
         recommender_name = f"{experiment_recommender.recommender.RECOMMENDER_NAME}_{similarity}"
-    else:
-        recommender_name = f"{experiment_recommender.recommender.RECOMMENDER_NAME}"
 
     if TrainedRecommenderType.TRAIN == model_type:
         urm_train = data_splits.sp_urm_train
         file_name_postfix = "best_model.zip"
-
     elif TrainedRecommenderType.TRAIN_VALIDATION == model_type:
         urm_train = data_splits.sp_urm_train_validation
         file_name_postfix = "best_model_last.zip"
-
     else:
         raise ValueError(
             f"{load_trained_recommender.__name__} failed because it received an invalid instance of the "
@@ -196,87 +201,49 @@ def load_trained_recommender(
         evaluation_strategy=experiment.hyper_parameter_tuning_parameters.evaluation_strategy.value,
     )
 
-    recommender_instance = experiment_recommender.recommender(
+    trained_recommender_instance = experiment_recommender.recommender(
         URM_train=urm_train.copy(),
     )
-    recommender_instance.load_model(
+    trained_recommender_instance.load_model(
         folder_path=folder_path,
         file_name=f"{recommender_name}_{file_name_postfix}",
     )
-    recommender_instance.RECOMMENDER_NAME = recommender_name
+    trained_recommender_instance.RECOMMENDER_NAME = recommender_name
 
-    return recommender_instance
+    can_recommender_be_folded = FoldedMatrixFactorizationRecommender.can_recommender_be_folded(
+        recommender_instance=trained_recommender_instance,
+    )
+    if try_folded_recommender and can_recommender_be_folded:
+        trained_recommender_instance = cast(
+            BaseMatrixFactorizationRecommender,
+            trained_recommender_instance,
+        )
 
+        file_name_prefix = FoldedMatrixFactorizationRecommender.RECOMMENDER_NAME.replace("Recommender", "")
+        file_name_prefix = f"{file_name_prefix}_{experiment_recommender.recommender.RECOMMENDER_NAME}"
 
-def load_trained_folded_recommender(
-    experiment: commons.Experiment,
-    experiment_recommender: commons.ExperimentRecommender,
-    data_splits: InteractionsDataSplits,
-    similarity: Optional[str],
-    model_type: TrainedRecommenderType,
-) -> FoldedMatrixFactorizationRecommender:
-    if experiment_recommender.recommender in [recommenders.ItemKNNCFRecommender, recommenders.UserKNNCFRecommender]:
-        raise ValueError(f"Cannot load a folded recommender trained on MatrixSimilarity.")
+        trained_folded_recommender_instance = FoldedMatrixFactorizationRecommender(
+            urm_train=urm_train.copy(),
+            trained_recommender=trained_recommender_instance,
+        )
+        trained_folded_recommender_instance.load_model(
+            folder_path=folder_path,
+            file_name=f"{file_name_prefix}_{file_name_postfix}",
+        )
 
-    if TrainedRecommenderType.TRAIN == model_type:
-        urm_train = data_splits.sp_urm_train
-        file_name_postfix = "best_model.zip"
-
-    elif TrainedRecommenderType.TRAIN_VALIDATION == model_type:
-        urm_train = data_splits.sp_urm_train_validation
-        file_name_postfix = "best_model_last.zip"
-
+        return trained_folded_recommender_instance
     else:
-        raise ValueError(
-            f"{load_trained_folded_recommender.__name__} failed because it received an invalid instance of the "
-            f"enum {TrainedRecommenderType} (received value {model_type}). Valid values are "
-            f"{list(TrainedRecommenderType)}")
-
-    folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
-        benchmark=experiment.benchmark.benchmark.value,
-        evaluation_strategy=experiment.hyper_parameter_tuning_parameters.evaluation_strategy.value,
-    )
-
-    trained_recommender = load_trained_recommender(
-        experiment=experiment,
-        experiment_recommender=experiment_recommender,
-        data_splits=data_splits,
-        similarity=similarity,
-        model_type=model_type,
-    )
-    trained_recommender = cast(BaseMatrixFactorizationRecommender, trained_recommender)
-
-    file_name_prefix = FoldedMatrixFactorizationRecommender.RECOMMENDER_NAME.replace("Recommender", "")
-    file_name_prefix = f"{file_name_prefix}_{experiment_recommender.recommender.RECOMMENDER_NAME}"
-    recommender_instance = FoldedMatrixFactorizationRecommender(
-        urm_train=urm_train.copy(),
-        trained_recommender=trained_recommender,
-    )
-    recommender_instance.load_model(
-        folder_path=folder_path,
-        file_name=f"{file_name_prefix}_{file_name_postfix}",
-    )
-
-    return recommender_instance
+        return trained_recommender_instance
 
 
-####################################################################################################
-####################################################################################################
-#                               Hyper-parameter tuning of Baselines                                #
-####################################################################################################
-####################################################################################################
 def _run_baselines_folded_hyper_parameter_tuning(
     experiment: commons.Experiment,
     experiment_recommender: commons.ExperimentRecommender,
     recommender_folded: commons.ExperimentRecommender,
+    similarity: str,
 ) -> None:
     """TODO: fernando-debugger| complete.
     """
-    if not issubclass(
-        experiment_recommender.recommender, BaseMatrixFactorizationRecommender
-    ):
-        return
-
     benchmark_reader = commons.get_reader_from_benchmark(
         benchmark_config=experiment.benchmark.config,
         benchmark=experiment.benchmark.benchmark,
@@ -292,17 +259,48 @@ def _run_baselines_folded_hyper_parameter_tuning(
         experiment=experiment,
         experiment_recommender=experiment_recommender,
         data_splits=interactions_data_splits,
-        similarity=None,
+        similarity=similarity,
         model_type=TrainedRecommenderType.TRAIN,
+        try_folded_recommender=False,
     )
 
     baseline_recommender_trained_train_validation = load_trained_recommender(
         experiment=experiment,
         experiment_recommender=experiment_recommender,
         data_splits=interactions_data_splits,
-        similarity=None,
+        similarity=similarity,
         model_type=TrainedRecommenderType.TRAIN_VALIDATION,
+        try_folded_recommender=False,
     )
+
+    if not FoldedMatrixFactorizationRecommender.can_recommender_be_folded(
+        recommender_instance=baseline_recommender_trained_train
+    ):
+        # We require a recommender that can be folded. In case we did not receive it, we return
+        # to gracefully say that this case finished (as there is nothing to search).
+        logger.warning(
+            f"Early-returning from {_run_baselines_folded_hyper_parameter_tuning.__name__} as the loaded recommender "
+            f"({baseline_recommender_trained_train.RECOMMENDER_NAME} the one requested in the hyper-parameter search) "
+            f"cannot be folded-in, i.e., does not inherit from {BaseMatrixFactorizationRecommender.__name__}."
+            f"\n This is not an issue, as not all recommenders cannot be folded-in. This means that there is nothing "
+            f"to search here."
+        )
+        return
+
+    if not FoldedMatrixFactorizationRecommender.can_recommender_be_folded(
+        recommender_instance=baseline_recommender_trained_train_validation
+    ):
+        # We require a recommender that can be folded. In case we did not receive it, we return
+        # to gracefully say that this case finished (as there is nothing to search).
+        logger.warning(
+            f"Early-returning from {_run_baselines_folded_hyper_parameter_tuning.__name__} as the loaded recommender "
+            f"({baseline_recommender_trained_train_validation.RECOMMENDER_NAME} the one requested in the "
+            f"hyper-parametersearch) cannot be folded-in, i.e., does not inherit from "
+            f"{BaseMatrixFactorizationRecommender.__name__}."
+            f"\n This is not an issue, as not all recommenders cannot be folded-in. This means that there is nothing "
+            f"to search here."
+        )
+        return
 
     assert baseline_recommender_trained_train.RECOMMENDER_NAME == baseline_recommender_trained_train_validation.RECOMMENDER_NAME
 
@@ -517,27 +515,29 @@ def run_baselines_folded(
 ) -> None:
     for experiment in experiment_cases_interface.experiments:
         for experiment_recommender in experiment.recommenders:
-            dask_interface.submit_job(
-                job_key=(
-                    f"_run_baselines_folded_hyper_parameter_tuning"
-                    f"|{experiment.benchmark.benchmark.value}"
-                    f"|{experiment_recommender.recommender.RECOMMENDER_NAME}"
-                    f"|{recommender_folded.recommender.RECOMMENDER_NAME}"
-                    f"|{uuid.uuid4()}"
-                ),
-                job_priority=experiment.benchmark.priority * experiment_recommender.priority,
-                job_info={
-                    "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
-                    "recommender_folded": recommender_folded.recommender.RECOMMENDER_NAME,
-                    "benchmark": experiment.benchmark.benchmark.value,
-                },
-                method=_run_baselines_folded_hyper_parameter_tuning,
-                method_kwargs={
-                    "experiment": experiment,
-                    "experiment_recommender": experiment_recommender,
-                    "recommender_folded": recommender_folded,
-                }
-            )
+            for similarity in experiment.hyper_parameter_tuning_parameters.knn_similarity_types:
+                dask_interface.submit_job(
+                    job_key=(
+                        f"_run_baselines_folded_hyper_parameter_tuning"
+                        f"|{experiment.benchmark.benchmark.value}"
+                        f"|{experiment_recommender.recommender.RECOMMENDER_NAME}"
+                        f"|{recommender_folded.recommender.RECOMMENDER_NAME}"
+                        f"|{uuid.uuid4()}"
+                    ),
+                    job_priority=experiment.benchmark.priority * experiment_recommender.priority,
+                    job_info={
+                        "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
+                        "recommender_folded": recommender_folded.recommender.RECOMMENDER_NAME,
+                        "benchmark": experiment.benchmark.benchmark.value,
+                    },
+                    method=_run_baselines_folded_hyper_parameter_tuning,
+                    method_kwargs={
+                        "experiment": experiment,
+                        "experiment_recommender": experiment_recommender,
+                        "recommender_folded": recommender_folded,
+                        "similarity": similarity,
+                    }
+                )
 
 
 ####################################################################################################

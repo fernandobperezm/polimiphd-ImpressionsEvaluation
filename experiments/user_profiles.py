@@ -6,18 +6,14 @@ import Recommenders.Recommender_import_list as recommenders
 import attrs
 from HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
 from HyperparameterTuning.SearchBayesianSkopt import SearchBayesianSkopt
-from Recommenders.BaseMatrixFactorizationRecommender import BaseMatrixFactorizationRecommender
 from Recommenders.BaseRecommender import BaseRecommender
 from Recommenders.BaseSimilarityMatrixRecommender import BaseItemSimilarityMatrixRecommender, \
-    BaseSimilarityMatrixRecommender, BaseUserSimilarityMatrixRecommender
+    BaseUserSimilarityMatrixRecommender
 from recsys_framework_extensions.dask import DaskInterface
-from recsys_framework_extensions.data.mixins import InteractionsDataSplits
 from recsys_framework_extensions.logging import get_logger
 
 import experiments.commons as commons
-# from experiments.baselines import load_trained_recommender
-from experiments.baselines import load_trained_recommender, TrainedRecommenderType, load_trained_folded_recommender
-from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
+from experiments.baselines import load_trained_recommender, TrainedRecommenderType
 from impression_recommenders.user_profile.weighted import UserWeightedUserProfileRecommender, \
     ItemWeightedUserProfileRecommender
 
@@ -126,57 +122,6 @@ ARTICLE_ALL_METRICS_LIST = [
 
 ####################################################################################################
 ####################################################################################################
-#                               Get Folded-In Recommender                                #
-####################################################################################################
-####################################################################################################
-def _load_similarity_recommender(
-    experiment: commons.Experiment,
-    experiment_recommender: commons.ExperimentRecommender,
-    experiment_user_profiles_recommender: commons.ExperimentRecommender,
-    data_splits: InteractionsDataSplits,
-    similarity: Optional[str],
-    model_type: TrainedRecommenderType,
-) -> BaseItemSimilarityMatrixRecommender:
-
-    if issubclass(experiment_user_profiles_recommender.recommender, UserWeightedUserProfileRecommender):
-        if issubclass(experiment_recommender.recommender, BaseUserSimilarityMatrixRecommender):
-            func = load_trained_recommender
-        else:
-            raise ValueError(
-                f"Not possible to convert recommender {experiment_recommender.recommender} to a subclass of "
-                f"{BaseUserSimilarityMatrixRecommender}. Valid recommender are those that are subclasses of "
-                f"{BaseUserSimilarityMatrixRecommender}."
-            )
-    elif issubclass(experiment_user_profiles_recommender.recommender, ItemWeightedUserProfileRecommender):
-        if issubclass(experiment_recommender.recommender, BaseMatrixFactorizationRecommender):
-            func = load_trained_folded_recommender
-        elif issubclass(experiment_recommender.recommender, BaseItemSimilarityMatrixRecommender):
-            func = load_trained_recommender
-        else:
-            raise ValueError(
-                f"Not possible to convert recommender {experiment_recommender.recommender} to a subclass of "
-                f"{BaseItemSimilarityMatrixRecommender}. Valid recommender are those that are subclasses of "
-                f"{BaseMatrixFactorizationRecommender} as they can be folded-in or subclasses of "
-                f"{BaseItemSimilarityMatrixRecommender}."
-            )
-    else:
-        raise ValueError(
-            f"The recommender class {experiment_user_profiles_recommender.recommender} is not valid in this "
-            f"function. Valid recommender classes are {UserWeightedUserProfileRecommender} & "
-            f"{ItemWeightedUserProfileRecommender}."
-        )
-
-    return func(
-        experiment=experiment,
-        experiment_recommender=experiment_recommender,
-        data_splits=data_splits,
-        similarity=similarity,
-        model_type=model_type,
-    )
-
-
-####################################################################################################
-####################################################################################################
 #                               Hyper-parameter tuning of Baselines                                #
 ####################################################################################################
 ####################################################################################################
@@ -205,23 +150,61 @@ def _run_impressions_user_profiles_hyper_parameter_tuning(
         evaluation_strategy=experiment_user_profiles.hyper_parameter_tuning_parameters.evaluation_strategy,
     )
 
-    baseline_recommender_trained_train = _load_similarity_recommender(
+    baseline_recommender_trained_train = load_trained_recommender(
         experiment=experiment_baseline,
         experiment_recommender=experiment_baseline_recommender,
-        experiment_user_profiles_recommender=experiment_user_profiles_recommender,
         data_splits=interactions_data_splits,
         similarity=experiment_baseline_similarity,
         model_type=TrainedRecommenderType.TRAIN,
+        try_folded_recommender=True,
     )
 
-    baseline_recommender_trained_train_validation = _load_similarity_recommender(
+    baseline_recommender_trained_train_validation = load_trained_recommender(
         experiment=experiment_baseline,
         experiment_recommender=experiment_baseline_recommender,
-        experiment_user_profiles_recommender=experiment_user_profiles_recommender,
         data_splits=interactions_data_splits,
         similarity=experiment_baseline_similarity,
         model_type=TrainedRecommenderType.TRAIN_VALIDATION,
+        try_folded_recommender=True,
     )
+
+    requires_user_similarity = issubclass(experiment_user_profiles_recommender.recommender, UserWeightedUserProfileRecommender)
+    requires_item_similarity = issubclass(experiment_user_profiles_recommender.recommender, ItemWeightedUserProfileRecommender)
+
+    recommender_has_user_similarity = (
+        isinstance(baseline_recommender_trained_train, BaseUserSimilarityMatrixRecommender)
+        and isinstance(baseline_recommender_trained_train_validation, BaseUserSimilarityMatrixRecommender)
+    )
+    recommender_has_item_similarity = (
+        isinstance(baseline_recommender_trained_train, BaseItemSimilarityMatrixRecommender)
+        and isinstance(baseline_recommender_trained_train_validation, BaseItemSimilarityMatrixRecommender)
+    )
+
+    if requires_user_similarity and not recommender_has_user_similarity:
+        # We require a recommender that can be folded. In case we did not receive it, we return
+        # to gracefully say that this case finished (as there is nothing to search).
+        logger.warning(
+            f"Early-returning from {_run_impressions_user_profiles_hyper_parameter_tuning.__name__} as the loaded recommender "
+            f"({baseline_recommender_trained_train.RECOMMENDER_NAME} the one requested in the hyper-parameter search) "
+            f"cannot load a User-User similarity recommender for the recommender "
+            f"{experiment_baseline_recommender.recommender}, i.e., to be an instance of {BaseUserSimilarityMatrixRecommender}. "
+            f"\n This is not an issue, as not all recommenders cannot be folded-in. This means that there is nothing "
+            f"to search here."
+        )
+        return
+
+    if requires_item_similarity and not recommender_has_item_similarity:
+        # We require a recommender that can be folded. In case we did not receive it, we return
+        # to gracefully say that this case finished (as there is nothing to search).
+        logger.warning(
+            f"Early-returning from {_run_impressions_user_profiles_hyper_parameter_tuning.__name__} as the loaded recommender "
+            f"({baseline_recommender_trained_train.RECOMMENDER_NAME} the one requested in the hyper-parameter search) "
+            f"cannot load a Item-Item similarity recommender for the recommender "
+            f"{experiment_baseline_recommender.recommender}, i.e., to be an instance of {BaseItemSimilarityMatrixRecommender}. "
+            f"\n This is not an issue, as not all recommenders cannot be folded-in. This means that there is nothing "
+            f"to search here."
+        )
+        return
 
     assert baseline_recommender_trained_train.RECOMMENDER_NAME == baseline_recommender_trained_train_validation.RECOMMENDER_NAME
 

@@ -20,7 +20,7 @@ from experiments.commons import (
     ExperimentBenchmark,
     ExperimentRecommender,
     plot_popularity_of_datasets,
-    ensure_datasets_exist, RecommenderBaseline, RecommenderImpressions,
+    ensure_datasets_exist, RecommenderBaseline, RecommenderImpressions, RecommenderFolded,
 )
 from experiments.heuristics import run_impressions_heuristics_experiments
 from experiments.re_ranking import run_impressions_re_ranking_experiments
@@ -104,6 +104,11 @@ _AVAILABLE_RECOMMENDERS = {
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=30,
     ),
+    RecommenderBaseline.GLOBAL_EFFECTS: ExperimentRecommender(
+        recommender=recommenders.GlobalEffects,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        priority=30,
+    ),
     RecommenderBaseline.USER_KNN: ExperimentRecommender(
         recommender=recommenders.UserKNNCFRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
@@ -111,6 +116,16 @@ _AVAILABLE_RECOMMENDERS = {
     ),
     RecommenderBaseline.ITEM_KNN: ExperimentRecommender(
         recommender=recommenders.ItemKNNCFRecommender,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        priority=20,
+    ),
+    RecommenderBaseline.ASYMMETRIC_SVD: ExperimentRecommender(
+        recommender=recommenders.MatrixFactorization_AsySVD_Cython,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        priority=20,
+    ),
+    RecommenderBaseline.FUNK_SVD: ExperimentRecommender(
+        recommender=recommenders.MatrixFactorization_FunkSVD_Cython,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=20,
     ),
@@ -124,16 +139,27 @@ _AVAILABLE_RECOMMENDERS = {
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=10,
     ),
-    RecommenderBaseline.RP3_BETA: ExperimentRecommender(
-        recommender=recommenders.RP3betaRecommender,
+    RecommenderBaseline.IALS: ExperimentRecommender(
+        recommender=recommenders.IALSRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=10,
+        priority=1,
     ),
     RecommenderBaseline.MF_BPR: ExperimentRecommender(
         recommender=recommenders.MatrixFactorization_BPR_Cython,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=10,
     ),
+    RecommenderBaseline.P3_ALPHA: ExperimentRecommender(
+        recommender=recommenders.RP3betaRecommender,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        priority=10,
+    ),
+    RecommenderBaseline.RP3_BETA: ExperimentRecommender(
+        recommender=recommenders.RP3betaRecommender,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        priority=10,
+    ),
+
     RecommenderBaseline.SLIM_ELASTIC_NET: ExperimentRecommender(
         recommender=recommenders.SLIMElasticNetRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
@@ -154,17 +180,14 @@ _AVAILABLE_RECOMMENDERS = {
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=4,
     ),
-    RecommenderBaseline.IALS: ExperimentRecommender(
-        recommender=recommenders.IALSRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=1,
-    ),
     RecommenderBaseline.EASE_R: ExperimentRecommender(
         recommender=recommenders.EASE_R_Recommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=1,
     ),
-    RecommenderBaseline.FOLDED: ExperimentRecommender(
+
+    # IMPRESSIONS_FOLDING
+    RecommenderFolded.FOLDED: ExperimentRecommender(
         recommender=FoldedMatrixFactorizationRecommender,
         search_hyper_parameters=SearchHyperParametersFoldedMatrixFactorizationRecommender,
         priority=10,
@@ -218,7 +241,31 @@ _TO_USE_BENCHMARKS = [
     # Benchmarks.FINNNoSlates,
 ]
 
-_TO_USE_RECOMMENDERS_BASELINE = list(RecommenderBaseline)
+_TO_USE_RECOMMENDERS_BASELINE = [
+    RecommenderBaseline.RANDOM,
+    RecommenderBaseline.TOP_POPULAR,
+    RecommenderBaseline.GLOBAL_EFFECTS,
+
+    RecommenderBaseline.USER_KNN,
+    RecommenderBaseline.ITEM_KNN,
+
+    RecommenderBaseline.PURE_SVD,
+    RecommenderBaseline.NMF,
+    RecommenderBaseline.MF_BPR,
+    RecommenderBaseline.IALS,
+    RecommenderBaseline.FUNK_SVD,
+    RecommenderBaseline.ASYMMETRIC_SVD,
+
+    RecommenderBaseline.P3_ALPHA,
+    RecommenderBaseline.RP3_BETA,
+
+    RecommenderBaseline.SLIM_ELASTIC_NET,
+    RecommenderBaseline.SLIM_BPR,
+
+    RecommenderBaseline.LIGHT_FM,
+    RecommenderBaseline.MULT_VAE,
+    RecommenderBaseline.EASE_R,
+]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS = [
     RecommenderImpressions.LAST_IMPRESSIONS,
@@ -227,7 +274,7 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS = [
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING = [
-    # RecommenderImpressions.CYCLING,
+    RecommenderImpressions.CYCLING,
     RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
 ]
 
@@ -326,18 +373,22 @@ if __name__ == '__main__':
             experiment_cases_interface=experiments_interface_baselines,
         )
 
-    if input_flags.include_folded:
-        run_baselines_folded(
-            dask_interface=dask_interface,
-            recommender_folded=_AVAILABLE_RECOMMENDERS[RecommenderBaseline.FOLDED],
-            experiment_cases_interface=experiments_interface_baselines,
-        )
-
     if input_flags.include_impressions_heuristics:
         run_impressions_heuristics_experiments(
             dask_interface=dask_interface,
             experiment_cases_interface=experiments_impressions_heuristics_interface,
         )
+
+    dask_interface.wait_for_jobs()
+
+    if input_flags.include_folded:
+        run_baselines_folded(
+            dask_interface=dask_interface,
+            recommender_folded=_AVAILABLE_RECOMMENDERS[RecommenderFolded.FOLDED],
+            experiment_cases_interface=experiments_interface_baselines,
+        )
+
+    dask_interface.wait_for_jobs()
 
     if input_flags.include_impressions_reranking:
         run_impressions_re_ranking_experiments(

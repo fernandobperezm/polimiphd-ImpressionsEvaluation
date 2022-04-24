@@ -34,7 +34,6 @@ typed-argument-parser = "^1.7.1"
 recsys-framework-public = { path = "../RecSysFramework_public/", develop = true }  # Use this when publishing the repo.
 # recsys-framework-public = { git = "https://github.com/fernandobperezm/RecSysFramework_public.git", rev = "5dbd3344b21750efee17250d6788fb6de8f850e1" }
 recsys-framework-extensions = { path = "../recsys-framework-extensions/", develop = true, extras = ["email-gmail"] }  # Use this when publishing the repo.
-recsys-slates-dataset = "^1.0.0"
 plotly = "^5.5.0"
 datashader = "^0.13.0"
 kaleido = "=0.2.1"
