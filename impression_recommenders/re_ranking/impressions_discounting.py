@@ -19,6 +19,12 @@ class EImpressionsDiscountingFunctions(enum.Enum):
     QUADRATIC = "QUADRATIC"
 
 
+_all_enum_values = list(map(
+    lambda en: en.value,
+    EImpressionsDiscountingFunctions,
+))
+
+
 @attrs.define(kw_only=True, frozen=True, slots=False)
 class SearchHyperParametersImpressionsDiscountingRecommender(SearchHyperParametersBaseRecommender):
     # Check UIM frequency and have a look at the scale range.
@@ -44,24 +50,16 @@ class SearchHyperParametersImpressionsDiscountingRecommender(SearchHyperParamete
     )
 
     func_user_frequency: Categorical = attrs.field(
-        default=Categorical(
-            list(EImpressionsDiscountingFunctions),
-        )
+        default=Categorical(_all_enum_values)
     )
     func_uim_frequency: Categorical = attrs.field(
-        default=Categorical(
-            list(EImpressionsDiscountingFunctions),
-        )
+        default=Categorical(_all_enum_values)
     )
     func_uim_position: Categorical = attrs.field(
-        default=Categorical(
-            list(EImpressionsDiscountingFunctions),
-        )
+        default=Categorical(_all_enum_values)
     )
     func_uim_last_seen: Categorical = attrs.field(
-        default=Categorical(
-            list(EImpressionsDiscountingFunctions),
-        )
+        default=Categorical(_all_enum_values)
     )
 
 
@@ -228,10 +226,10 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
         reg_uim_position: float,
         reg_uim_last_seen: float,
 
-        func_user_frequency: EImpressionsDiscountingFunctions,
-        func_uim_frequency: EImpressionsDiscountingFunctions,
-        func_uim_position: EImpressionsDiscountingFunctions,
-        func_uim_last_seen: EImpressionsDiscountingFunctions,
+        func_user_frequency: str,
+        func_uim_frequency: str,
+        func_uim_position: str,
+        func_uim_last_seen: str,
 
         **kwargs,
     ):
@@ -245,10 +243,10 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
         self._reg_uim_position = reg_uim_position
         self._reg_uim_last_seen = reg_uim_last_seen
 
-        self._func_user_frequency = func_user_frequency
-        self._func_uim_frequency = func_uim_frequency
-        self._func_uim_position = func_uim_position
-        self._func_uim_last_seen = func_uim_last_seen
+        self._func_user_frequency = EImpressionsDiscountingFunctions(func_user_frequency)
+        self._func_uim_frequency = EImpressionsDiscountingFunctions(func_uim_frequency)
+        self._func_uim_position = EImpressionsDiscountingFunctions(func_uim_position)
+        self._func_uim_last_seen = EImpressionsDiscountingFunctions(func_uim_last_seen)
 
         # Compute the different arrays and matrices used in the calculation of the discounting function.
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_user_frequency]
