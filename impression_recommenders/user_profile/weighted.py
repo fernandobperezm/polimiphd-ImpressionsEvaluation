@@ -1,14 +1,16 @@
 import abc
-from typing import Optional, Union
+from typing import Optional
 
 import attrs
 import numpy as np
 import scipy.sparse as sp
 from Recommenders.BaseRecommender import BaseRecommender
-from Recommenders.BaseSimilarityMatrixRecommender import BaseItemSimilarityMatrixRecommender, \
-    BaseUserSimilarityMatrixRecommender
+from Recommenders.BaseSimilarityMatrixRecommender import (
+    BaseSimilarityMatrixRecommender,
+    BaseItemSimilarityMatrixRecommender,
+    BaseUserSimilarityMatrixRecommender,
+)
 from Recommenders.Recommender_utils import check_matrix
-
 from recsys_framework_extensions.data.io import DataIO
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
 from skopt.space import Real
@@ -33,7 +35,7 @@ class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
         self,
         urm_train: sp.csr_matrix,
         uim_train: sp.csr_matrix,
-        trained_recommender: Union[BaseItemSimilarityMatrixRecommender, BaseUserSimilarityMatrixRecommender],
+        trained_recommender: BaseSimilarityMatrixRecommender,
     ):
         """
         Notes
