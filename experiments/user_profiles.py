@@ -1,21 +1,26 @@
+import itertools
 import os
 import uuid
-from typing import Type, Optional, Sequence
+from typing import Type, Optional, Sequence, cast
 
 import Recommenders.Recommender_import_list as recommenders
 import attrs
+import numpy as np
+import scipy.sparse as sp
 from HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
 from HyperparameterTuning.SearchBayesianSkopt import SearchBayesianSkopt
 from Recommenders.BaseRecommender import BaseRecommender
 from Recommenders.BaseSimilarityMatrixRecommender import BaseItemSimilarityMatrixRecommender, \
-    BaseUserSimilarityMatrixRecommender
+    BaseUserSimilarityMatrixRecommender, BaseSimilarityMatrixRecommender
 from recsys_framework_extensions.dask import DaskInterface
+from recsys_framework_extensions.data.mixins import InteractionsDataSplits
 from recsys_framework_extensions.logging import get_logger
+from recsys_framework_extensions.plotting import generate_accuracy_and_beyond_metrics_latex
 
 import experiments.commons as commons
 from experiments.baselines import load_trained_recommender, TrainedRecommenderType
 from impression_recommenders.user_profile.weighted import UserWeightedUserProfileRecommender, \
-    ItemWeightedUserProfileRecommender
+    ItemWeightedUserProfileRecommender, BaseWeightedUserProfileRecommender
 
 logger = get_logger(__name__)
 
@@ -35,13 +40,14 @@ BASE_FOLDER = os.path.join(
 ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
     BASE_FOLDER,
     "latex",
-    "article",
-    "accuracy_and_beyond_accuracy",
+    "article-accuracy_and_beyond_accuracy",
+    "",
 )
 ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
     BASE_FOLDER,
     "latex",
     "accuracy_and_beyond_accuracy",
+    "",
 )
 HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
     BASE_FOLDER,
@@ -98,7 +104,7 @@ ARTICLE_BASELINES: list[Type[BaseRecommender]] = [
     recommenders.MultVAERecommender,
     # recommenders.EASE_R_Recommender,
 ]
-ARTICLE_KNN_SIMILARITY_LIST = [
+ARTICLE_KNN_SIMILARITY_LIST: list[commons.T_SIMILARITY_TYPE] = [
     "asymmetric",
 ]
 ARTICLE_CUTOFF = [20]
@@ -387,100 +393,198 @@ def run_impressions_user_profiles_experiments(
                     }
                 )
 
+
 ####################################################################################################
 ####################################################################################################
 #             Reproducibility study: Results exporting          #
 ####################################################################################################
 ####################################################################################################
-# def _print_hyper_parameter_tuning_accuracy_and_beyond_accuracy_metrics(
-#     urm: sp.csr_matrix,
-#     benchmark: CFGANBenchmarks,
-#     num_test_users: int,
-#     accuracy_metrics_list: list[str],
-#     beyond_accuracy_metrics_list: list[str],
-#     all_metrics_list: list[str],
-#     cutoffs_list: list[int],
-#     base_algorithm_list: list[Type[BaseRecommender]],
-#     knn_similarity_list: list[str],
-#     export_experiments_folder_path: str,
-# ) -> None:
-#
-#     experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
-#         benchmark=benchmark.value
-#     )
-#
-#     other_algorithm_list: list[Optional[CFGANRecommenderEarlyStopping]] = []
-#     for cfgan_mode, cfgan_mask_type in cfgan_hyper_parameter_search_settings():
-#         recommender = CFGANRecommenderEarlyStopping(
-#             urm_train=urm,
-#             num_training_item_weights_to_save=0
-#         )
-#
-#         recommender.RECOMMENDER_NAME = recommender.get_recommender_name(
-#             cfgan_mode=cfgan_mode,
-#             cfgan_mask_type=cfgan_mask_type
-#         )
-#
-#         other_algorithm_list.append(recommender)
-#     other_algorithm_list.append(None)
-#
-#     generate_accuracy_and_beyond_metrics_latex(
-#         experiments_folder_path=experiments_folder_path,
-#         export_experiments_folder_path=export_experiments_folder_path,
-#         num_test_users=num_test_users,
-#         base_algorithm_list=base_algorithm_list,
-#         knn_similarity_list=knn_similarity_list,
-#         other_algorithm_list=other_algorithm_list,
-#         accuracy_metrics_list=accuracy_metrics_list,
-#         beyond_accuracy_metrics_list=beyond_accuracy_metrics_list,
-#         all_metrics_list=all_metrics_list,
-#         cutoffs_list=cutoffs_list,
-#         icm_names=None
-#     )
-#
-#
-# def print_reproducibility_results(
-#     experiments_interface: commons.ExperimentCasesInterface,
-# ) -> None:
-#     for dataset in experiments_interface.datasets:
-#         urm = dataset.urm_train + dataset.urm_validation
-#
-#         num_test_users: int = np.sum(np.ediff1d(dataset.urm_test.indptr) >= 1)
-#
-#         # Print all baselines, cfgan, g-cfgan, similarities, and accuracy and beyond accuracy metrics
-#         export_experiments_folder_path = ACCURACY_METRICS_BASELINES_LATEX_DIR.format(
-#             benchmark=dataset.benchmark.value,
-#         )
-#         _print_hyper_parameter_tuning_accuracy_and_beyond_accuracy_metrics(
-#             urm=urm,
-#             benchmark=dataset.benchmark,
-#             num_test_users=num_test_users,
-#             accuracy_metrics_list=ACCURACY_METRICS_LIST,
-#             beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
-#             all_metrics_list=ALL_METRICS_LIST,
-#             cutoffs_list=RESULT_EXPORT_CUTOFFS,
-#             base_algorithm_list=ARTICLE_BASELINES,
-#             knn_similarity_list=KNN_SIMILARITY_LIST,
-#             export_experiments_folder_path=export_experiments_folder_path
-#         )
-#
-#         export_experiments_folder_path = ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR.format(
-#             benchmark=dataset.benchmark.value,
-#         )
-#         # Print article baselines, cfgan, similarities, and accuracy and beyond-accuracy metrics.
-#         _print_hyper_parameter_tuning_accuracy_and_beyond_accuracy_metrics(
-#             urm=urm,
-#             benchmark=dataset.benchmark,
-#             num_test_users=num_test_users,
-#             accuracy_metrics_list=ARTICLE_ACCURACY_METRICS_LIST,
-#             beyond_accuracy_metrics_list=ARTICLE_BEYOND_ACCURACY_METRICS_LIST,
-#             all_metrics_list=ARTICLE_ALL_METRICS_LIST,
-#             cutoffs_list=ARTICLE_CUTOFF,
-#             base_algorithm_list=ARTICLE_BASELINES,
-#             knn_similarity_list=ARTICLE_KNN_SIMILARITY_LIST,
-#             export_experiments_folder_path=export_experiments_folder_path
-#         )
-#
-#         logger.info(
-#             f"Successfully finished exporting accuracy and beyond-accuracy results to LaTeX"
-#         )
+def _print_impressions_user_profiles_metrics(
+    user_profiles_experiment_recommenders: list[commons.ExperimentRecommender],
+    baseline_experiment_recommenders: list[commons.ExperimentRecommender],
+    baseline_experiment_benchmark: commons.ExperimentBenchmark,
+    baseline_experiment_hyper_parameter_tuning_parameters: commons.HyperParameterTuningParameters,
+    interaction_data_splits: InteractionsDataSplits,
+    num_test_users: int,
+    accuracy_metrics_list: list[str],
+    beyond_accuracy_metrics_list: list[str],
+    all_metrics_list: list[str],
+    cutoffs_list: list[int],
+    knn_similarity_list: list[commons.T_SIMILARITY_TYPE],
+    export_experiments_folder_path: str,
+) -> None:
+    experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+        benchmark=baseline_experiment_benchmark.benchmark.value,
+        evaluation_strategy=baseline_experiment_hyper_parameter_tuning_parameters.evaluation_strategy.value,
+    )
+
+    base_algorithm_list = []
+    for user_profiles_experiment_recommender in user_profiles_experiment_recommenders:
+        for baseline_experiment_recommender in baseline_experiment_recommenders:
+            similarities: list[commons.T_SIMILARITY_TYPE] = [None]  # type: ignore
+            if baseline_experiment_recommender.recommender in [
+                recommenders.ItemKNNCFRecommender,
+                recommenders.UserKNNCFRecommender
+            ]:
+                similarities = knn_similarity_list
+
+            for similarity in similarities:
+                loaded_baseline_recommender = load_trained_recommender(
+                    experiment_recommender=baseline_experiment_recommender,
+                    experiment_benchmark=baseline_experiment_benchmark,
+                    experiment_hyper_parameter_tuning_parameters=baseline_experiment_hyper_parameter_tuning_parameters,
+                    data_splits=interaction_data_splits,
+                    similarity=similarity,
+                    model_type=TrainedRecommenderType.TRAIN_VALIDATION,
+                    try_folded_recommender=True,
+                )
+
+                requires_user_similarity = issubclass(
+                    user_profiles_experiment_recommender.recommender,
+                    UserWeightedUserProfileRecommender
+                )
+                requires_item_similarity = issubclass(
+                    user_profiles_experiment_recommender.recommender,
+                    ItemWeightedUserProfileRecommender
+                )
+
+                recommender_has_user_similarity = (
+                    isinstance(loaded_baseline_recommender, BaseUserSimilarityMatrixRecommender)
+                )
+                recommender_has_item_similarity = (
+                    isinstance(loaded_baseline_recommender, BaseItemSimilarityMatrixRecommender)
+                )
+
+                if (
+                    (requires_user_similarity and recommender_has_user_similarity)
+                    or (requires_item_similarity and recommender_has_item_similarity)
+                ):
+                    loaded_baseline_recommender = cast(
+                        BaseSimilarityMatrixRecommender,
+                        loaded_baseline_recommender,
+                    )
+
+                    user_profiles_class = cast(
+                        Type[BaseWeightedUserProfileRecommender],
+                        user_profiles_experiment_recommender.recommender
+                    )
+
+                    user_profiles_recommender = user_profiles_class(
+                        urm_train=interaction_data_splits.sp_urm_train_validation,
+                        uim_train=sp.csr_matrix([[]]),
+                        trained_recommender=loaded_baseline_recommender,
+                    )
+
+                    user_profiles_recommender.RECOMMENDER_NAME = (
+                        f"{user_profiles_class.RECOMMENDER_NAME}"
+                        f"_{loaded_baseline_recommender.RECOMMENDER_NAME}"
+                    )
+
+                    base_algorithm_list.append(user_profiles_recommender)
+
+    generate_accuracy_and_beyond_metrics_latex(
+        experiments_folder_path=experiments_folder_path,
+        export_experiments_folder_path=export_experiments_folder_path,
+        num_test_users=num_test_users,
+        base_algorithm_list=base_algorithm_list,
+        knn_similarity_list=knn_similarity_list,
+        other_algorithm_list=[],
+        accuracy_metrics_list=accuracy_metrics_list,
+        beyond_accuracy_metrics_list=beyond_accuracy_metrics_list,
+        all_metrics_list=all_metrics_list,
+        cutoffs_list=cutoffs_list,
+        icm_names=None
+    )
+
+
+def print_impressions_user_profiles_results(
+    baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
+    user_profiles_experiment_cases_interface: commons.ExperimentCasesInterface,
+) -> None:
+    printed_experiments: set[tuple[commons.Benchmarks, commons.EHyperParameterTuningParameters]] = set()
+
+    user_profiles_benchmarks = user_profiles_experiment_cases_interface.to_use_benchmarks
+    user_profiles_hyper_parameters = user_profiles_experiment_cases_interface.to_use_hyper_parameter_tuning_parameters
+    user_profiles_recommenders = user_profiles_experiment_cases_interface.to_use_recommenders
+    user_profiles_experiment_recommenders = [
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec]
+        for rec in user_profiles_recommenders
+    ]
+
+    baseline_recommenders = baseline_experiment_cases_interface.to_use_recommenders
+    baseline_experiment_recommenders = [
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec]
+        for rec in baseline_recommenders
+    ]
+
+    for benchmark, hyper_parameters in itertools.product(user_profiles_benchmarks, user_profiles_hyper_parameters):
+        if (benchmark, hyper_parameters) in printed_experiments:
+            continue
+
+        printed_experiments.add(
+            (benchmark, hyper_parameters)
+        )
+
+        experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
+            benchmark
+        ]
+        experiment_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+            hyper_parameters
+        ]
+
+        data_reader = commons.get_reader_from_benchmark(
+            benchmark_config=experiment_benchmark.config,
+            benchmark=experiment_benchmark.benchmark,
+        )
+
+        dataset = data_reader.dataset
+        interaction_data_splits = dataset.get_urm_splits(
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy,
+        )
+
+        urm_test = interaction_data_splits.sp_urm_test
+        num_test_users = cast(
+            int,
+            np.sum(
+                np.ediff1d(urm_test.indptr) >= 1
+            )
+        )
+
+        export_experiments_folder_path = ACCURACY_METRICS_BASELINES_LATEX_DIR.format(
+            benchmark=experiment_benchmark.benchmark.value,
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+        )
+        _print_impressions_user_profiles_metrics(
+            user_profiles_experiment_recommenders=user_profiles_experiment_recommenders,
+            baseline_experiment_recommenders=baseline_experiment_recommenders,
+            baseline_experiment_benchmark=experiment_benchmark,
+            baseline_experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
+            interaction_data_splits=interaction_data_splits,
+            num_test_users=num_test_users,
+            accuracy_metrics_list=ACCURACY_METRICS_LIST,
+            beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
+            all_metrics_list=ALL_METRICS_LIST, cutoffs_list=RESULT_EXPORT_CUTOFFS,
+            knn_similarity_list=experiment_hyper_parameters.knn_similarity_types,
+            export_experiments_folder_path=export_experiments_folder_path)
+
+        export_experiments_folder_path = ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR.format(
+            benchmark=experiment_benchmark.benchmark.value,
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+        )
+        _print_impressions_user_profiles_metrics(
+            user_profiles_experiment_recommenders=user_profiles_experiment_recommenders,
+            baseline_experiment_recommenders=baseline_experiment_recommenders,
+            baseline_experiment_benchmark=experiment_benchmark,
+            baseline_experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
+            interaction_data_splits=interaction_data_splits,
+            num_test_users=num_test_users,
+            accuracy_metrics_list=ARTICLE_ACCURACY_METRICS_LIST,
+            beyond_accuracy_metrics_list=ARTICLE_BEYOND_ACCURACY_METRICS_LIST,
+            all_metrics_list=ARTICLE_ALL_METRICS_LIST, cutoffs_list=ARTICLE_CUTOFF,
+            knn_similarity_list=ARTICLE_KNN_SIMILARITY_LIST,
+            export_experiments_folder_path=export_experiments_folder_path)
+
+        logger.info(
+            f"Successfully finished exporting accuracy and beyond-accuracy results to LaTeX"
+        )
+

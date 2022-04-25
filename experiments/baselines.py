@@ -1,3 +1,4 @@
+import itertools
 import os
 import uuid
 from enum import Enum
@@ -5,6 +6,7 @@ from typing import Type, Optional, Any, cast, Sequence
 
 import Recommenders.Recommender_import_list as recommenders
 import attrs
+import numpy as np
 from HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
 from HyperparameterTuning.SearchBayesianSkopt import SearchBayesianSkopt
 from Recommenders.BaseMatrixFactorizationRecommender import BaseMatrixFactorizationRecommender
@@ -16,6 +18,7 @@ from recsys_framework_extensions.hyper_parameter_search import (
     run_hyper_parameter_search_collaborative,
 )
 from recsys_framework_extensions.logging import get_logger
+from recsys_framework_extensions.plotting import generate_accuracy_and_beyond_metrics_latex
 
 import experiments.commons as commons
 from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
@@ -38,13 +41,14 @@ BASE_FOLDER = os.path.join(
 ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
     BASE_FOLDER,
     "latex",
-    "article",
-    "accuracy_and_beyond_accuracy",
+    "article-accuracy_and_beyond_accuracy",
+    "",
 )
 ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
     BASE_FOLDER,
     "latex",
     "accuracy_and_beyond_accuracy",
+    "",
 )
 HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
     BASE_FOLDER,
@@ -101,7 +105,7 @@ ARTICLE_BASELINES: list[Type[BaseRecommender]] = [
     recommenders.MultVAERecommender,
     # recommenders.EASE_R_Recommender,
 ]
-ARTICLE_KNN_SIMILARITY_LIST = [
+ARTICLE_KNN_SIMILARITY_LIST: list[commons.T_SIMILARITY_TYPE] = [
     "asymmetric",
 ]
 ARTICLE_CUTOFF = [20]
@@ -560,98 +564,154 @@ def run_baselines_folded(
 
 ####################################################################################################
 ####################################################################################################
-#             Reproducibility study: Results exporting          #
+#             Results exporting          #
 ####################################################################################################
 ####################################################################################################
-# def _print_hyper_parameter_tuning_accuracy_and_beyond_accuracy_metrics(
-#     urm: sp.csr_matrix,
-#     benchmark: CFGANBenchmarks,
-#     num_test_users: int,
-#     accuracy_metrics_list: list[str],
-#     beyond_accuracy_metrics_list: list[str],
-#     all_metrics_list: list[str],
-#     cutoffs_list: list[int],
-#     base_algorithm_list: list[Type[BaseRecommender]],
-#     knn_similarity_list: list[str],
-#     export_experiments_folder_path: str,
-# ) -> None:
-#
-#     experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
-#         benchmark=benchmark.value
-#     )
-#
-#     other_algorithm_list: list[Optional[CFGANRecommenderEarlyStopping]] = []
-#     for cfgan_mode, cfgan_mask_type in cfgan_hyper_parameter_search_settings():
-#         recommender = CFGANRecommenderEarlyStopping(
-#             urm_train=urm,
-#             num_training_item_weights_to_save=0
-#         )
-#
-#         recommender.RECOMMENDER_NAME = recommender.get_recommender_name(
-#             cfgan_mode=cfgan_mode,
-#             cfgan_mask_type=cfgan_mask_type
-#         )
-#
-#         other_algorithm_list.append(recommender)
-#     other_algorithm_list.append(None)
-#
-#     generate_accuracy_and_beyond_metrics_latex(
-#         experiments_folder_path=experiments_folder_path,
-#         export_experiments_folder_path=export_experiments_folder_path,
-#         num_test_users=num_test_users,
-#         base_algorithm_list=base_algorithm_list,
-#         knn_similarity_list=knn_similarity_list,
-#         other_algorithm_list=other_algorithm_list,
-#         accuracy_metrics_list=accuracy_metrics_list,
-#         beyond_accuracy_metrics_list=beyond_accuracy_metrics_list,
-#         all_metrics_list=all_metrics_list,
-#         cutoffs_list=cutoffs_list,
-#         icm_names=None
-#     )
-#
-#
-# def print_reproducibility_results(
-#     experiments_interface: commons.ExperimentCasesInterface,
-# ) -> None:
-#     for dataset in experiments_interface.datasets:
-#         urm = dataset.urm_train + dataset.urm_validation
-#
-#         num_test_users: int = np.sum(np.ediff1d(dataset.urm_test.indptr) >= 1)
-#
-#         # Print all baselines, cfgan, g-cfgan, similarities, and accuracy and beyond accuracy metrics
-#         export_experiments_folder_path = ACCURACY_METRICS_BASELINES_LATEX_DIR.format(
-#             benchmark=dataset.benchmark.value,
-#         )
-#         _print_hyper_parameter_tuning_accuracy_and_beyond_accuracy_metrics(
-#             urm=urm,
-#             benchmark=dataset.benchmark,
-#             num_test_users=num_test_users,
-#             accuracy_metrics_list=ACCURACY_METRICS_LIST,
-#             beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
-#             all_metrics_list=ALL_METRICS_LIST,
-#             cutoffs_list=RESULT_EXPORT_CUTOFFS,
-#             base_algorithm_list=ARTICLE_BASELINES,
-#             knn_similarity_list=KNN_SIMILARITY_LIST,
-#             export_experiments_folder_path=export_experiments_folder_path
-#         )
-#
-#         export_experiments_folder_path = ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR.format(
-#             benchmark=dataset.benchmark.value,
-#         )
-#         # Print article baselines, cfgan, similarities, and accuracy and beyond-accuracy metrics.
-#         _print_hyper_parameter_tuning_accuracy_and_beyond_accuracy_metrics(
-#             urm=urm,
-#             benchmark=dataset.benchmark,
-#             num_test_users=num_test_users,
-#             accuracy_metrics_list=ARTICLE_ACCURACY_METRICS_LIST,
-#             beyond_accuracy_metrics_list=ARTICLE_BEYOND_ACCURACY_METRICS_LIST,
-#             all_metrics_list=ARTICLE_ALL_METRICS_LIST,
-#             cutoffs_list=ARTICLE_CUTOFF,
-#             base_algorithm_list=ARTICLE_BASELINES,
-#             knn_similarity_list=ARTICLE_KNN_SIMILARITY_LIST,
-#             export_experiments_folder_path=export_experiments_folder_path
-#         )
-#
-#         logger.info(
-#             f"Successfully finished exporting accuracy and beyond-accuracy results to LaTeX"
-#         )
+def _print_baselines_metrics(
+    experiment_recommenders: list[commons.ExperimentRecommender],
+    experiment_benchmark: commons.ExperimentBenchmark,
+    experiment_hyper_parameters: commons.HyperParameterTuningParameters,
+    interaction_data_splits: InteractionsDataSplits,
+    num_test_users: int,
+    accuracy_metrics_list: list[str],
+    beyond_accuracy_metrics_list: list[str],
+    all_metrics_list: list[str],
+    cutoffs_list: list[int],
+    base_algorithm_list: list[Type[BaseRecommender]],
+    knn_similarity_list: list[commons.T_SIMILARITY_TYPE],
+    export_experiments_folder_path: str,
+) -> None:
+
+    experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+        benchmark=experiment_benchmark.benchmark.value,
+        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+    )
+
+    other_algorithm_list = []
+    for baseline_recommender in experiment_recommenders:
+
+        similarities: list[commons.T_SIMILARITY_TYPE] = [None]  # type: ignore
+        if baseline_recommender.recommender in [recommenders.ItemKNNCFRecommender, recommenders.UserKNNCFRecommender]:
+            similarities = knn_similarity_list
+
+        for similarity in similarities:
+            loaded_recommender = load_trained_recommender(
+                experiment_recommender=baseline_recommender,
+                experiment_benchmark=experiment_benchmark,
+                experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
+                data_splits=interaction_data_splits,
+                similarity=similarity,
+                model_type=TrainedRecommenderType.TRAIN_VALIDATION,
+                try_folded_recommender=True,
+            )
+
+            if isinstance(loaded_recommender, FoldedMatrixFactorizationRecommender):
+                other_algorithm_list.append(loaded_recommender)
+
+    generate_accuracy_and_beyond_metrics_latex(
+        experiments_folder_path=experiments_folder_path,
+        export_experiments_folder_path=export_experiments_folder_path,
+        num_test_users=num_test_users,
+        base_algorithm_list=base_algorithm_list,
+        knn_similarity_list=knn_similarity_list,
+        other_algorithm_list=other_algorithm_list,
+        accuracy_metrics_list=accuracy_metrics_list,
+        beyond_accuracy_metrics_list=beyond_accuracy_metrics_list,
+        all_metrics_list=all_metrics_list,
+        cutoffs_list=cutoffs_list,
+        icm_names=None
+    )
+
+
+def print_baselines_results(
+    baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
+) -> None:
+    printed_experiments: set[tuple[commons.Benchmarks, commons.EHyperParameterTuningParameters]] = set()
+
+    baseline_benchmarks = baseline_experiment_cases_interface.to_use_benchmarks
+    baseline_hyper_parameters = baseline_experiment_cases_interface.to_use_hyper_parameter_tuning_parameters
+    baseline_recommenders = baseline_experiment_cases_interface.to_use_recommenders
+
+    baseline_experiment_recommenders = [
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec]
+        for rec in baseline_recommenders
+    ]
+    base_algorithm_list = [
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec].recommender
+        for rec in baseline_experiment_cases_interface.to_use_recommenders
+    ]
+
+    for benchmark, hyper_parameters in itertools.product(baseline_benchmarks, baseline_hyper_parameters):
+        if (benchmark, hyper_parameters) in printed_experiments:
+            continue
+        else:
+            printed_experiments.add((benchmark, hyper_parameters))
+
+        experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
+            benchmark
+        ]
+        experiment_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+            hyper_parameters
+        ]
+
+        data_reader = commons.get_reader_from_benchmark(
+            benchmark_config=experiment_benchmark.config,
+            benchmark=experiment_benchmark.benchmark,
+        )
+
+        dataset = data_reader.dataset
+        interaction_data_splits = dataset.get_urm_splits(
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy,
+        )
+
+        urm_test = interaction_data_splits.sp_urm_test
+        num_test_users = cast(
+            int,
+            np.sum(
+                np.ediff1d(urm_test.indptr) >= 1
+            )
+        )
+
+        export_experiments_folder_path = ACCURACY_METRICS_BASELINES_LATEX_DIR.format(
+            benchmark=experiment_benchmark.benchmark.value,
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+        )
+        knn_similarity_list = experiment_hyper_parameters.knn_similarity_types
+        _print_baselines_metrics(
+            experiment_recommenders=baseline_experiment_recommenders,
+            experiment_benchmark=experiment_benchmark,
+            experiment_hyper_parameters=experiment_hyper_parameters,
+            interaction_data_splits=interaction_data_splits,
+            num_test_users=num_test_users,
+            accuracy_metrics_list=ACCURACY_METRICS_LIST,
+            beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
+            all_metrics_list=ALL_METRICS_LIST,
+            cutoffs_list=RESULT_EXPORT_CUTOFFS,
+            base_algorithm_list=base_algorithm_list,
+            knn_similarity_list=knn_similarity_list,
+            export_experiments_folder_path=export_experiments_folder_path,
+        )
+
+        export_experiments_folder_path = ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR.format(
+            benchmark=experiment_benchmark.benchmark.value,
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+        )
+        # Print article baselines, cfgan, similarities, and accuracy and beyond-accuracy metrics.
+        _print_baselines_metrics(
+            experiment_recommenders=baseline_experiment_recommenders,
+            experiment_benchmark=experiment_benchmark,
+            experiment_hyper_parameters=experiment_hyper_parameters,
+            interaction_data_splits=interaction_data_splits,
+            num_test_users=num_test_users,
+            accuracy_metrics_list=ARTICLE_ACCURACY_METRICS_LIST,
+            beyond_accuracy_metrics_list=ARTICLE_BEYOND_ACCURACY_METRICS_LIST,
+            all_metrics_list=ARTICLE_ALL_METRICS_LIST,
+            cutoffs_list=ARTICLE_CUTOFF,
+            base_algorithm_list=ARTICLE_BASELINES,
+            knn_similarity_list=ARTICLE_KNN_SIMILARITY_LIST,
+            export_experiments_folder_path=export_experiments_folder_path,
+        )
+
+        logger.info(
+            f"Successfully finished exporting accuracy and beyond-accuracy results to LaTeX"
+        )
