@@ -387,7 +387,7 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
         priority=10,
     ),
     RecommenderBaseline.P3_ALPHA: ExperimentRecommender(
-        recommender=recommenders.RP3betaRecommender,
+        recommender=recommenders.P3alphaRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=10,
     ),
