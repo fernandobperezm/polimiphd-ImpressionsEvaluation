@@ -182,24 +182,24 @@ def load_trained_recommender(
     or the original version of the recommender.
 
     """
+    if TrainedRecommenderType.TRAIN == model_type:
+        urm_train = data_splits.sp_urm_train
+        file_name_postfix = "best_model"
+    elif TrainedRecommenderType.TRAIN_VALIDATION == model_type:
+        urm_train = data_splits.sp_urm_train_validation
+        file_name_postfix = "best_model_last"
+    else:
+        raise ValueError(
+            f"{load_trained_recommender.__name__} failed because it received an invalid instance of the "
+            f"enum {TrainedRecommenderType} (received value {model_type}). Valid values are "
+            f"{list(TrainedRecommenderType)}")
+
     recommender_name = f"{experiment_recommender.recommender.RECOMMENDER_NAME}"
     if experiment_recommender.recommender in [recommenders.ItemKNNCFRecommender, recommenders.UserKNNCFRecommender]:
         assert similarity is not None
         assert similarity in experiment_hyper_parameter_tuning_parameters.knn_similarity_types
 
         recommender_name = f"{experiment_recommender.recommender.RECOMMENDER_NAME}_{similarity}"
-
-    if TrainedRecommenderType.TRAIN == model_type:
-        urm_train = data_splits.sp_urm_train
-        file_name_postfix = "best_model.zip"
-    elif TrainedRecommenderType.TRAIN_VALIDATION == model_type:
-        urm_train = data_splits.sp_urm_train_validation
-        file_name_postfix = "best_model_last.zip"
-    else:
-        raise ValueError(
-            f"{load_trained_recommender.__name__} failed because it received an invalid instance of the "
-            f"enum {TrainedRecommenderType} (received value {model_type}). Valid values are "
-            f"{list(TrainedRecommenderType)}")
 
     folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
         benchmark=experiment_benchmark.benchmark.value,
@@ -239,6 +239,94 @@ def load_trained_recommender(
         return trained_folded_recommender_instance
     else:
         return trained_recommender_instance
+
+
+def mock_trained_recommender(
+    experiment_recommender: commons.ExperimentRecommender,
+    experiment_benchmark: commons.ExperimentBenchmark,
+    experiment_hyper_parameter_tuning_parameters: commons.HyperParameterTuningParameters,
+    data_splits: InteractionsDataSplits,
+    similarity: Optional[str],
+    model_type: TrainedRecommenderType,
+    try_folded_recommender: bool,
+) -> Optional[BaseRecommender]:
+    """Loads to memory an mock of an already-trained recommender.
+
+    This function loads the requested recommender (`experiment_recommender`) on disk. It can load a folded-in
+    or the original version of the recommender.
+
+    """
+    if TrainedRecommenderType.TRAIN == model_type:
+        urm_train = data_splits.sp_urm_train
+        file_name_postfix = "best_model"
+    elif TrainedRecommenderType.TRAIN_VALIDATION == model_type:
+        urm_train = data_splits.sp_urm_train_validation
+        file_name_postfix = "best_model_last"
+    else:
+        raise ValueError(
+            f"{load_trained_recommender.__name__} failed because it received an invalid instance of the "
+            f"enum {TrainedRecommenderType} (received value {model_type}). Valid values are "
+            f"{list(TrainedRecommenderType)}")
+
+    recommender_name = f"{experiment_recommender.recommender.RECOMMENDER_NAME}"
+    if experiment_recommender.recommender in [recommenders.ItemKNNCFRecommender, recommenders.UserKNNCFRecommender]:
+        assert similarity is not None
+        assert similarity in experiment_hyper_parameter_tuning_parameters.knn_similarity_types
+
+        recommender_name = f"{experiment_recommender.recommender.RECOMMENDER_NAME}_{similarity}"
+
+    folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+        benchmark=experiment_benchmark.benchmark.value,
+        evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy.value,
+    )
+
+    recommender_metadata_exists = DataIO.s_file_exists(
+        folder_path=folder_path,
+        file_name=f"{recommender_name}_metadata",
+    )
+
+    recommender_data_exists = DataIO.s_file_exists(
+        folder_path=folder_path,
+        file_name=f"{recommender_name}_{file_name_postfix}",
+    )
+
+    if not recommender_metadata_exists and not recommender_data_exists:
+        return None
+
+    trained_recommender_instance = experiment_recommender.recommender(
+        URM_train=urm_train.copy(),
+    )
+    trained_recommender_instance.RECOMMENDER_NAME = recommender_name
+
+    can_recommender_be_folded = FoldedMatrixFactorizationRecommender.can_recommender_be_folded(
+        recommender_instance=trained_recommender_instance,
+    )
+    if try_folded_recommender and can_recommender_be_folded:
+        trained_recommender_instance = cast(
+            BaseMatrixFactorizationRecommender,
+            trained_recommender_instance,
+        )
+        # file_name_prefix = FoldedMatrixFactorizationRecommender.RECOMMENDER_NAME.replace("Recommender", "")
+        # file_name_prefix = f"{file_name_prefix}_{experiment_recommender.recommender.RECOMMENDER_NAME}"
+
+        import numpy as np
+
+        setattr(
+            trained_recommender_instance,
+            FoldedMatrixFactorizationRecommender.ATTR_NAME_ITEM_FACTORS,
+            np.array([], dtype=np.float32)
+        )
+
+        trained_folded_recommender_instance = FoldedMatrixFactorizationRecommender(
+            urm_train=urm_train.copy(),
+            trained_recommender=trained_recommender_instance,
+        )
+
+        return trained_folded_recommender_instance
+    else:
+        return trained_recommender_instance
+
+
 
 
 def _run_baselines_folded_hyper_parameter_tuning(
@@ -560,158 +648,3 @@ def run_baselines_folded(
                     "similarity": similarity,
                 }
             )
-
-
-####################################################################################################
-####################################################################################################
-#             Results exporting          #
-####################################################################################################
-####################################################################################################
-def _print_baselines_metrics(
-    experiment_recommenders: list[commons.ExperimentRecommender],
-    experiment_benchmark: commons.ExperimentBenchmark,
-    experiment_hyper_parameters: commons.HyperParameterTuningParameters,
-    interaction_data_splits: InteractionsDataSplits,
-    num_test_users: int,
-    accuracy_metrics_list: list[str],
-    beyond_accuracy_metrics_list: list[str],
-    all_metrics_list: list[str],
-    cutoffs_list: list[int],
-    base_algorithm_list: list[Type[BaseRecommender]],
-    knn_similarity_list: list[commons.T_SIMILARITY_TYPE],
-    export_experiments_folder_path: str,
-) -> None:
-
-    experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
-        benchmark=experiment_benchmark.benchmark.value,
-        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
-    )
-
-    other_algorithm_list = []
-    for baseline_recommender in experiment_recommenders:
-
-        similarities: list[commons.T_SIMILARITY_TYPE] = [None]  # type: ignore
-        if baseline_recommender.recommender in [recommenders.ItemKNNCFRecommender, recommenders.UserKNNCFRecommender]:
-            similarities = knn_similarity_list
-
-        for similarity in similarities:
-            loaded_recommender = load_trained_recommender(
-                experiment_recommender=baseline_recommender,
-                experiment_benchmark=experiment_benchmark,
-                experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
-                data_splits=interaction_data_splits,
-                similarity=similarity,
-                model_type=TrainedRecommenderType.TRAIN_VALIDATION,
-                try_folded_recommender=True,
-            )
-
-            if isinstance(loaded_recommender, FoldedMatrixFactorizationRecommender):
-                other_algorithm_list.append(loaded_recommender)
-
-    generate_accuracy_and_beyond_metrics_latex(
-        experiments_folder_path=experiments_folder_path,
-        export_experiments_folder_path=export_experiments_folder_path,
-        num_test_users=num_test_users,
-        base_algorithm_list=base_algorithm_list,
-        knn_similarity_list=knn_similarity_list,
-        other_algorithm_list=other_algorithm_list,
-        accuracy_metrics_list=accuracy_metrics_list,
-        beyond_accuracy_metrics_list=beyond_accuracy_metrics_list,
-        all_metrics_list=all_metrics_list,
-        cutoffs_list=cutoffs_list,
-        icm_names=None
-    )
-
-
-def print_baselines_results(
-    baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
-) -> None:
-    printed_experiments: set[tuple[commons.Benchmarks, commons.EHyperParameterTuningParameters]] = set()
-
-    baseline_benchmarks = baseline_experiment_cases_interface.to_use_benchmarks
-    baseline_hyper_parameters = baseline_experiment_cases_interface.to_use_hyper_parameter_tuning_parameters
-    baseline_recommenders = baseline_experiment_cases_interface.to_use_recommenders
-
-    baseline_experiment_recommenders = [
-        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec]
-        for rec in baseline_recommenders
-    ]
-    base_algorithm_list = [
-        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec].recommender
-        for rec in baseline_experiment_cases_interface.to_use_recommenders
-    ]
-
-    for benchmark, hyper_parameters in itertools.product(baseline_benchmarks, baseline_hyper_parameters):
-        if (benchmark, hyper_parameters) in printed_experiments:
-            continue
-        else:
-            printed_experiments.add((benchmark, hyper_parameters))
-
-        experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
-            benchmark
-        ]
-        experiment_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-            hyper_parameters
-        ]
-
-        data_reader = commons.get_reader_from_benchmark(
-            benchmark_config=experiment_benchmark.config,
-            benchmark=experiment_benchmark.benchmark,
-        )
-
-        dataset = data_reader.dataset
-        interaction_data_splits = dataset.get_urm_splits(
-            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy,
-        )
-
-        urm_test = interaction_data_splits.sp_urm_test
-        num_test_users = cast(
-            int,
-            np.sum(
-                np.ediff1d(urm_test.indptr) >= 1
-            )
-        )
-
-        export_experiments_folder_path = ACCURACY_METRICS_BASELINES_LATEX_DIR.format(
-            benchmark=experiment_benchmark.benchmark.value,
-            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
-        )
-        knn_similarity_list = experiment_hyper_parameters.knn_similarity_types
-        _print_baselines_metrics(
-            experiment_recommenders=baseline_experiment_recommenders,
-            experiment_benchmark=experiment_benchmark,
-            experiment_hyper_parameters=experiment_hyper_parameters,
-            interaction_data_splits=interaction_data_splits,
-            num_test_users=num_test_users,
-            accuracy_metrics_list=ACCURACY_METRICS_LIST,
-            beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
-            all_metrics_list=ALL_METRICS_LIST,
-            cutoffs_list=RESULT_EXPORT_CUTOFFS,
-            base_algorithm_list=base_algorithm_list,
-            knn_similarity_list=knn_similarity_list,
-            export_experiments_folder_path=export_experiments_folder_path,
-        )
-
-        export_experiments_folder_path = ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR.format(
-            benchmark=experiment_benchmark.benchmark.value,
-            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
-        )
-        # Print article baselines, cfgan, similarities, and accuracy and beyond-accuracy metrics.
-        _print_baselines_metrics(
-            experiment_recommenders=baseline_experiment_recommenders,
-            experiment_benchmark=experiment_benchmark,
-            experiment_hyper_parameters=experiment_hyper_parameters,
-            interaction_data_splits=interaction_data_splits,
-            num_test_users=num_test_users,
-            accuracy_metrics_list=ARTICLE_ACCURACY_METRICS_LIST,
-            beyond_accuracy_metrics_list=ARTICLE_BEYOND_ACCURACY_METRICS_LIST,
-            all_metrics_list=ARTICLE_ALL_METRICS_LIST,
-            cutoffs_list=ARTICLE_CUTOFF,
-            base_algorithm_list=ARTICLE_BASELINES,
-            knn_similarity_list=ARTICLE_KNN_SIMILARITY_LIST,
-            export_experiments_folder_path=export_experiments_folder_path,
-        )
-
-        logger.info(
-            f"Successfully finished exporting accuracy and beyond-accuracy results to LaTeX"
-        )
