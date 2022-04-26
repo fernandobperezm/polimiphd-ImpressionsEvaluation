@@ -25,7 +25,7 @@ class SearchHyperParametersFoldedMatrixFactorizationRecommender(SearchHyperParam
 
 class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
     RECOMMENDER_NAME = f"FoldedMatrixFactorizationRecommender"
-    _ATTR_NAME_ITEM_FACTORS = "ITEM_factors"
+    ATTR_NAME_ITEM_FACTORS = "ITEM_factors"
 
     def __init__(
         self,
@@ -61,7 +61,7 @@ class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
         if not self.can_recommender_be_folded(recommender_instance=trained_recommender):
             raise AttributeError(
                 f"Cannot fold-in the recommender {trained_recommender} as it has not been trained (it lacks the "
-                f"attribute '{self._ATTR_NAME_ITEM_FACTORS}'."
+                f"attribute '{self.ATTR_NAME_ITEM_FACTORS}'."
             )
 
         self.RECOMMENDER_NAME = f"FoldedMatrixFactorization_{trained_recommender.RECOMMENDER_NAME}"
@@ -70,7 +70,7 @@ class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
         self.W_sparse: sp.csr_matrix = sp.csr_matrix([])
 
     def fit(self, top_k: int = None) -> None:
-        item_factors: np.ndarray = getattr(self.trained_recommender, self._ATTR_NAME_ITEM_FACTORS)
+        item_factors: np.ndarray = getattr(self.trained_recommender, self.ATTR_NAME_ITEM_FACTORS)
 
         if top_k is None:
             top_k = self.n_items
@@ -89,6 +89,6 @@ class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
     def can_recommender_be_folded(recommender_instance: BaseRecommender) -> bool:
         return hasattr(
             recommender_instance,
-            FoldedMatrixFactorizationRecommender._ATTR_NAME_ITEM_FACTORS
+            FoldedMatrixFactorizationRecommender.ATTR_NAME_ITEM_FACTORS
         )
 
