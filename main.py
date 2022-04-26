@@ -15,6 +15,7 @@ from experiments.commons import (
     ensure_datasets_exist, RecommenderBaseline, RecommenderImpressions, EHyperParameterTuningParameters,
 )
 from experiments.heuristics import run_impressions_heuristics_experiments, print_impressions_heuristics_results
+from experiments.print_results import print_results
 from experiments.re_ranking import run_impressions_re_ranking_experiments, print_impressions_re_ranking_results
 from experiments.user_profiles import run_impressions_user_profiles_experiments, print_impressions_user_profiles_results
 
@@ -63,27 +64,27 @@ _TO_USE_BENCHMARKS = [
 _TO_USE_RECOMMENDERS_BASELINE = [
     RecommenderBaseline.RANDOM,
     RecommenderBaseline.TOP_POPULAR,
-    # RecommenderBaseline.GLOBAL_EFFECTS,
+    RecommenderBaseline.GLOBAL_EFFECTS,
 
-    #RecommenderBaseline.USER_KNN,
-    #RecommenderBaseline.ITEM_KNN,
+    RecommenderBaseline.USER_KNN,
+    RecommenderBaseline.ITEM_KNN,
 
     RecommenderBaseline.PURE_SVD,
-    #RecommenderBaseline.NMF,
-    # RecommenderBaseline.MF_BPR,
-    # RecommenderBaseline.IALS,
-    # RecommenderBaseline.FUNK_SVD,
-    # RecommenderBaseline.ASYMMETRIC_SVD,
+    RecommenderBaseline.NMF,
+    RecommenderBaseline.MF_BPR,
+    RecommenderBaseline.IALS,
+    RecommenderBaseline.FUNK_SVD,
+    RecommenderBaseline.ASYMMETRIC_SVD,
 
-    # RecommenderBaseline.P3_ALPHA,
-    #RecommenderBaseline.RP3_BETA,
+    RecommenderBaseline.P3_ALPHA,
+    RecommenderBaseline.RP3_BETA,
 
-    # RecommenderBaseline.SLIM_ELASTIC_NET,
-    # RecommenderBaseline.SLIM_BPR,
+    RecommenderBaseline.SLIM_ELASTIC_NET,
+    RecommenderBaseline.SLIM_BPR,
 
-    # RecommenderBaseline.LIGHT_FM,
-    # RecommenderBaseline.MULT_VAE,
-    # RecommenderBaseline.EASE_R,
+    RecommenderBaseline.LIGHT_FM,
+    RecommenderBaseline.MULT_VAE,
+    RecommenderBaseline.EASE_R,
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS = [
@@ -223,20 +224,26 @@ if __name__ == '__main__':
         plot_popularity_of_datasets(experiments_interface=experiments_interface_baselines)
 
     if input_flags.print_evaluation_results:
-        print_baselines_results(
+        print_results(
             baseline_experiment_cases_interface=experiments_interface_baselines,
-        )
-        print_impressions_heuristics_results(
             impressions_heuristics_experiment_cases_interface=experiments_impressions_heuristics_interface,
-        )
-        print_impressions_re_ranking_results(
-            baseline_experiment_cases_interface=experiments_interface_baselines,
-            re_ranking_experiment_cases_interface=experiments_impressions_re_ranking_interface
-        )
-        print_impressions_user_profiles_results(
-            baseline_experiment_cases_interface=experiments_interface_baselines,
+            re_ranking_experiment_cases_interface=experiments_impressions_re_ranking_interface,
             user_profiles_experiment_cases_interface=experiments_impressions_user_profiles_interface,
         )
+        # print_baselines_results(
+        #     baseline_experiment_cases_interface=experiments_interface_baselines,
+        # )
+        # print_impressions_heuristics_results(
+        #     impressions_heuristics_experiment_cases_interface=experiments_impressions_heuristics_interface,
+        # )
+        # print_impressions_re_ranking_results(
+        #     baseline_experiment_cases_interface=experiments_interface_baselines,
+        #     re_ranking_experiment_cases_interface=experiments_impressions_re_ranking_interface
+        # )
+        # print_impressions_user_profiles_results(
+        #     baseline_experiment_cases_interface=experiments_interface_baselines,
+        #     user_profiles_experiment_cases_interface=experiments_impressions_user_profiles_interface,
+        # )
 
     if input_flags.send_email:
         from recsys_framework_extensions.data.io import ExtendedJSONEncoderDecoder
