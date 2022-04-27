@@ -179,7 +179,7 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
         arr_scores_relevance: np.ndarray = self._trained_recommender._compute_item_score(
             user_id_array=user_id_array,
             items_to_compute=items_to_compute,
-        )
+        ).astype(np.float64)
 
         # Compute the discounting scores for the current users. This results in a dense matrix array with shape
         # (num_score_users, num_score_items).
@@ -193,7 +193,7 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
                 + self._matrix_uim_position_scores[user_id_array, :]
                 + self._matrix_uim_last_seen_scores[user_id_array, :]
             )
-        )
+        ).astype(np.float64)
 
         assert (num_score_users, num_score_items) == arr_impressions_discounting_scores.shape
         assert (num_score_users, num_score_items) == arr_scores_relevance.shape
