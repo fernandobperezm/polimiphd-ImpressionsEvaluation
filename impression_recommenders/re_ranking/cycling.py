@@ -1,7 +1,6 @@
 from typing import Optional
 
 import attrs
-import numba
 import numpy as np
 import scipy.sparse as sp
 from Recommenders.BaseRecommender import BaseRecommender
