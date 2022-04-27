@@ -30,6 +30,7 @@ class SearchHyperParametersWeightedUserProfileRecommender(SearchHyperParametersB
 
 class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
     RECOMMENDER_NAME = "BaseWeightedUserProfileRecommender"
+    ATTR_NAME_W_SPARSE = "W_sparse"
 
     def __init__(
         self,
@@ -59,12 +60,11 @@ class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
             URM_train=urm_train,
             verbose=True,
         )
-        self._attr_name_w_sparse = "W_sparse"
 
-        if not hasattr(trained_recommender, self._attr_name_w_sparse):
+        if not hasattr(trained_recommender, self.ATTR_NAME_W_SPARSE):
             raise AttributeError(
                 f"Cannot weight user profiles on the recommender {trained_recommender} as it has not been trained (it "
-                f"lacks the attribute '{self._attr_name_w_sparse}'."
+                f"lacks the attribute '{self.ATTR_NAME_W_SPARSE}'."
             )
 
         self._sparse_user_profile: sp.csr_matrix = sp.csr_matrix([], dtype=np.float32)
@@ -88,7 +88,7 @@ class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
         )
         self._sparse_user_profile = check_matrix(X=sparse_user_profile, format="csr", dtype=np.float32)
 
-        sparse_similarity = getattr(self.trained_recommender, self._attr_name_w_sparse)
+        sparse_similarity = getattr(self.trained_recommender, self.ATTR_NAME_W_SPARSE)
         self._sparse_similarity = check_matrix(X=sparse_similarity, format="csr", dtype=np.float32)
 
     def save_model(
@@ -146,7 +146,7 @@ class ItemWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
                 f"the class 'BaseItemSimilarityMatrixRecommender'."
             )
 
-        self.RECOMMENDER_NAME = f"ItemWeightedUserProfile_{trained_recommender.RECOMMENDER_NAME}"
+        self.RECOMMENDER_NAME = f"ItemWeightedUserProfileRecommender_{trained_recommender.RECOMMENDER_NAME}"
 
     def _compute_item_score(
         self,
@@ -204,7 +204,7 @@ class UserWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
                 f"the class 'BaseUserSimilarityMatrixRecommender'."
             )
 
-        self.RECOMMENDER_NAME = f"UserWeightedUserProfile_{trained_recommender.RECOMMENDER_NAME}"
+        self.RECOMMENDER_NAME = f"UserWeightedUserProfileRecommender_{trained_recommender.RECOMMENDER_NAME}"
 
     def _compute_item_score(
         self,
