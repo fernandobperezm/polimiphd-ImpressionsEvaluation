@@ -182,15 +182,17 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
         )
 
         # Compute the discounting scores for the current users. This results in a dense matrix array with shape
-        # (num_score_users, num_score_items)
+        # (num_score_users, num_score_items).
+        # Eq. 8 In the original paper. The paper also says that the discounting score should be divided by the maximum
+        # score in the dataset. Mathematically, however, this is not needed.
         arr_impressions_discounting_scores: np.ndarray = np.asarray(
             (
-                self._arr_user_frequency_scores[user_id_array, :]
+                1
+                + self._arr_user_frequency_scores[user_id_array, :]
                 + self._matrix_uim_frequency_scores[user_id_array, :]
                 + self._matrix_uim_position_scores[user_id_array, :]
                 + self._matrix_uim_last_seen_scores[user_id_array, :]
             )
-            / self._max_discounting_score
         )
 
         assert (num_score_users, num_score_items) == arr_impressions_discounting_scores.shape
@@ -250,49 +252,30 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
 
         # Compute the different arrays and matrices used in the calculation of the discounting function.
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_user_frequency]
-        self._arr_user_frequency_scores: np.ndarray = self._reg_user_frequency * selected_func(
+        arr_user_frequency_scores: np.ndarray = self._reg_user_frequency * selected_func(
             self._user_frequency
         )
 
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_uim_frequency]
-        self._matrix_uim_frequency_scores: np.ndarray = self._reg_uim_frequency * selected_func(
+        matrix_uim_frequency_scores: sp.csr_matrix = self._reg_uim_frequency * selected_func(
             self._uim_frequency
         )
 
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_uim_position]
-        self._matrix_uim_position_scores: np.ndarray = self._reg_uim_position * selected_func(
+        matrix_uim_position_scores: sp.csr_matrix = self._reg_uim_position * selected_func(
             self._uim_position
         )
 
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_uim_last_seen]
-        self._matrix_uim_last_seen_scores: np.ndarray = self._reg_uim_last_seen * selected_func(
+        matrix_uim_last_seen_scores: sp.csr_matrix = self._reg_uim_last_seen * selected_func(
             self._uim_last_seen
         )
 
-        # `_arr_user_frequency_scores` is a column array that is added to the other sparse matrices.
-        # However, doing this is space inefficient, as it breaks the sparsity of these matrices and converts them into
-        # a dense array of possibly millions of users/items. We can compute the discounting factor on the fly when
-        # computing the scores. To do that, we need the maximum discounting score.
-        # We compute the maximum discounting score by assuming two things.
-        # 1. All sparse matrices and arrays are non-negative.
-        # 2. Computing the maximum over non-zero cells yields the same result as computing it on the dense matrix.
-
-        # Step 1. Compute the row-wise maximum over all sparse matrices.
-        sparse_matrices_scores: sp.csr_matrix = (
-            self._matrix_uim_frequency_scores
-            + self._matrix_uim_position_scores
-            + self._matrix_uim_last_seen_scores
-        )
-        arr_max_matrices_score_by_row: np.ndarray = sparse_matrices_scores.max(axis=1).toarray()
-
-        assert self._arr_user_frequency_scores.shape == arr_max_matrices_score_by_row.shape
-
-        # Step 2. Sum both column arrays, `arr_max_matrices_score_by_row` is the maximum score for each user, while
-        # `self._arr_user_frequency_scores` is the remaining score array to sum.
-        arr_scores: np.ndarray = self._arr_user_frequency_scores + arr_max_matrices_score_by_row
-
-        # Step 3. Compute the maximum of this new array.
-        self._max_discounting_score: float = arr_scores.max(initial=0.) + 1e-6  # type: ignore
+        # Save all arrays and matrices
+        self._arr_user_frequency_scores = arr_user_frequency_scores
+        self._matrix_uim_frequency_scores = matrix_uim_frequency_scores
+        self._matrix_uim_position_scores = matrix_uim_position_scores
+        self._matrix_uim_last_seen_scores = matrix_uim_last_seen_scores
 
     def save_model(self, folder_path, file_name=None):
         if file_name is None:
@@ -316,8 +299,6 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
                 "_matrix_uim_frequency_scores": self._matrix_uim_frequency_scores,
                 "_matrix_uim_position_scores": self._matrix_uim_position_scores,
                 "_matrix_uim_last_seen_scores": self._matrix_uim_last_seen_scores,
-
-                "_max_discounting_score": self._max_discounting_score,
             }
         )
 
