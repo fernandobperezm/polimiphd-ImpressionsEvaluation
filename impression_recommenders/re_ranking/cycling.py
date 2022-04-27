@@ -16,7 +16,7 @@ class SearchHyperParametersCyclingRecommender(SearchHyperParametersBaseRecommend
     weight: Integer = attrs.field(
         default=Integer(
             low=1,
-            high=100,
+            high=50,
             prior="uniform",
             base=10,
         )
