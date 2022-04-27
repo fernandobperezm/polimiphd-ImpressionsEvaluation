@@ -1,4 +1,7 @@
+from typing import Literal
+
 from mock import patch
+
 import numpy as np
 import scipy.sparse as sp
 
@@ -14,6 +17,7 @@ class TestCyclingRecommender:
         # arrange
         test_recommender = BaseRecommender(URM_train=urm)
         test_weight = 2
+        test_sign: Literal[1] = 1
 
         expected_presentation_scores = np.array([
                 [1, 1, 1, 1, 0, 1, 0],
@@ -38,7 +42,7 @@ class TestCyclingRecommender:
         )
 
         # act
-        rec.fit(weight=test_weight)
+        rec.fit(weight=test_weight, sign=test_sign)
 
         # assert
         # For this particular recommender, we cannot test recommendations, as there might be several ties (same
@@ -79,6 +83,7 @@ class TestCyclingRecommender:
             test_items = None
             test_cutoff = 3
             test_weight = 1  # weight as 1 to have presentation score = frequency of impressions.
+            test_sign: Literal[-1] = -1
 
             expected_item_scores = np.array([
                 [5., 4., 2., 1., 6., 3., 7.],
@@ -101,7 +106,7 @@ class TestCyclingRecommender:
             )
 
             # act
-            rec.fit(weight=test_weight)
+            rec.fit(weight=test_weight, sign=test_sign)
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -148,6 +153,7 @@ class TestCyclingRecommender:
             test_items = [1, 2, 5]
             test_cutoff = 3
             test_weight = 1  # weight as 1 to have presentation score = frequency of impressions.
+            test_sign: Literal[-1] = -1
 
             expected_item_scores = np.array([
                 [np.NINF, 4., 2., np.NINF, np.NINF, 3., np.NINF],
@@ -170,7 +176,7 @@ class TestCyclingRecommender:
             )
 
             # act
-            rec.fit(weight=test_weight)
+            rec.fit(weight=test_weight, sign=test_sign)
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -215,6 +221,7 @@ class TestCyclingRecommender:
             test_items = [0, 1, 2, 3, 4, 5, 6]
             test_cutoff = 3
             test_weight = 1  # weight is 1 so presentation_score = frequency.
+            test_sign: Literal[-1] = -1
 
             expected_item_scores = np.array([
                 [5., 4., 2., 1., 6., 3., 7.],
@@ -237,7 +244,7 @@ class TestCyclingRecommender:
             )
 
             # act
-            rec.fit(weight=test_weight)
+            rec.fit(weight=test_weight, sign=test_sign)
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -279,6 +286,7 @@ class TestCyclingRecommender:
             test_items = None
             test_cutoff = 3
             test_weight = 1  # weight as 1 to have presentation score = frequency of impressions.
+            test_sign: Literal[-1] = -1
 
             expected_item_scores = np.array([
                 [5., 4., 2., 1., 6., 3., 7.],
@@ -298,7 +306,7 @@ class TestCyclingRecommender:
             )
 
             # act
-            rec.fit(weight=test_weight)
+            rec.fit(weight=test_weight, sign=test_sign)
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -341,6 +349,7 @@ class TestCyclingRecommender:
             test_items = [1, 2, 5]
             test_cutoff = 3
             test_weight = 1  # weight as 1 to have presentation score = frequency of impressions.
+            test_sign: Literal[-1] = -1
 
             expected_item_scores = np.array([
                 [np.NINF, 4., 2., np.NINF, np.NINF, 3., np.NINF],
@@ -360,7 +369,7 @@ class TestCyclingRecommender:
             )
 
             # act
-            rec.fit(weight=test_weight)
+            rec.fit(weight=test_weight, sign=test_sign)
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -402,6 +411,7 @@ class TestCyclingRecommender:
             test_items = [0, 1, 2, 3, 4, 5, 6]
             test_cutoff = 3
             test_weight = 1  # weight as 1 to have presentation score = frequency of impressions.
+            test_sign: Literal[-1] = -1
 
             expected_item_scores = np.array([
                 [5., 4., 2., 1., 6., 3., 7.],
@@ -421,7 +431,7 @@ class TestCyclingRecommender:
             )
 
             # act
-            rec.fit(weight=test_weight)
+            rec.fit(weight=test_weight, sign=test_sign)
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
