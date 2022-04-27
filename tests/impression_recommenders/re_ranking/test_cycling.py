@@ -1,4 +1,3 @@
-import pytest
 from mock import patch
 import numpy as np
 import scipy.sparse as sp
@@ -9,10 +8,49 @@ from Recommenders.BaseRecommender import BaseRecommender
 
 
 class TestCyclingRecommender:
+    def test_fit_is_correct(
+        self, urm: sp.csr_matrix, uim_frequency: sp.csr_matrix,
+    ):
+        # arrange
+        test_recommender = BaseRecommender(URM_train=urm)
+        test_weight = 2
+
+        expected_presentation_scores = np.array([
+                [1, 1, 1, 1, 0, 1, 0],
+                [1, 0, 0, 1, 1, 0, 1],
+                [1, 0, 0, 1, 0, 0, 1],
+                [0, 0, 0, 0, 0, 0, 0],
+                [1, 1, 1, 1, 0, 1, 1],
+                [1, 1, 2, 1, 1, 2, 0],
+                [1, 0, 1, 0, 0, 1, 0],
+                [0, 1, 1, 1, 1, 1, 0],
+                [0, 0, 0, 0, 0, 0, 0],
+                [0, 1, 0, 0, 1, 0, 1],
+            ],
+            dtype=np.float32
+        )
+
+        rec = CyclingRecommender(
+            urm_train=urm,
+            uim_frequency=uim_frequency,
+            trained_recommender=test_recommender,
+            seed=seed,
+        )
+
+        # act
+        rec.fit(weight=test_weight)
+
+        # assert
+        # For this particular recommender, we cannot test recommendations, as there might be several ties (same
+        # timestamp for two impressions) and the .recommend handles ties in a non-deterministic way.
+        assert np.allclose(
+            rec._matrix_presentation_scores.toarray(),
+            expected_presentation_scores
+        )
+
     def test_all_users_no_items(
         self, urm: sp.csr_matrix, uim_frequency: sp.csr_matrix,
     ):
-
         test_trained_recommender_compute_item_score = np.array(
             [
                 [1, 6, 3, 2, 3, 5, 4],
@@ -43,16 +81,16 @@ class TestCyclingRecommender:
             test_weight = 1  # weight as 1 to have presentation score = frequency of impressions.
 
             expected_item_scores = np.array([
-                [3., 7., 5., 4., 1., 6., 2.],
-                [6., 1., 2., 7., 4., 3., 5.],
-                [5., 1., 2., 6., 3., 4., 7.],
+                [5., 4., 2., 1., 6., 3., 7.],
+                [1., 5., 6., 2., 3., 7., 4.],
+                [1., 4., 5., 2., 6., 7., 3.],
                 [7., 6., 5., 4., 3., 2., 1.],
-                [5., 3., 6., 2., 1., 4., 7.],
-                [2., 4., 7., 5., 3., 6., 1.],
-                [5., 1., 6., 2., 3., 7., 4.],
-                [1., 3., 5., 7., 4., 6., 2.],
+                [6., 4., 2., 3., 7., 5., 1.],
+                [4., 6., 1., 3., 5., 2., 7.],
+                [1., 4., 2., 5., 6., 3., 7.],
+                [6., 4., 2., 1., 5., 3., 7.],
                 [7., 6., 5., 4., 3., 2., 1.],
-                [4., 6., 2., 1., 7., 3., 5.]
+                [7., 2., 5., 4., 3., 6., 1.],
             ], dtype=np.float32)
 
             rec = CyclingRecommender(
@@ -112,16 +150,16 @@ class TestCyclingRecommender:
             test_weight = 1  # weight as 1 to have presentation score = frequency of impressions.
 
             expected_item_scores = np.array([
-                [np.NINF, 7., 5., np.NINF, np.NINF, 6., np.NINF],
-                [np.NINF, 1., 2., np.NINF, np.NINF, 3., np.NINF],
-                [np.NINF, 1., 2., np.NINF, np.NINF, 4., np.NINF],
+                [np.NINF, 4., 2., np.NINF, np.NINF, 3., np.NINF],
+                [np.NINF, 5., 6., np.NINF, np.NINF, 7., np.NINF],
+                [np.NINF, 4., 5., np.NINF, np.NINF, 7., np.NINF],
                 [np.NINF, 6., 5., np.NINF, np.NINF, 2., np.NINF],
-                [np.NINF, 3., 6., np.NINF, np.NINF, 4., np.NINF],
-                [np.NINF, 4., 7., np.NINF, np.NINF, 6., np.NINF],
-                [np.NINF, 1., 6., np.NINF, np.NINF, 7., np.NINF],
-                [np.NINF, 3., 5., np.NINF, np.NINF, 6., np.NINF],
+                [np.NINF, 4., 2., np.NINF, np.NINF, 5., np.NINF],
+                [np.NINF, 6., 1., np.NINF, np.NINF, 2., np.NINF],
+                [np.NINF, 4., 2., np.NINF, np.NINF, 3., np.NINF],
+                [np.NINF, 4., 2., np.NINF, np.NINF, 3., np.NINF],
                 [np.NINF, 6., 5., np.NINF, np.NINF, 2., np.NINF],
-                [np.NINF, 6., 2., np.NINF, np.NINF, 3., np.NINF]
+                [np.NINF, 2., 5., np.NINF, np.NINF, 6., np.NINF],
             ], dtype=np.float64)
 
             rec = CyclingRecommender(
@@ -179,16 +217,16 @@ class TestCyclingRecommender:
             test_weight = 1  # weight is 1 so presentation_score = frequency.
 
             expected_item_scores = np.array([
-                [3., 7., 5., 4., 1., 6., 2.],
-                [6., 1., 2., 7., 4., 3., 5.],
-                [5., 1., 2., 6., 3., 4., 7.],
+                [5., 4., 2., 1., 6., 3., 7.],
+                [1., 5., 6., 2., 3., 7., 4.],
+                [1., 4., 5., 2., 6., 7., 3.],
                 [7., 6., 5., 4., 3., 2., 1.],
-                [5., 3., 6., 2., 1., 4., 7.],
-                [2., 4., 7., 5., 3., 6., 1.],
-                [5., 1., 6., 2., 3., 7., 4.],
-                [1., 3., 5., 7., 4., 6., 2.],
+                [6., 4., 2., 3., 7., 5., 1.],
+                [4., 6., 1., 3., 5., 2., 7.],
+                [1., 4., 2., 5., 6., 3., 7.],
+                [6., 4., 2., 1., 5., 3., 7.],
                 [7., 6., 5., 4., 3., 2., 1.],
-                [4., 6., 2., 1., 7., 3., 5.]
+                [7., 2., 5., 4., 3., 6., 1.],
             ], dtype=np.float32)
 
             rec = CyclingRecommender(
@@ -243,13 +281,13 @@ class TestCyclingRecommender:
             test_weight = 1  # weight as 1 to have presentation score = frequency of impressions.
 
             expected_item_scores = np.array([
-                [3., 7., 5., 4., 1., 6., 2.],
-                [6., 1., 2., 7., 4., 3., 5.],
+                [5., 4., 2., 1., 6., 3., 7.],
+                [1., 5., 6., 2., 3., 7., 4.],
                 [7., 6., 5., 4., 3., 2., 1.],
-                [5., 1., 6., 2., 3., 7., 4.],
-                [1., 3., 5., 7., 4., 6., 2.],
+                [1., 4., 2., 5., 6., 3., 7.],
+                [6., 4., 2., 1., 5., 3., 7.],
                 [7., 6., 5., 4., 3., 2., 1.],
-                [4., 6., 2., 1., 7., 3., 5.]
+                [7., 2., 5., 4., 3., 6., 1.],
             ], dtype=np.float32)
 
             rec = CyclingRecommender(
@@ -305,13 +343,13 @@ class TestCyclingRecommender:
             test_weight = 1  # weight as 1 to have presentation score = frequency of impressions.
 
             expected_item_scores = np.array([
-                [np.NINF, 7., 5., np.NINF, np.NINF, 6., np.NINF],
-                [np.NINF, 1., 2., np.NINF, np.NINF, 3., np.NINF],
+                [np.NINF, 4., 2., np.NINF, np.NINF, 3., np.NINF],
+                [np.NINF, 5., 6., np.NINF, np.NINF, 7., np.NINF],
                 [np.NINF, 6., 5., np.NINF, np.NINF, 2., np.NINF],
-                [np.NINF, 1., 6., np.NINF, np.NINF, 7., np.NINF],
-                [np.NINF, 3., 5., np.NINF, np.NINF, 6., np.NINF],
+                [np.NINF, 4., 2., np.NINF, np.NINF, 3., np.NINF],
+                [np.NINF, 4., 2., np.NINF, np.NINF, 3., np.NINF],
                 [np.NINF, 6., 5., np.NINF, np.NINF, 2., np.NINF],
-                [np.NINF, 6., 2., np.NINF, np.NINF, 3., np.NINF]
+                [np.NINF, 2., 5., np.NINF, np.NINF, 6., np.NINF],
             ], dtype=np.float64)
 
             rec = CyclingRecommender(
@@ -334,7 +372,6 @@ class TestCyclingRecommender:
             )
 
             # assert
-            print(repr(scores))
             assert np.allclose(expected_item_scores, scores)
 
     def test_some_users_all_items(
@@ -367,13 +404,13 @@ class TestCyclingRecommender:
             test_weight = 1  # weight as 1 to have presentation score = frequency of impressions.
 
             expected_item_scores = np.array([
-                [3., 7., 5., 4., 1., 6., 2.],
-                [6., 1., 2., 7., 4., 3., 5.],
+                [5., 4., 2., 1., 6., 3., 7.],
+                [1., 5., 6., 2., 3., 7., 4.],
                 [7., 6., 5., 4., 3., 2., 1.],
-                [5., 1., 6., 2., 3., 7., 4.],
-                [1., 3., 5., 7., 4., 6., 2.],
+                [1., 4., 2., 5., 6., 3., 7.],
+                [6., 4., 2., 1., 5., 3., 7.],
                 [7., 6., 5., 4., 3., 2., 1.],
-                [4., 6., 2., 1., 7., 3., 5.],
+                [7., 2., 5., 4., 3., 6., 1.],
             ], dtype=np.float32)
 
             rec = CyclingRecommender(

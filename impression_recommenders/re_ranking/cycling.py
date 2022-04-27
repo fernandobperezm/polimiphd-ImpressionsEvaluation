@@ -1,6 +1,7 @@
 from typing import Optional
 
 import attrs
+import numba
 import numpy as np
 import scipy.sparse as sp
 from Recommenders.BaseRecommender import BaseRecommender
@@ -13,7 +14,6 @@ from skopt.space import Integer
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
 class SearchHyperParametersCyclingRecommender(SearchHyperParametersBaseRecommender):
-    # Check UIM frequency and have a look at the scale range.
     weight: Integer = attrs.field(
         default=Integer(
             low=1,
@@ -22,6 +22,37 @@ class SearchHyperParametersCyclingRecommender(SearchHyperParametersBaseRecommend
             base=10,
         )
     )
+
+
+def compute_presentation_score(
+    uim_frequency: sp.csr_matrix,
+    weight: int,
+) -> sp.csr_matrix:
+    sp_presentation_scores = uim_frequency.copy()
+
+    # Keep equal the values of items that have been seen at least `weight` times,
+    # if they have been seen more than `weight` times, then discount them by dividing the frequency by `weight`
+    # and round down (floor op).
+    sp_presentation_scores.data = np.where(
+        uim_frequency.data < weight,
+        uim_frequency.data,
+        np.floor(uim_frequency.data / weight),
+    )
+
+    return sp_presentation_scores
+
+
+sp_presentation_score = compute_presentation_score(sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32), weight=3)
+assert np.array_equal(
+    sp.csr_matrix([[1, 2], [1, 1], [2, 2]], dtype=np.float32).data,
+    sp_presentation_score.data
+)
+
+sp_presentation_score = compute_presentation_score(sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32), weight=5)
+assert np.array_equal(
+    sp.csr_matrix([[1, 2], [4, 1], [1, 1]], dtype=np.float32).data,
+    sp_presentation_score.data
+)
 
 
 class CyclingRecommender(BaseRecommender):
@@ -42,7 +73,7 @@ class CyclingRecommender(BaseRecommender):
         self._trained_recommender = trained_recommender
         self._uim_frequency = uim_frequency
         self._matrix_presentation_scores = sp.csr_matrix(np.array([], dtype=np.float32))
-        self._cycling_weight: float = 3.0
+        self._cycling_weight: int = 3
 
     def _compute_item_score(
         self,
@@ -91,8 +122,11 @@ class CyclingRecommender(BaseRecommender):
 
         # Note: `rank_data_by_row` requires that the most important array are place right-most in the tuple. In  this
         # case, we want to sort first by `arr_scores_presentation` and then by `arr_scores_relevance`.
+        # In the case of cycling, the presentation score is sorted in ascending order (least seen items are given a
+        # higher score). relevance scores are sorted in descending order.
+        # Given that arr_scores is positive, we flip the sign to indicate we want it in ascending order.
         new_item_scores = rank_data_by_row(
-            keys=(arr_scores_relevance, arr_scores_presentation)
+            keys=(arr_scores_relevance, -arr_scores_presentation)
         )
 
         # If we are computing scores to a specific set of items, then we must set items outside this set to np.NINF,
@@ -115,13 +149,16 @@ class CyclingRecommender(BaseRecommender):
 
     def fit(
         self,
-        weight: float,
+        weight: int,
         **kwargs,
     ):
-        assert weight > 0.
+        assert weight > 0
         self._cycling_weight = weight
 
-        matrix_presentation_scores = (self._uim_frequency / self._cycling_weight)
+        matrix_presentation_scores = compute_presentation_score(
+            uim_frequency=self._uim_frequency,
+            weight=self._cycling_weight,
+        )
         self._matrix_presentation_scores = check_matrix(X=matrix_presentation_scores, format="csr", dtype=np.float32)
 
     def save_model(self, folder_path, file_name=None):
