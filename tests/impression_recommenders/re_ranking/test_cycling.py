@@ -5,21 +5,90 @@ from mock import patch
 import numpy as np
 import scipy.sparse as sp
 
-from impression_recommenders.re_ranking.cycling import CyclingRecommender
+from impression_recommenders.re_ranking.cycling import CyclingRecommender, T_SIGN
 from tests.conftest import seed
 from Recommenders.BaseRecommender import BaseRecommender
 
 
 class TestCyclingRecommender:
-    def test_fit_is_correct(
+    def test_weight(
         self, urm: sp.csr_matrix, uim_frequency: sp.csr_matrix,
     ):
         # arrange
         test_recommender = BaseRecommender(URM_train=urm)
-        test_weight = 2
+        test_weight_values = [1, 2, 4, 100]
         test_sign: Literal[1] = 1
 
-        expected_presentation_scores = np.array([
+        dict_expected_presentation_scores = {
+            1: uim_frequency,
+            2: np.array(
+                [
+                    [1, 1, 1, 1, 0, 1, 0],
+                    [1, 0, 0, 1, 1, 0, 1],
+                    [1, 0, 0, 1, 0, 0, 1],
+                    [0, 0, 0, 0, 0, 0, 0],
+                    [1, 1, 1, 1, 0, 1, 1],
+                    [1, 1, 2, 1, 1, 2, 0],
+                    [1, 0, 1, 0, 0, 1, 0],
+                    [0, 1, 1, 1, 1, 1, 0],
+                    [0, 0, 0, 0, 0, 0, 0],
+                    [0, 1, 0, 0, 1, 0, 1],
+                ],
+                dtype=np.float32),
+            4: np.array(
+                [
+                    [1, 2, 2, 2, 0, 2, 0],
+                    [2, 0, 0, 2, 1, 0, 1],
+                    [1, 0, 0, 1, 0, 0, 1],
+                    [0, 0, 0, 0, 0, 0, 0],
+                    [1, 1, 2, 1, 0, 1, 3],
+                    [2, 2, 1, 3, 2, 1, 0],
+                    [1, 0, 1, 0, 0, 1, 0],
+                    [0, 1, 2, 3, 1, 2, 0],
+                    [0, 0, 0, 0, 0, 0, 0],
+                    [0, 1, 0, 0, 1, 0, 1],
+                ],
+                dtype=np.float32),
+            100: uim_frequency,
+        }
+
+        rec = CyclingRecommender(
+            urm_train=urm,
+            uim_frequency=uim_frequency,
+            trained_recommender=test_recommender,
+            seed=seed,
+        )
+
+        # act
+        for test_weight in test_weight_values:
+            expected_presentation_scores = sp.csr_matrix(
+                dict_expected_presentation_scores[test_weight]
+            )
+
+            rec.fit(weight=test_weight, sign=test_sign)
+
+            # assert
+            assert np.array_equal(
+                rec._matrix_presentation_scores.indptr,
+                expected_presentation_scores.indptr,
+            )
+            assert np.array_equal(
+                rec._matrix_presentation_scores.indices,
+                expected_presentation_scores.indices,
+            )
+            assert np.allclose(
+                rec._matrix_presentation_scores.data,
+                expected_presentation_scores.data,
+            )
+
+    def test_sign(self, urm: sp.csr_matrix, uim_frequency: sp.csr_matrix):
+        # arrange
+        test_recommender = BaseRecommender(URM_train=urm)
+        test_weight = 2
+        test_sign_values: list[T_SIGN] = [-1, 1]
+
+        base_expected_presentation_scores = sp.csr_matrix(
+            np.array([
                 [1, 1, 1, 1, 0, 1, 0],
                 [1, 0, 0, 1, 1, 0, 1],
                 [1, 0, 0, 1, 0, 0, 1],
@@ -31,7 +100,9 @@ class TestCyclingRecommender:
                 [0, 0, 0, 0, 0, 0, 0],
                 [0, 1, 0, 0, 1, 0, 1],
             ],
-            dtype=np.float32
+                dtype=np.float32
+            ),
+            shape=uim_frequency.shape,
         )
 
         rec = CyclingRecommender(
@@ -42,15 +113,27 @@ class TestCyclingRecommender:
         )
 
         # act
-        rec.fit(weight=test_weight, sign=test_sign)
+        test_sign: T_SIGN
+        for test_sign in test_sign_values:
+            expected_presentation_scores = base_expected_presentation_scores * test_sign
 
-        # assert
-        # For this particular recommender, we cannot test recommendations, as there might be several ties (same
-        # timestamp for two impressions) and the .recommend handles ties in a non-deterministic way.
-        assert np.allclose(
-            rec._matrix_presentation_scores.toarray(),
-            expected_presentation_scores
-        )
+            rec.fit(weight=test_weight, sign=test_sign)
+
+            # assert
+            # For this particular recommender, we cannot test recommendations, as there might be several ties (same
+            # timestamp for two impressions) and the .recommend handles ties in a non-deterministic way.
+            assert np.array_equal(
+                rec._matrix_presentation_scores.indptr,
+                expected_presentation_scores.indptr,
+            )
+            assert np.array_equal(
+                rec._matrix_presentation_scores.indices,
+                expected_presentation_scores.indices,
+            )
+            assert np.allclose(
+                rec._matrix_presentation_scores.data,
+                expected_presentation_scores.data,
+            )
 
     def test_all_users_no_items(
         self, urm: sp.csr_matrix, uim_frequency: sp.csr_matrix,
