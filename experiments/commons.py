@@ -133,8 +133,8 @@ class HyperParameterTuningParameters:
         "cosine",
         "dice",
         "jaccard",
-        "asymmetric",
-        "tversky",
+        "asymmetric",  # TODO: fernando-debugger put back again
+        "tversky",  # TODO: fernando-debugger put back again
     ])
     resume_from_saved: bool = attrs.field(default=True)
     evaluate_on_test: T_EVALUATE_ON_TEST = attrs.field(default="last")
@@ -434,41 +434,41 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
     RecommenderImpressions.LAST_IMPRESSIONS: ExperimentRecommender(
         recommender=LastImpressionsRecommender,
         search_hyper_parameters=SearchHyperParametersLastImpressionsRecommender,
-        priority=30,
+        priority=10,
     ),
     RecommenderImpressions.FREQUENCY_RECENCY: ExperimentRecommender(
         recommender=FrequencyRecencyRecommender,
         search_hyper_parameters=SearchHyperParametersFrequencyRecencyRecommender,
-        priority=30,
+        priority=10,
     ),
     RecommenderImpressions.RECENCY: ExperimentRecommender(
         recommender=RecencyRecommender,
         search_hyper_parameters=SearchHyperParametersRecencyRecommender,
-        priority=30,
+        priority=10,
     ),
 
     # IMPRESSIONS APPROACHES: RE RANKING
     RecommenderImpressions.CYCLING: ExperimentRecommender(
         recommender=CyclingRecommender,
         search_hyper_parameters=SearchHyperParametersCyclingRecommender,
-        priority=10,
+        priority=20,
     ),
     RecommenderImpressions.IMPRESSIONS_DISCOUNTING: ExperimentRecommender(
         recommender=ImpressionsDiscountingRecommender,
         search_hyper_parameters=SearchHyperParametersImpressionsDiscountingRecommender,
-        priority=10,
+        priority=30,
     ),
 
     # IMPRESSIONS APPROACHES: USER PROFILES
     RecommenderImpressions.USER_WEIGHTED_USER_PROFILE: ExperimentRecommender(
         recommender=UserWeightedUserProfileRecommender,
         search_hyper_parameters=SearchHyperParametersWeightedUserProfileRecommender,
-        priority=10,
+        priority=20,
     ),
     RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE: ExperimentRecommender(
         recommender=ItemWeightedUserProfileRecommender,
         search_hyper_parameters=SearchHyperParametersWeightedUserProfileRecommender,
-        priority=10,
+        priority=30,
     ),
 }
 
