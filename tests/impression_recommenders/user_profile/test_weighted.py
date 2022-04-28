@@ -1,10 +1,196 @@
+import pytest
 import numpy as np
 import scipy.sparse as sp
 from Recommenders.BaseSimilarityMatrixRecommender import BaseItemSimilarityMatrixRecommender, \
     BaseUserSimilarityMatrixRecommender
 
 from impression_recommenders.user_profile.weighted import ItemWeightedUserProfileRecommender, \
-    UserWeightedUserProfileRecommender
+    UserWeightedUserProfileRecommender, EWeightedUserProfileType
+
+
+class TestBaseWeightedUserProfileRecommender:
+    def test_sign(self, urm: sp.csr_matrix, uim: sp.csr_matrix):
+        # arrange
+        mock_base_recommender = BaseItemSimilarityMatrixRecommender(URM_train=urm)
+        mock_base_recommender.W_sparse = sp.csr_matrix(
+            np.array(
+                [
+                    [1, 2, 2, 3, 1, 1, 1],
+                    [2, 2, 2, 2, 1, 2, 1],
+                    [1, 2, 1, 2, 1, 2, 1],
+                    [1, 2, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1],
+                    [2, 2, 1, 1, 1, 3, 1],
+                    [1, 1, 1, 1, 1, 1, 1],
+
+                ],
+                dtype=np.float32,
+            )
+        )
+
+        test_alpha = .5
+        test_sign_values = [-1, 1]
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
+
+        expected_user_profile = sp.csr_matrix(
+            np.array([
+                [0.5, 0.5, 0., 0., 0., 0., 0.],
+                [0.5, 0., 0., 0., 0., 0., 0.5],
+                [0., 0., 0., 0.5, 0., 0., 0.5],
+                [0., 0., 0., 0., 0., 0., 0.],
+                [0.5, 0., 0.5, 0.5, 0., 0., 0.],
+                [0., 0.5, 0., 0., 0.5, 0., 0.],
+                [0.5, 0., 0.5, 0., 0., 0., 0.],
+                [0., 0.5, 0.5, 0., 0.5, 0.5, 0.],
+                [0., 0., 0., 0., 0., 0., 0.],
+                [0., 0.5, 0., 0., 0.5, 0., 0.]
+            ], dtype=np.float64),
+            shape=uim.shape,
+        )
+
+        rec = ItemWeightedUserProfileRecommender(
+            urm_train=urm,
+            uim_train=uim,
+            trained_recommender=mock_base_recommender,
+        )
+
+        # act
+        for test_sign in test_sign_values:
+            test_expected_user_profile: sp.csr_matrix = urm + (test_sign * expected_user_profile)
+
+            rec.fit(
+                alpha=test_alpha,
+                sign=test_sign,
+                user_weight_type=test_user_weight_type,
+            )
+
+            # assert
+            # For this particular recommender, we cannot test recommendations, as there might be several ties (same
+            # timestamp for two impressions) and the .recommend handles ties in a non-deterministic way.
+            assert np.array_equal(
+                test_expected_user_profile.indptr,
+                rec._sparse_user_profile.indptr,
+            )
+            assert np.array_equal(
+                test_expected_user_profile.indices,
+                rec._sparse_user_profile.indices,
+            )
+            assert np.array_equal(
+                test_expected_user_profile.data,
+                rec._sparse_user_profile.data,
+            )
+
+    def test_alpha(self, urm: sp.csr_matrix, uim: sp.csr_matrix):
+        # arrange
+        mock_base_recommender = BaseItemSimilarityMatrixRecommender(URM_train=urm)
+        mock_base_recommender.W_sparse = sp.csr_matrix(
+            np.array(
+                [
+                    [1, 2, 2, 3, 1, 1, 1],
+                    [2, 2, 2, 2, 1, 2, 1],
+                    [1, 2, 1, 2, 1, 2, 1],
+                    [1, 2, 1, 1, 1, 1, 1],
+                    [1, 1, 1, 1, 1, 1, 1],
+                    [2, 2, 1, 1, 1, 3, 1],
+                    [1, 1, 1, 1, 1, 1, 1],
+
+                ],
+                dtype=np.float32,
+            )
+        )
+
+        test_alpha_values = [0, 0.3, 0.5, 1]
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
+
+        expected_user_profile = sp.csr_matrix(
+            np.array([
+                [1., 1., 0., 0., 0., 0., 0.],
+                [1., 0., 0., 0., 0., 0., 1.],
+                [0., 0., 0., 1., 0., 0., 1.],
+                [0., 0., 0., 0., 0., 0., 0.],
+                [1., 0., 1., 1., 0., 0., 0.],
+                [0., 1., 0., 0., 1., 0., 0.],
+                [1., 0., 1., 0., 0., 0., 0.],
+                [0., 1., 1., 0., 1., 1., 0.],
+                [0., 0., 0., 0., 0., 0., 0.],
+                [0., 1., 0., 0., 1., 0., 0.]
+            ], dtype=np.float64),
+            shape=uim.shape,
+        )
+
+        rec = ItemWeightedUserProfileRecommender(
+            urm_train=urm,
+            uim_train=uim,
+            trained_recommender=mock_base_recommender,
+        )
+
+        # act
+        for test_alpha in test_alpha_values:
+            test_expected_user_profile: sp.csr_matrix = urm + (test_alpha * expected_user_profile)
+
+            rec.fit(
+                alpha=test_alpha,
+                sign=test_sign,
+                user_weight_type=test_user_weight_type,
+            )
+
+            # assert
+            # For this particular recommender, we cannot test recommendations, as there might be several ties (same
+            # timestamp for two impressions) and the .recommend handles ties in a non-deterministic way.
+            assert np.array_equal(
+                test_expected_user_profile.indptr,
+                rec._sparse_user_profile.indptr,
+            )
+            assert np.array_equal(
+                test_expected_user_profile.indices,
+                rec._sparse_user_profile.indices,
+            )
+            assert np.allclose(
+                test_expected_user_profile.data,
+                rec._sparse_user_profile.data,
+            )
+
+    def test_weighted_user_profile_type(self, urm: sp.csr_matrix, uim: sp.csr_matrix):
+        # arrange
+        mock_base_recommender = BaseItemSimilarityMatrixRecommender(URM_train=urm)
+        mock_base_recommender.W_sparse = sp.csr_matrix([])
+
+        test_alpha = 0
+        test_sign = 1
+
+        rec = ItemWeightedUserProfileRecommender(
+            urm_train=urm,
+            uim_train=uim,
+            trained_recommender=mock_base_recommender,
+        )
+
+        # act
+        for test_user_weight_type in list(EWeightedUserProfileType):
+            if EWeightedUserProfileType.ONLY_IMPRESSIONS == test_user_weight_type:
+                test_expected_user_profile = uim
+            else:
+                test_expected_user_profile = urm
+
+            rec.fit(
+                alpha=test_alpha,
+                sign=test_sign,
+                user_weight_type=test_user_weight_type,
+            )
+
+            # assert
+            assert np.array_equal(
+                test_expected_user_profile.indptr,
+                rec._sparse_user_profile.indptr,
+            )
+            assert np.array_equal(
+                test_expected_user_profile.indices,
+                rec._sparse_user_profile.indices,
+            )
+            assert np.allclose(
+                test_expected_user_profile.data,
+                rec._sparse_user_profile.data,
+            )
 
 
 class TestItemWeightedUserProfileRecommender:
@@ -33,20 +219,20 @@ class TestItemWeightedUserProfileRecommender:
         test_items = None
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 0.
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
-            [51., 74., 47., 61., 37., 69., 37.],
-            [28., 42., 33., 38., 28., 28., 28.],
-            [19., 33., 28., 37., 19., 19., 19.],
+            [4., 6., 3., 4., 3., 6., 3.],
+            [2., 3., 2., 2., 2., 2., 2.],
+            [1., 2., 2., 3., 1., 1., 1.],
             [0., 0., 0., 0., 0., 0., 0.],
-            [60., 75., 56., 66., 42., 74., 42.],
-            [60., 87., 60., 78., 46., 78., 46.],
-            [28., 38., 24., 34., 19., 42., 19.],
-            [39., 53., 34., 39., 29., 49., 29.],
+            [5., 5., 4., 4., 3., 6., 3.],
+            [5., 8., 5., 7., 4., 7., 4.],
+            [2., 2., 1., 1., 1., 3., 1.],
+            [1., 2., 1., 1., 1., 1., 1.],
             [0., 0., 0., 0., 0., 0., 0.],
-            [24., 24., 24., 24., 19., 24., 19.]
+            [1., 1., 1., 1., 1., 1., 1.],
         ], dtype=np.float64)
 
         rec = ItemWeightedUserProfileRecommender(
@@ -57,8 +243,9 @@ class TestItemWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,
         )
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
@@ -71,13 +258,7 @@ class TestItemWeightedUserProfileRecommender:
         )
 
         # assert
-        # For this particular recommender, we cannot test recommendations, as there might be several ties (same
-        # timestamp for two impressions) and the .recommend handles ties in a non-deterministic way.
-        for row in range(expected_item_scores.shape[0]):
-            for col in range(expected_item_scores.shape[1]):
-                assert expected_item_scores[row, col] == scores[row, col]
-
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)
 
     def test_all_users_some_items(
         self, urm: sp.csr_matrix, uim: sp.csr_matrix,
@@ -104,20 +285,20 @@ class TestItemWeightedUserProfileRecommender:
         test_items = [1, 2, 5]
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 0.
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
-            [np.NINF, 74., 47., np.NINF, np.NINF, 69., np.NINF],
-            [np.NINF, 42., 33., np.NINF, np.NINF, 28., np.NINF],
-            [np.NINF, 33., 28., np.NINF, np.NINF, 19., np.NINF],
+            [np.NINF, 6., 3., np.NINF, np.NINF, 6., np.NINF],
+            [np.NINF, 3., 2., np.NINF, np.NINF, 2., np.NINF],
+            [np.NINF, 2., 2., np.NINF, np.NINF, 1., np.NINF],
             [np.NINF, 0., 0., np.NINF, np.NINF, 0., np.NINF],
-            [np.NINF, 75., 56., np.NINF, np.NINF, 74., np.NINF],
-            [np.NINF, 87., 60., np.NINF, np.NINF, 78., np.NINF],
-            [np.NINF, 38., 24., np.NINF, np.NINF, 42., np.NINF],
-            [np.NINF, 53., 34., np.NINF, np.NINF, 49., np.NINF],
+            [np.NINF, 5., 4., np.NINF, np.NINF, 6., np.NINF],
+            [np.NINF, 8., 5., np.NINF, np.NINF, 7., np.NINF],
+            [np.NINF, 2., 1., np.NINF, np.NINF, 3., np.NINF],
+            [np.NINF, 2., 1., np.NINF, np.NINF, 1., np.NINF],
             [np.NINF, 0., 0., np.NINF, np.NINF, 0., np.NINF],
-            [np.NINF, 24., 24., np.NINF, np.NINF, 24., np.NINF],
+            [np.NINF, 1., 1., np.NINF, np.NINF, 1., np.NINF],
         ], dtype=np.float64)
 
         rec = ItemWeightedUserProfileRecommender(
@@ -128,9 +309,9 @@ class TestItemWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
-        )
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -173,20 +354,20 @@ class TestItemWeightedUserProfileRecommender:
         test_items = [0, 1, 2, 3, 4, 5, 6]
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 0.
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
-            [51., 74., 47., 61., 37., 69., 37.],
-            [28., 42., 33., 38., 28., 28., 28.],
-            [19., 33., 28., 37., 19., 19., 19.],
+            [4., 6., 3., 4., 3., 6., 3.],
+            [2., 3., 2., 2., 2., 2., 2.],
+            [1., 2., 2., 3., 1., 1., 1.],
             [0., 0., 0., 0., 0., 0., 0.],
-            [60., 75., 56., 66., 42., 74., 42.],
-            [60., 87., 60., 78., 46., 78., 46.],
-            [28., 38., 24., 34., 19., 42., 19.],
-            [39., 53., 34., 39., 29., 49., 29.],
+            [5., 5., 4., 4., 3., 6., 3.],
+            [5., 8., 5., 7., 4., 7., 4.],
+            [2., 2., 1., 1., 1., 3., 1.],
+            [1., 2., 1., 1., 1., 1., 1.],
             [0., 0., 0., 0., 0., 0., 0.],
-            [24., 24., 24., 24., 19., 24., 19.]
+            [1., 1., 1., 1., 1., 1., 1.],
         ], dtype=np.float64)
 
         rec = ItemWeightedUserProfileRecommender(
@@ -197,9 +378,9 @@ class TestItemWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
-        )
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -238,17 +419,17 @@ class TestItemWeightedUserProfileRecommender:
         test_items = None
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 0.
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
-            [51., 74., 47., 61., 37., 69., 37.],
-            [28., 42., 33., 38., 28., 28., 28.],
+            [4., 6., 3., 4., 3., 6., 3.],
+            [2., 3., 2., 2., 2., 2., 2.],
             [0., 0., 0., 0., 0., 0., 0.],
-            [28., 38., 24., 34., 19., 42., 19.],
-            [39., 53., 34., 39., 29., 49., 29.],
+            [2., 2., 1., 1., 1., 3., 1.],
+            [1., 2., 1., 1., 1., 1., 1.],
             [0., 0., 0., 0., 0., 0., 0.],
-            [24., 24., 24., 24., 19., 24., 19.]
+            [1., 1., 1., 1., 1., 1., 1.],
         ], dtype=np.float64)
 
         rec = ItemWeightedUserProfileRecommender(
@@ -259,9 +440,9 @@ class TestItemWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
-        )
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -300,17 +481,17 @@ class TestItemWeightedUserProfileRecommender:
         test_items = [1, 2, 5]
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 0.
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
-            [np.NINF, 74., 47., np.NINF, np.NINF, 69., np.NINF],
-            [np.NINF, 42., 33., np.NINF, np.NINF, 28., np.NINF],
+            [np.NINF, 6., 3., np.NINF, np.NINF, 6., np.NINF],
+            [np.NINF, 3., 2., np.NINF, np.NINF, 2., np.NINF],
             [np.NINF, 0., 0., np.NINF, np.NINF, 0., np.NINF],
-            [np.NINF, 38., 24., np.NINF, np.NINF, 42., np.NINF],
-            [np.NINF, 53., 34., np.NINF, np.NINF, 49., np.NINF],
+            [np.NINF, 2., 1., np.NINF, np.NINF, 3., np.NINF],
+            [np.NINF, 2., 1., np.NINF, np.NINF, 1., np.NINF],
             [np.NINF, 0., 0., np.NINF, np.NINF, 0., np.NINF],
-            [np.NINF, 24., 24., np.NINF, np.NINF, 24., np.NINF],
+            [np.NINF, 1., 1., np.NINF, np.NINF, 1., np.NINF],
         ], dtype=np.float64)
 
         rec = ItemWeightedUserProfileRecommender(
@@ -321,9 +502,9 @@ class TestItemWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
-        )
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -361,17 +542,17 @@ class TestItemWeightedUserProfileRecommender:
         test_items = [0, 1, 2, 3, 4, 5, 6]
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 0.
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
-            [51., 74., 47., 61., 37., 69., 37.],
-            [28., 42., 33., 38., 28., 28., 28.],
+            [4., 6., 3., 4., 3., 6., 3.],
+            [2., 3., 2., 2., 2., 2., 2.],
             [0., 0., 0., 0., 0., 0., 0.],
-            [28., 38., 24., 34., 19., 42., 19.],
-            [39., 53., 34., 39., 29., 49., 29.],
+            [2., 2., 1., 1., 1., 3., 1.],
+            [1., 2., 1., 1., 1., 1., 1.],
             [0., 0., 0., 0., 0., 0., 0.],
-            [24., 24., 24., 24., 19., 24., 19.]
+            [1., 1., 1., 1., 1., 1., 1.],
         ], dtype=np.float64)
 
         rec = ItemWeightedUserProfileRecommender(
@@ -382,9 +563,9 @@ class TestItemWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
-        )
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -399,6 +580,7 @@ class TestItemWeightedUserProfileRecommender:
         assert np.allclose(expected_item_scores, scores)
 
 
+@pytest.mark.skip
 class TestUserWeightedUserProfileRecommender:
     def test_all_users_no_items(
         self, urm: sp.csr_matrix, uim: sp.csr_matrix,
@@ -427,9 +609,9 @@ class TestUserWeightedUserProfileRecommender:
         test_items = None
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 0.
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
             [52., 29., 33., 60., 33., 41., 38.],
             [66., 64., 66., 105., 63., 74., 56.],
@@ -451,9 +633,9 @@ class TestUserWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
-        )
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -500,9 +682,9 @@ class TestUserWeightedUserProfileRecommender:
         test_items = [1, 2, 5]
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 0.
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
             [np.NINF, 29., 33., np.NINF, np.NINF, 41., np.NINF],
             [np.NINF, 64., 66., np.NINF, np.NINF, 74., np.NINF],
@@ -524,9 +706,9 @@ class TestUserWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
-        )
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -571,9 +753,9 @@ class TestUserWeightedUserProfileRecommender:
         test_items = [0, 1, 2, 3, 4, 5, 6]
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 0.
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
             [52., 29., 33., 60., 33., 41., 38.],
             [66., 64., 66., 105., 63., 74., 56.],
@@ -595,9 +777,9 @@ class TestUserWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
-        )
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -638,9 +820,9 @@ class TestUserWeightedUserProfileRecommender:
         test_items = None
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 0.
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
             [52., 29., 33., 60., 33., 41., 38.],
             [66., 64., 66., 105., 63., 74., 56.],
@@ -659,9 +841,9 @@ class TestUserWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
-        )
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -702,9 +884,9 @@ class TestUserWeightedUserProfileRecommender:
         test_items = [1, 2, 5]
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 0.
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
             [np.NINF, 29., 33., np.NINF, np.NINF, 41., np.NINF],
             [np.NINF, 64., 66., np.NINF, np.NINF, 74., np.NINF],
@@ -723,9 +905,9 @@ class TestUserWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
-        )
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -765,9 +947,9 @@ class TestUserWeightedUserProfileRecommender:
         test_items = [0, 1, 2, 3, 4, 5, 6]
         test_cutoff = 3
 
-        test_reg_urm = 4.
-        test_reg_uim = 5.
-
+        test_alpha = 1
+        test_sign = 1
+        test_user_weight_type = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
         expected_item_scores = np.array([
             [52., 29., 33., 60., 33., 41., 38.],
             [66., 64., 66., 105., 63., 74., 56.],
@@ -786,9 +968,9 @@ class TestUserWeightedUserProfileRecommender:
 
         # act
         rec.fit(
-            reg_urm=test_reg_urm,
-            reg_uim=test_reg_uim,
-        )
+            alpha=test_alpha,
+            sign=test_sign,
+            user_weight_type=test_user_weight_type,)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
