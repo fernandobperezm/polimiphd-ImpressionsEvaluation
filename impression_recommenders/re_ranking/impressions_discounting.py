@@ -8,6 +8,7 @@ from Recommenders.BaseRecommender import BaseRecommender
 from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO, attach_to_extended_json_decoder
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
+from recsys_framework_extensions.recommenders.mixins import MixinLoadModel
 from skopt.space import Real, Categorical
 
 
@@ -21,10 +22,26 @@ class EImpressionsDiscountingFunctions(enum.Enum):
     SQUARE_ROOT = "SQUARE_ROOT"
 
 
-_all_enum_values = list(map(
-    lambda en: en.value,
-    EImpressionsDiscountingFunctions,
-))
+_all_enum_values = [
+    en.value
+    for en in list(EImpressionsDiscountingFunctions)
+]
+
+
+_original_paper_enum_values = [
+    en.value
+    for en in [
+        EImpressionsDiscountingFunctions.LINEAR, EImpressionsDiscountingFunctions.INVERSE,
+        EImpressionsDiscountingFunctions.EXPONENTIAL, EImpressionsDiscountingFunctions.QUADRATIC,
+    ]
+]
+
+_only_linear_enum_values = [
+    en.value
+    for en in [
+        EImpressionsDiscountingFunctions.LINEAR,
+    ]
+]
 
 T_SIGN = Literal[-1, 1]
 
@@ -94,22 +111,10 @@ DICT_SEARCH_CONFIGS = {
         sign_uim_position=Categorical(categories=[1]),
         sign_uim_last_seen=Categorical(categories=[1]),
 
-        func_user_frequency=Categorical(categories=[
-            EImpressionsDiscountingFunctions.LINEAR, EImpressionsDiscountingFunctions.INVERSE,
-            EImpressionsDiscountingFunctions.EXPONENTIAL, EImpressionsDiscountingFunctions.QUADRATIC,
-        ]),
-        func_uim_frequency=Categorical(categories=[
-            EImpressionsDiscountingFunctions.LINEAR, EImpressionsDiscountingFunctions.INVERSE,
-            EImpressionsDiscountingFunctions.EXPONENTIAL, EImpressionsDiscountingFunctions.QUADRATIC,
-        ]),
-        func_uim_position=Categorical(categories=[
-            EImpressionsDiscountingFunctions.LINEAR, EImpressionsDiscountingFunctions.INVERSE,
-            EImpressionsDiscountingFunctions.EXPONENTIAL, EImpressionsDiscountingFunctions.QUADRATIC,
-        ]),
-        func_uim_last_seen=Categorical(categories=[
-            EImpressionsDiscountingFunctions.LINEAR, EImpressionsDiscountingFunctions.INVERSE,
-            EImpressionsDiscountingFunctions.EXPONENTIAL, EImpressionsDiscountingFunctions.QUADRATIC,
-        ]),
+        func_user_frequency=Categorical(categories=_original_paper_enum_values),
+        func_uim_frequency=Categorical(categories=_original_paper_enum_values),
+        func_uim_position=Categorical(categories=_original_paper_enum_values),
+        func_uim_last_seen=Categorical(categories=_original_paper_enum_values),
     ),
     "ABLATION_ONLY_INTERACTIONS": SearchHyperParametersImpressionsDiscountingRecommender(
         sign_uim_frequency=Categorical(categories=[1]),
@@ -120,14 +125,14 @@ DICT_SEARCH_CONFIGS = {
         reg_uim_position=Categorical(categories=[0.]),
         reg_uim_last_seen=Categorical(categories=[0.]),
 
-        func_uim_frequency=Categorical(categories=[EImpressionsDiscountingFunctions.LINEAR]),
-        func_uim_position=Categorical(categories=[EImpressionsDiscountingFunctions.LINEAR]),
-        func_uim_last_seen=Categorical(categories=[EImpressionsDiscountingFunctions.LINEAR]),
+        func_uim_frequency=Categorical(categories=_only_linear_enum_values),
+        func_uim_position=Categorical(categories=_only_linear_enum_values),
+        func_uim_last_seen=Categorical(categories=_only_linear_enum_values),
     ),
     "ABLATION_ONLY_IMPRESSIONS": SearchHyperParametersImpressionsDiscountingRecommender(
         sign_user_frequency=Categorical(categories=[1]),
         reg_user_frequency=Categorical(categories=[0.]),
-        func_user_frequency=Categorical(categories=[EImpressionsDiscountingFunctions.LINEAR]),
+        func_user_frequency=Categorical(categories=_only_linear_enum_values),
     ),
 }
 
@@ -249,7 +254,7 @@ _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS: dict[EImpressionsDiscountingFunctions, 
 }
 
 
-class ImpressionsDiscountingRecommender(BaseRecommender):
+class ImpressionsDiscountingRecommender(MixinLoadModel, BaseRecommender):
     RECOMMENDER_NAME = "ImpressionsDiscountingRecommender"
 
     def __init__(
@@ -466,7 +471,7 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
     def load_model(
         self,
         folder_path: str,
-        file_name: Optional[str] = None,
+        file_name: str = None,
     ) -> None:
         super().load_model(
             folder_path=folder_path,

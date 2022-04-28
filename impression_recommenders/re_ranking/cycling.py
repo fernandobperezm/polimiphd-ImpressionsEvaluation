@@ -7,6 +7,7 @@ from Recommenders.BaseRecommender import BaseRecommender
 from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
+from recsys_framework_extensions.recommenders.mixins import MixinLoadModel
 from recsys_framework_extensions.recommenders.rank import rank_data_by_row
 from skopt.space import Integer, Categorical
 
@@ -90,7 +91,7 @@ assert np.array_equal(
 )
 
 
-class CyclingRecommender(BaseRecommender):
+class CyclingRecommender(MixinLoadModel, BaseRecommender):
     RECOMMENDER_NAME = "CyclingRecommender"
 
     def __init__(
@@ -220,7 +221,7 @@ class CyclingRecommender(BaseRecommender):
     def load_model(
         self,
         folder_path: str,
-        file_name: Optional[str] = None,
+        file_name: str = None,
     ) -> None:
         super().load_model(
             folder_path=folder_path,

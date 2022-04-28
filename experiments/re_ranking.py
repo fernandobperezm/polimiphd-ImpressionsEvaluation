@@ -1,25 +1,17 @@
-import itertools
 import os
 import uuid
-from typing import Type, Optional, Sequence, cast, Union
+from typing import Optional, Sequence
 
 import Recommenders.Recommender_import_list as recommenders
 import attrs
-import numpy as np
-import scipy.sparse as sp
 from HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
 from HyperparameterTuning.SearchBayesianSkopt import SearchBayesianSkopt
 from recsys_framework_extensions.dask import DaskInterface
-from recsys_framework_extensions.data.mixins import InteractionsDataSplits
 from recsys_framework_extensions.logging import get_logger
-from recsys_framework_extensions.plotting import generate_accuracy_and_beyond_metrics_latex
-
 
 import experiments.commons as commons
-from experiments.baselines import load_trained_recommender, TrainedRecommenderType, mock_trained_recommender
-from impression_recommenders.re_ranking.cycling import CyclingRecommender
-from impression_recommenders.re_ranking.impressions_discounting import ImpressionsDiscountingRecommender
-
+from experiments.baselines import load_trained_recommender, TrainedRecommenderType
+from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
 
 logger = get_logger(__name__)
 
@@ -36,18 +28,6 @@ BASE_FOLDER = os.path.join(
     "{evaluation_strategy}",
     "",
 )
-ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
-    BASE_FOLDER,
-    "latex",
-    "article-accuracy_and_beyond_accuracy",
-    "",
-)
-ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
-    BASE_FOLDER,
-    "latex",
-    "accuracy_and_beyond_accuracy",
-    "",
-)
 HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
     BASE_FOLDER,
     "experiments",
@@ -55,63 +35,12 @@ HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
 )
 
 commons.FOLDERS.add(BASE_FOLDER)
-commons.FOLDERS.add(ACCURACY_METRICS_BASELINES_LATEX_DIR)
-commons.FOLDERS.add(ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR)
 commons.FOLDERS.add(HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR)
 
-####################################################################################################
-####################################################################################################
-#                                REPRODUCIBILITY VARIABLES                            #
-####################################################################################################
-####################################################################################################
-RESULT_EXPORT_CUTOFFS = [20]
-
-ACCURACY_METRICS_LIST = [
-    "PRECISION",
-    "RECALL",
-    "MAP",
-    "MRR",
-    "NDCG",
-    "F1",
-]
-BEYOND_ACCURACY_METRICS_LIST = [
-    "NOVELTY",
-    "DIVERSITY_MEAN_INTER_LIST",
-    "COVERAGE_ITEM",
-    "DIVERSITY_GINI",
-    "SHANNON_ENTROPY"
-]
-ALL_METRICS_LIST = [
-    *ACCURACY_METRICS_LIST,
-    *BEYOND_ACCURACY_METRICS_LIST,
-]
-
-
-ARTICLE_KNN_SIMILARITY_LIST: list[commons.T_SIMILARITY_TYPE] = [
-    "asymmetric",
-]
-ARTICLE_CUTOFF = [20]
-ARTICLE_ACCURACY_METRICS_LIST = [
-    "PRECISION",
-    "RECALL",
-    "MRR",
-    "NDCG",
-]
-ARTICLE_BEYOND_ACCURACY_METRICS_LIST = [
-    "NOVELTY",
-    "COVERAGE_ITEM",
-    "DIVERSITY_MEAN_INTER_LIST",
-    "DIVERSITY_GINI",
-]
-ARTICLE_ALL_METRICS_LIST = [
-    *ARTICLE_ACCURACY_METRICS_LIST,
-    *ARTICLE_BEYOND_ACCURACY_METRICS_LIST,
-]
-
 
 ####################################################################################################
 ####################################################################################################
-#                               Hyper-parameter tuning of Baselines                                #
+#                    Hyper-parameter tuning of Re-Ranking Recommender                              #
 ####################################################################################################
 ####################################################################################################
 def _run_impressions_re_ranking_hyper_parameter_tuning(
@@ -252,133 +181,147 @@ def _run_impressions_re_ranking_hyper_parameter_tuning(
             )
         )
 
-    # The experiments will be done on all recommenders. However, in order for the impression methods to be comparable
-    # within each other, all matrix factorization approaches will be folded-in. This is because the user.profile
-    # experiments always need a similarity recommender.
-    baseline_recommender_trained_train = load_trained_recommender(
-        experiment_benchmark=experiment_baseline_benchmark,
-        experiment_hyper_parameter_tuning_parameters=experiment_baseline_hyper_parameters,
-        experiment_recommender=experiment_baseline_recommender,
-        similarity=experiment_baseline_similarity,
-        data_splits=interactions_data_splits,
-        model_type=TrainedRecommenderType.TRAIN,
-        try_folded_recommender=True,
-    )
+    for try_folded_recommender in [True, False]:
+        baseline_recommender_trained_train = load_trained_recommender(
+            experiment_benchmark=experiment_baseline_benchmark,
+            experiment_hyper_parameter_tuning_parameters=experiment_baseline_hyper_parameters,
+            experiment_recommender=experiment_baseline_recommender,
+            similarity=experiment_baseline_similarity,
+            data_splits=interactions_data_splits,
+            model_type=TrainedRecommenderType.TRAIN,
+            try_folded_recommender=try_folded_recommender,
+        )
 
-    baseline_recommender_trained_train_validation = load_trained_recommender(
-        experiment_benchmark=experiment_baseline_benchmark,
-        experiment_hyper_parameter_tuning_parameters=experiment_baseline_hyper_parameters,
-        experiment_recommender=experiment_baseline_recommender,
-        similarity=experiment_baseline_similarity,
-        data_splits=interactions_data_splits,
-        model_type=TrainedRecommenderType.TRAIN_VALIDATION,
-        try_folded_recommender=True,
-    )
+        baseline_recommender_trained_train_validation = load_trained_recommender(
+            experiment_benchmark=experiment_baseline_benchmark,
+            experiment_hyper_parameter_tuning_parameters=experiment_baseline_hyper_parameters,
+            experiment_recommender=experiment_baseline_recommender,
+            similarity=experiment_baseline_similarity,
+            data_splits=interactions_data_splits,
+            model_type=TrainedRecommenderType.TRAIN_VALIDATION,
+            try_folded_recommender=try_folded_recommender,
+        )
 
-    assert baseline_recommender_trained_train.RECOMMENDER_NAME == baseline_recommender_trained_train_validation.RECOMMENDER_NAME
+        instances_are_folded_recommenders = (
+            isinstance(baseline_recommender_trained_train, FoldedMatrixFactorizationRecommender)
+            and isinstance(baseline_recommender_trained_train_validation, FoldedMatrixFactorizationRecommender)
+        )
 
-    experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
-        benchmark=experiment_re_ranking_benchmark.benchmark.value,
-        evaluation_strategy=experiment_re_ranking_hyper_parameters.evaluation_strategy.value,
-    )
-    experiment_file_name_root = (
-        f"{experiment_re_ranking_recommender.recommender.RECOMMENDER_NAME}"
-        f"_{baseline_recommender_trained_train.RECOMMENDER_NAME}"
-    )
+        if try_folded_recommender and not instances_are_folded_recommenders:
+            # Skip cases where the recommender cannot be folded.
+            logger.warning(
+                f"Skipping recommender {experiment_baseline_recommender.recommender} and "
+                f"{experiment_re_ranking_recommender.recommender} because it cannot be folded and folded flag is set"
+                f" to {True}"
+            )
+            continue
 
-    import random
-    import numpy as np
+        assert baseline_recommender_trained_train.RECOMMENDER_NAME == baseline_recommender_trained_train_validation.RECOMMENDER_NAME
 
-    random.seed(experiment_re_ranking_hyper_parameters.reproducibility_seed)
-    np.random.seed(experiment_re_ranking_hyper_parameters.reproducibility_seed)
+        experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+            benchmark=experiment_re_ranking_benchmark.benchmark.value,
+            evaluation_strategy=experiment_re_ranking_hyper_parameters.evaluation_strategy.value,
+        )
+        experiment_file_name_root = (
+            f"{experiment_re_ranking_recommender.recommender.RECOMMENDER_NAME}"
+            f"_{baseline_recommender_trained_train.RECOMMENDER_NAME}"
+        )
 
-    evaluators = commons.get_evaluators(
-        data_splits=interactions_data_splits,
-        experiment_hyper_parameter_tuning_parameters=experiment_re_ranking_hyper_parameters,
-    )
+        import random
+        import numpy as np
 
-    logger_info = {
-        "recommender": experiment_re_ranking_recommender.recommender.RECOMMENDER_NAME,
-        "dataset": experiment_re_ranking_benchmark.benchmark.value,
-        "urm_test_shape": interactions_data_splits.sp_urm_test.shape,
-        "urm_train_shape": interactions_data_splits.sp_urm_train.shape,
-        "urm_validation_shape": interactions_data_splits.sp_urm_validation.shape,
-        "urm_train_and_validation_shape": interactions_data_splits.sp_urm_train_validation.shape,
-        "hyper_parameter_tuning_parameters": experiment_re_ranking_hyper_parameters.__repr__(),
-    }
+        random.seed(experiment_re_ranking_hyper_parameters.reproducibility_seed)
+        np.random.seed(experiment_re_ranking_hyper_parameters.reproducibility_seed)
 
-    logger.info(
-        f"Hyper-parameter tuning arguments:"
-        f"\n\t* {logger_info}"
-    )
+        evaluators = commons.get_evaluators(
+            data_splits=interactions_data_splits,
+            experiment_hyper_parameter_tuning_parameters=experiment_re_ranking_hyper_parameters,
+        )
 
-    recommender_init_validation_args_kwargs = SearchInputRecommenderArgs(
-        CONSTRUCTOR_POSITIONAL_ARGS=[],
-        CONSTRUCTOR_KEYWORD_ARGS={
-            "urm_train": interactions_data_splits.sp_urm_train,
-            "uim_frequency": impressions_feature_frequency_train,
-            "uim_position": impressions_feature_position_train,
-            "uim_timestamp": impressions_feature_timestamp_train,
-            "uim_last_seen": impressions_feature_last_seen_train,
-            "seed": experiment_re_ranking_hyper_parameters.reproducibility_seed,
-            "trained_recommender": baseline_recommender_trained_train,
-        },
-        FIT_POSITIONAL_ARGS=[],
-        FIT_KEYWORD_ARGS={},
-        EARLYSTOPPING_KEYWORD_ARGS={},
-    )
+        recommender_init_validation_args_kwargs = SearchInputRecommenderArgs(
+            CONSTRUCTOR_POSITIONAL_ARGS=[],
+            CONSTRUCTOR_KEYWORD_ARGS={
+                "urm_train": interactions_data_splits.sp_urm_train.copy(),
+                "uim_frequency": impressions_feature_frequency_train.copy(),
+                "uim_position": impressions_feature_position_train.copy(),
+                "uim_timestamp": impressions_feature_timestamp_train.copy(),
+                "uim_last_seen": impressions_feature_last_seen_train.copy(),
+                "seed": experiment_re_ranking_hyper_parameters.reproducibility_seed,
+                "trained_recommender": baseline_recommender_trained_train,
+            },
+            FIT_POSITIONAL_ARGS=[],
+            FIT_KEYWORD_ARGS={},
+            EARLYSTOPPING_KEYWORD_ARGS={},
+        )
 
-    recommender_init_test_args_kwargs = SearchInputRecommenderArgs(
-        CONSTRUCTOR_POSITIONAL_ARGS=[],
-        CONSTRUCTOR_KEYWORD_ARGS={
-            "urm_train": interactions_data_splits.sp_urm_train_validation,
-            "uim_frequency": impressions_feature_frequency_train_validation,
-            "uim_position": impressions_feature_position_train_validation,
-            "uim_timestamp": impressions_feature_timestamp_train_validation,
-            "uim_last_seen": impressions_feature_last_seen_train_validation,
-            "seed": experiment_re_ranking_hyper_parameters.reproducibility_seed,
-            "trained_recommender": baseline_recommender_trained_train_validation,
-        },
-        FIT_POSITIONAL_ARGS=[],
-        FIT_KEYWORD_ARGS={},
-        EARLYSTOPPING_KEYWORD_ARGS={},
-    )
+        recommender_init_test_args_kwargs = SearchInputRecommenderArgs(
+            CONSTRUCTOR_POSITIONAL_ARGS=[],
+            CONSTRUCTOR_KEYWORD_ARGS={
+                "urm_train": interactions_data_splits.sp_urm_train_validation.copy(),
+                "uim_frequency": impressions_feature_frequency_train_validation.copy(),
+                "uim_position": impressions_feature_position_train_validation.copy(),
+                "uim_timestamp": impressions_feature_timestamp_train_validation.copy(),
+                "uim_last_seen": impressions_feature_last_seen_train_validation.copy(),
+                "seed": experiment_re_ranking_hyper_parameters.reproducibility_seed,
+                "trained_recommender": baseline_recommender_trained_train_validation,
+            },
+            FIT_POSITIONAL_ARGS=[],
+            FIT_KEYWORD_ARGS={},
+            EARLYSTOPPING_KEYWORD_ARGS={},
+        )
 
-    hyper_parameter_search_space = attrs.asdict(
-        experiment_re_ranking_recommender.search_hyper_parameters()
-    )
+        hyper_parameter_search_space = attrs.asdict(
+            experiment_re_ranking_recommender.search_hyper_parameters()
+        )
 
-    search_bayesian_skopt = SearchBayesianSkopt(
-        recommender_class=experiment_re_ranking_recommender.recommender,
-        evaluator_validation=evaluators.validation,
-        evaluator_test=evaluators.test,
-        verbose=True,
-    )
-    search_bayesian_skopt.search(
-        cutoff_to_optimize=experiment_re_ranking_hyper_parameters.cutoff_to_optimize,
+        logger_info = {
+            "re_ranking_recommender": experiment_re_ranking_recommender.recommender.RECOMMENDER_NAME,
+            "baseline_recommender": experiment_baseline_recommender.recommender.RECOMMENDER_NAME,
+            "dataset": experiment_re_ranking_benchmark.benchmark.value,
+            "urm_test_shape": interactions_data_splits.sp_urm_test.shape,
+            "urm_train_shape": interactions_data_splits.sp_urm_train.shape,
+            "urm_validation_shape": interactions_data_splits.sp_urm_validation.shape,
+            "urm_train_and_validation_shape": interactions_data_splits.sp_urm_train_validation.shape,
+            "hyper_parameter_tuning_parameters": repr(experiment_re_ranking_hyper_parameters),
+            "hyper_parameter_search_space": hyper_parameter_search_space,
+        }
 
-        evaluate_on_test=experiment_re_ranking_hyper_parameters.evaluate_on_test,
+        logger.info(
+            f"Hyper-parameter tuning arguments:"
+            f"\n\t* {logger_info}"
+        )
 
-        hyperparameter_search_space=hyper_parameter_search_space,
+        search_bayesian_skopt = SearchBayesianSkopt(
+            recommender_class=experiment_re_ranking_recommender.recommender,
+            evaluator_validation=evaluators.validation,
+            evaluator_test=evaluators.test,
+            verbose=True,
+        )
+        search_bayesian_skopt.search(
+            cutoff_to_optimize=experiment_re_ranking_hyper_parameters.cutoff_to_optimize,
 
-        max_total_time=experiment_re_ranking_hyper_parameters.max_total_time,
-        metric_to_optimize=experiment_re_ranking_hyper_parameters.metric_to_optimize,
+            evaluate_on_test=experiment_re_ranking_hyper_parameters.evaluate_on_test,
 
-        n_cases=experiment_re_ranking_hyper_parameters.num_cases,
-        n_random_starts=experiment_re_ranking_hyper_parameters.num_random_starts,
+            hyperparameter_search_space=hyper_parameter_search_space,
 
-        output_file_name_root=experiment_file_name_root,
-        output_folder_path=experiments_folder_path,
+            max_total_time=experiment_re_ranking_hyper_parameters.max_total_time,
+            metric_to_optimize=experiment_re_ranking_hyper_parameters.metric_to_optimize,
 
-        recommender_input_args=recommender_init_validation_args_kwargs,
-        recommender_input_args_last_test=recommender_init_test_args_kwargs,
-        resume_from_saved=experiment_re_ranking_hyper_parameters.resume_from_saved,
+            n_cases=experiment_re_ranking_hyper_parameters.num_cases,
+            n_random_starts=experiment_re_ranking_hyper_parameters.num_random_starts,
 
-        save_metadata=experiment_re_ranking_hyper_parameters.save_metadata,
-        save_model=experiment_re_ranking_hyper_parameters.save_model,
+            output_file_name_root=experiment_file_name_root,
+            output_folder_path=experiments_folder_path,
 
-        terminate_on_memory_error=experiment_re_ranking_hyper_parameters.terminate_on_memory_error,
-    )
+            recommender_input_args=recommender_init_validation_args_kwargs,
+            recommender_input_args_last_test=recommender_init_test_args_kwargs,
+            resume_from_saved=experiment_re_ranking_hyper_parameters.resume_from_saved,
+
+            save_metadata=experiment_re_ranking_hyper_parameters.save_metadata,
+            save_model=experiment_re_ranking_hyper_parameters.save_model,
+
+            terminate_on_memory_error=experiment_re_ranking_hyper_parameters.terminate_on_memory_error,
+        )
 
 
 def run_impressions_re_ranking_experiments(
