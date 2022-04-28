@@ -1,5 +1,5 @@
 import enum
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, Literal
 
 import attrs
 import numpy as np
@@ -16,7 +16,9 @@ class EImpressionsDiscountingFunctions(enum.Enum):
     LINEAR = "LINEAR"
     INVERSE = "INVERSE"
     EXPONENTIAL = "EXPONENTIAL"
+    LOGARITHMIC = "LOGARITHMIC"
     QUADRATIC = "QUADRATIC"
+    SQUARE_ROOT = "SQUARE_ROOT"
 
 
 _all_enum_values = list(map(
@@ -24,10 +26,32 @@ _all_enum_values = list(map(
     EImpressionsDiscountingFunctions,
 ))
 
+T_SIGN = Literal[-1, 1]
+
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
 class SearchHyperParametersImpressionsDiscountingRecommender(SearchHyperParametersBaseRecommender):
-    # Check UIM frequency and have a look at the scale range.
+    sign_user_frequency: Categorical = attrs.field(
+        default=Categorical(
+            categories=[-1, 1],
+        )
+    )
+    sign_uim_frequency: Categorical = attrs.field(
+        default=Categorical(
+            categories=[-1, 1],
+        )
+    )
+    sign_uim_position: Categorical = attrs.field(
+        default=Categorical(
+            categories=[-1, 1],
+        )
+    )
+    sign_uim_last_seen: Categorical = attrs.field(
+        default=Categorical(
+            categories=[-1, 1],
+        )
+    )
+
     reg_user_frequency: Real = attrs.field(
         default=Real(
             low=1e-5, high=1, prior="log-uniform", base=10,
@@ -63,6 +87,51 @@ class SearchHyperParametersImpressionsDiscountingRecommender(SearchHyperParamete
     )
 
 
+DICT_SEARCH_CONFIGS = {
+    "REPRODUCIBILITY_ORIGINAL_PAPER": SearchHyperParametersImpressionsDiscountingRecommender(
+        sign_user_frequency=Categorical(categories=[1]),
+        sign_uim_frequency=Categorical(categories=[1]),
+        sign_uim_position=Categorical(categories=[1]),
+        sign_uim_last_seen=Categorical(categories=[1]),
+
+        func_user_frequency=Categorical(categories=[
+            EImpressionsDiscountingFunctions.LINEAR, EImpressionsDiscountingFunctions.INVERSE,
+            EImpressionsDiscountingFunctions.EXPONENTIAL, EImpressionsDiscountingFunctions.QUADRATIC,
+        ]),
+        func_uim_frequency=Categorical(categories=[
+            EImpressionsDiscountingFunctions.LINEAR, EImpressionsDiscountingFunctions.INVERSE,
+            EImpressionsDiscountingFunctions.EXPONENTIAL, EImpressionsDiscountingFunctions.QUADRATIC,
+        ]),
+        func_uim_position=Categorical(categories=[
+            EImpressionsDiscountingFunctions.LINEAR, EImpressionsDiscountingFunctions.INVERSE,
+            EImpressionsDiscountingFunctions.EXPONENTIAL, EImpressionsDiscountingFunctions.QUADRATIC,
+        ]),
+        func_uim_last_seen=Categorical(categories=[
+            EImpressionsDiscountingFunctions.LINEAR, EImpressionsDiscountingFunctions.INVERSE,
+            EImpressionsDiscountingFunctions.EXPONENTIAL, EImpressionsDiscountingFunctions.QUADRATIC,
+        ]),
+    ),
+    "ABLATION_ONLY_INTERACTIONS": SearchHyperParametersImpressionsDiscountingRecommender(
+        sign_uim_frequency=Categorical(categories=[1]),
+        sign_uim_position=Categorical(categories=[1]),
+        sign_uim_last_seen=Categorical(categories=[1]),
+
+        reg_uim_frequency=Categorical(categories=[0.]),
+        reg_uim_position=Categorical(categories=[0.]),
+        reg_uim_last_seen=Categorical(categories=[0.]),
+
+        func_uim_frequency=Categorical(categories=[EImpressionsDiscountingFunctions.LINEAR]),
+        func_uim_position=Categorical(categories=[EImpressionsDiscountingFunctions.LINEAR]),
+        func_uim_last_seen=Categorical(categories=[EImpressionsDiscountingFunctions.LINEAR]),
+    ),
+    "ABLATION_ONLY_IMPRESSIONS": SearchHyperParametersImpressionsDiscountingRecommender(
+        sign_user_frequency=Categorical(categories=[1]),
+        reg_user_frequency=Categorical(categories=[0.]),
+        func_user_frequency=Categorical(categories=[EImpressionsDiscountingFunctions.LINEAR]),
+    ),
+}
+
+
 def _func_linear(x):
     return x
 
@@ -87,27 +156,96 @@ def _func_inverse(x):
 
 def _func_exponential(x):
     if sp.issparse(x):
-        new_sp = x.copy()
-        # Exp cannot be applied on a sparse matrix yet, therefore, we only apply it to the data array and let
+        exp_data: np.ndarray = x.data.copy()
+
+    else:
+        exp_data = x.copy()
+
+    exp_data = np.exp(
+        exp_data.astype(dtype=np.float32)
+    )
+
+    mask_pos_inf: np.ndarray = np.isinf(exp_data)
+    if mask_pos_inf.any():
+        # This catches overflow errors, as the data enters as positive floats, then the exponential function will
+        # transform overflows to positive infinite.
+        # The problem is that having infinite in the scores causes items to not be recommended. Therefore,
+        # we correct infinite values to be the maximum noninf & nonnan + 1.
+        mask_not_pos_inf_on_exp_data_plus_1 = np.logical_not(
+            np.isinf(
+                exp_data + 1
+            )
+        )
+        max_value_non_pos_inf = np.nanmax(
+            exp_data[mask_not_pos_inf_on_exp_data_plus_1],
+        ) + 1
+
+        exp_data[mask_pos_inf] = max_value_non_pos_inf
+
+    exp_data = exp_data.astype(dtype=np.float64)
+    # Exp cannot be applied on a sparse matrix yet, therefore, we only apply it to the data array and let
+    # numpy know that the result should be placed in the memory view of the data.
+    if sp.issparse(x):
+        new_sp: sp.csr_matrix = x.copy()
+        new_sp.data = exp_data
+
+        return new_sp
+    else:
+        return exp_data
+
+
+def _func_logarithm(x):
+    if sp.issparse(x):
+        new_sp: sp.csr_matrix = x.copy()
+        # Reciprocal cannot be applied on a sparse matrix yet, therefore, we only apply it to the data array and let
         # numpy know that the result should be placed in the memory view of the data.
-        np.exp(x.data, out=new_sp.data)
+        np.log(x.data, out=new_sp.data, where=x.data != 0.)
         return new_sp
 
-    return np.exp(x)
+    # NOTE: it is super important to provide an `out` array, given that using the `where` argument leaves the 0
+    # values intact. Without an `out` array, this means that it will allocate a new array and will leave those
+    # indices intact. The problem is that the content of that allocated array can be anything. To avoid this,
+    # we pass an arrays of zeros, as we want to keep 0 values as zero.
+    # See: https://stackoverflow.com/a/49461710
+    new_arr = x.copy()
+    np.log(x, out=new_arr, where=x != 0.)
+
+    return new_arr
 
 
 def _func_quadratic(x):
     if sp.issparse(x):
         return x.power(2.)
 
-    return np.power(x, 2)
+    return np.power(x, 2.)
+
+
+def _func_sqrt(x):
+    if sp.issparse(x):
+        new_sp: sp.csr_matrix = x.copy()
+        # Reciprocal cannot be applied on a sparse matrix yet, therefore, we only apply it to the data array and let
+        # numpy know that the result should be placed in the memory view of the data.
+        np.sqrt(x.data, out=new_sp.data, where=x.data >= 0.)
+        return new_sp
+
+    # NOTE: it is super important to provide an `out` array, given that using the `where` argument leaves the 0
+    # values intact. Without an `out` array, this means that it will allocate a new array and will leave those
+    # indices intact. The problem is that the content of that allocated array can be anything. To avoid this,
+    # we pass an arrays of zeros, as we want to keep 0 values as zero.
+    # See: https://stackoverflow.com/a/49461710
+    new_arr = x.copy()
+    np.sqrt(x, out=new_arr, where=x >= 0.)
+
+    return new_arr
 
 
 _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS: dict[EImpressionsDiscountingFunctions, Callable[[Any], Any]] = {
     EImpressionsDiscountingFunctions.LINEAR: _func_linear,
     EImpressionsDiscountingFunctions.INVERSE: _func_inverse,
     EImpressionsDiscountingFunctions.EXPONENTIAL: _func_exponential,
+    EImpressionsDiscountingFunctions.LOGARITHMIC: _func_logarithm,
     EImpressionsDiscountingFunctions.QUADRATIC: _func_quadratic,
+    EImpressionsDiscountingFunctions.SQUARE_ROOT: _func_sqrt,
 }
 
 
@@ -144,7 +282,10 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
         self._matrix_uim_position_scores = sp.csr_matrix(np.array([], dtype=np.float64))
         self._matrix_uim_last_seen_scores = sp.csr_matrix(np.array([], dtype=np.float64))
 
-        self._max_discounting_score: float = 1.
+        self._sign_user_frequency: T_SIGN = 1
+        self._sign_uim_frequency: T_SIGN = 1
+        self._sign_uim_position: T_SIGN = 1
+        self._sign_uim_last_seen: T_SIGN = 1
 
         self._reg_user_frequency: float = 1.0
         self._reg_uim_frequency: float = 1.0
@@ -223,6 +364,11 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
 
     def fit(
         self,
+        sign_user_frequency: T_SIGN,
+        sign_uim_frequency: T_SIGN,
+        sign_uim_position: T_SIGN,
+        sign_uim_last_seen: T_SIGN,
+
         reg_user_frequency: float,
         reg_uim_frequency: float,
         reg_uim_position: float,
@@ -235,10 +381,20 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
 
         **kwargs,
     ):
+        assert sign_user_frequency == -1 or sign_user_frequency == 1
+        assert sign_uim_frequency == -1 or sign_uim_frequency == 1
+        assert sign_uim_position == -1 or sign_uim_position == 1
+        assert sign_uim_last_seen == -1 or sign_uim_last_seen == 1
+
         assert reg_user_frequency > 0.
         assert reg_uim_frequency > 0.
         assert reg_uim_position > 0.
         assert reg_uim_last_seen > 0.
+
+        self._sign_user_frequency = sign_user_frequency
+        self._sign_uim_frequency = sign_uim_frequency
+        self._sign_uim_position = sign_uim_position
+        self._sign_uim_last_seen = sign_uim_last_seen
 
         self._reg_user_frequency = reg_user_frequency
         self._reg_uim_frequency = reg_uim_frequency
@@ -252,22 +408,22 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
 
         # Compute the different arrays and matrices used in the calculation of the discounting function.
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_user_frequency]
-        arr_user_frequency_scores: np.ndarray = self._reg_user_frequency * selected_func(
+        arr_user_frequency_scores: np.ndarray = self._sign_user_frequency * self._reg_user_frequency * selected_func(
             self._user_frequency
         )
 
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_uim_frequency]
-        matrix_uim_frequency_scores: sp.csr_matrix = self._reg_uim_frequency * selected_func(
+        matrix_uim_frequency_scores: sp.csr_matrix = self._sign_uim_frequency * self._reg_uim_frequency * selected_func(
             self._uim_frequency
         )
 
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_uim_position]
-        matrix_uim_position_scores: sp.csr_matrix = self._reg_uim_position * selected_func(
+        matrix_uim_position_scores: sp.csr_matrix = self._sign_uim_position * self._reg_uim_position * selected_func(
             self._uim_position
         )
 
         selected_func = _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS[self._func_uim_last_seen]
-        matrix_uim_last_seen_scores: sp.csr_matrix = self._reg_uim_last_seen * selected_func(
+        matrix_uim_last_seen_scores: sp.csr_matrix = self._sign_uim_last_seen * self._reg_uim_last_seen * selected_func(
             self._uim_last_seen
         )
 
@@ -285,6 +441,11 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
             folder_path=folder_path,
             file_name=file_name,
             data_dict_to_save={
+                "_sign_user_frequency": self._reg_user_frequency,
+                "_sign_uim_frequency": self._reg_uim_frequency,
+                "_sign_uim_position": self._reg_uim_position,
+                "_sign_uim_last_seen": self._reg_uim_last_seen,
+
                 "_reg_user_frequency": self._reg_user_frequency,
                 "_reg_uim_frequency": self._reg_uim_frequency,
                 "_reg_uim_position": self._reg_uim_position,
@@ -312,9 +473,22 @@ class ImpressionsDiscountingRecommender(BaseRecommender):
             file_name=file_name,
         )
 
+        assert hasattr(self, "_sign_user_frequency")
+        assert hasattr(self, "_sign_uim_frequency")
+        assert hasattr(self, "_sign_uim_position")
+        assert hasattr(self, "_sign_uim_last_seen")
+
+        assert hasattr(self, "_reg_user_frequency")
+        assert hasattr(self, "_reg_uim_frequency")
+        assert hasattr(self, "_reg_uim_position")
+        assert hasattr(self, "_reg_uim_last_seen")
+
+        assert hasattr(self, "_func_user_frequency")
+        assert hasattr(self, "_func_uim_frequency")
+        assert hasattr(self, "_func_uim_position")
+        assert hasattr(self, "_func_uim_last_seen")
+
         assert hasattr(self, "_arr_user_frequency_scores")
         assert hasattr(self, "_matrix_uim_frequency_scores")
         assert hasattr(self, "_matrix_uim_position_scores")
         assert hasattr(self, "_matrix_uim_last_seen_scores")
-
-        assert hasattr(self, "_max_discounting_score")

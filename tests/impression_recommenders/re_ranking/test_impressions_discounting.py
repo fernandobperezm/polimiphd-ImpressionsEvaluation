@@ -3,11 +3,33 @@ import scipy.sparse as sp
 from Recommenders.BaseRecommender import BaseRecommender
 from mock import patch
 
-from impression_recommenders.re_ranking.impressions_discounting import ImpressionsDiscountingRecommender, \
-    EImpressionsDiscountingFunctions
+from impression_recommenders.re_ranking.impressions_discounting import (
+    ImpressionsDiscountingRecommender,
+    EImpressionsDiscountingFunctions,
+    _func_exponential,
+)
 
 
 class TestImpressionsDiscountingRecommender:
+    def test_exponential_overflow_warning(self):
+        # np.exp() overflows for values >= 709.8 on 64 bits, >= 88.8 on 32 bits
+        # np.exp() + 1 overflows for values >= 709.8 on 64 bits, >= 88.8 on 32 bits
+        # In this test we expect that overflows are transformed to np.exp(88.7) + 1
+        test_array = np.array([0, 1, 2, 3, 88, 88.7, 88.8, 90, 1000, 2000], dtype=np.float64)
+        expected_array = (
+            np.exp(
+                np.array([0, 1, 2, 3, 88, 88.7, 88.7, 88.7, 88.7, 88.7], dtype=np.float32)
+            )
+            + np.array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1], dtype=np.float32)
+        ).astype(
+            dtype=np.float64,
+        )
+
+        obtained_array = _func_exponential(x=test_array)
+
+        assert np.array_equal(obtained_array, expected_array)
+        assert obtained_array.dtype == expected_array.dtype and obtained_array.dtype == np.float64
+
     def test_all_linear(
         self, urm: sp.csr_matrix, uim_frequency: sp.csr_matrix, uim_position: sp.csr_matrix,
         uim_last_seen: sp.csr_matrix,
@@ -39,6 +61,12 @@ class TestImpressionsDiscountingRecommender:
             test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             test_items = None
             test_cutoff = 3
+            test_signs = dict(
+                sign_user_frequency=1,
+                sign_uim_frequency=1,
+                sign_uim_position=1,
+                sign_uim_last_seen=1,
+            )
             test_regs = dict(
                 reg_user_frequency=1.0,
                 reg_uim_frequency=1.0,
@@ -76,7 +104,7 @@ class TestImpressionsDiscountingRecommender:
             )
 
             # act
-            rec.fit(**test_regs, **test_funcs)  # type: ignore
+            rec.fit(**test_signs, **test_regs, **test_funcs)  # type: ignore
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -123,6 +151,12 @@ class TestImpressionsDiscountingRecommender:
             test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             test_items = None
             test_cutoff = 3
+            test_signs = dict(
+                sign_user_frequency=1,
+                sign_uim_frequency=1,
+                sign_uim_position=1,
+                sign_uim_last_seen=1,
+            )
             test_regs = dict(
                 reg_user_frequency=1.0,
                 reg_uim_frequency=1.0,
@@ -160,7 +194,7 @@ class TestImpressionsDiscountingRecommender:
             )
 
             # act
-            rec.fit(**test_regs, **test_funcs)  # type: ignore
+            rec.fit(**test_signs, **test_regs, **test_funcs)  # type: ignore
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -207,6 +241,12 @@ class TestImpressionsDiscountingRecommender:
             test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             test_items = None
             test_cutoff = 3
+            test_signs = dict(
+                sign_user_frequency=1,
+                sign_uim_frequency=1,
+                sign_uim_position=1,
+                sign_uim_last_seen=1,
+            )
             test_regs = dict(
                 reg_user_frequency=1.0,
                 reg_uim_frequency=1.0,
@@ -244,7 +284,7 @@ class TestImpressionsDiscountingRecommender:
             )
 
             # act
-            rec.fit(**test_regs, **test_funcs)  # type: ignore
+            rec.fit(**test_signs, **test_regs, **test_funcs)  # type: ignore
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -291,6 +331,12 @@ class TestImpressionsDiscountingRecommender:
             test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             test_items = None
             test_cutoff = 3
+            test_signs = dict(
+                sign_user_frequency=1,
+                sign_uim_frequency=1,
+                sign_uim_position=1,
+                sign_uim_last_seen=1,
+            )
             test_regs = dict(
                 reg_user_frequency=1.0,
                 reg_uim_frequency=1.0,
@@ -328,7 +374,7 @@ class TestImpressionsDiscountingRecommender:
             )
 
             # act
-            rec.fit(**test_regs, **test_funcs)  # type: ignore
+            rec.fit(**test_signs, **test_regs, **test_funcs)  # type: ignore
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -376,6 +422,12 @@ class TestImpressionsDiscountingRecommender:
             test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             test_items = None
             test_cutoff = 3
+            test_signs = dict(
+                sign_user_frequency=1,
+                sign_uim_frequency=1,
+                sign_uim_position=1,
+                sign_uim_last_seen=1,
+            )
             test_regs = dict(
                 reg_user_frequency=1.0,
                 reg_uim_frequency=1.0,
@@ -411,7 +463,7 @@ class TestImpressionsDiscountingRecommender:
             )
 
             # act
-            rec.fit(**test_regs, **test_funcs)  # type: ignore
+            rec.fit(**test_signs, **test_regs, **test_funcs)  # type: ignore
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -458,6 +510,12 @@ class TestImpressionsDiscountingRecommender:
             test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             test_items = [1, 2, 5]
             test_cutoff = 3
+            test_signs = dict(
+                sign_user_frequency=1,
+                sign_uim_frequency=1,
+                sign_uim_position=1,
+                sign_uim_last_seen=1,
+            )
             test_regs = dict(
                 reg_user_frequency=1.0,
                 reg_uim_frequency=1.0,
@@ -493,7 +551,7 @@ class TestImpressionsDiscountingRecommender:
             )
 
             # act
-            rec.fit(**test_regs, **test_funcs)  # type: ignore
+            rec.fit(**test_signs, **test_regs, **test_funcs)  # type: ignore
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -538,6 +596,12 @@ class TestImpressionsDiscountingRecommender:
             test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
             test_items = [0, 1, 2, 3, 4, 5, 6]
             test_cutoff = 3
+            test_signs = dict(
+                sign_user_frequency=1,
+                sign_uim_frequency=1,
+                sign_uim_position=1,
+                sign_uim_last_seen=1,
+            )
             test_regs = dict(
                 reg_user_frequency=1.0,
                 reg_uim_frequency=1.0,
@@ -573,7 +637,7 @@ class TestImpressionsDiscountingRecommender:
             )
 
             # act
-            rec.fit(**test_regs, **test_funcs)  # type: ignore
+            rec.fit(**test_signs, **test_regs, **test_funcs)  # type: ignore
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -615,6 +679,12 @@ class TestImpressionsDiscountingRecommender:
             test_users = [0, 1, 3, 6, 7, 8, 9]
             test_items = None
             test_cutoff = 3
+            test_signs = dict(
+                sign_user_frequency=1,
+                sign_uim_frequency=1,
+                sign_uim_position=1,
+                sign_uim_last_seen=1,
+            )
             test_regs = dict(
                 reg_user_frequency=1.0,
                 reg_uim_frequency=1.0,
@@ -647,7 +717,7 @@ class TestImpressionsDiscountingRecommender:
             )
 
             # act
-            rec.fit(**test_regs, **test_funcs)  # type: ignore
+            rec.fit(**test_signs, **test_regs, **test_funcs)  # type: ignore
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -690,6 +760,12 @@ class TestImpressionsDiscountingRecommender:
             test_users = [0, 1, 3, 6, 7, 8, 9]
             test_items = [1, 2, 5]
             test_cutoff = 3
+            test_signs = dict(
+                sign_user_frequency=1,
+                sign_uim_frequency=1,
+                sign_uim_position=1,
+                sign_uim_last_seen=1,
+            )
             test_regs = dict(
                 reg_user_frequency=1.0,
                 reg_uim_frequency=1.0,
@@ -722,7 +798,7 @@ class TestImpressionsDiscountingRecommender:
             )
 
             # act
-            rec.fit(**test_regs, **test_funcs)  # type: ignore
+            rec.fit(**test_signs, **test_regs, **test_funcs)  # type: ignore
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
@@ -764,6 +840,12 @@ class TestImpressionsDiscountingRecommender:
             test_users = [0, 1, 3, 6, 7, 8, 9]
             test_items = [0, 1, 2, 3, 4, 5, 6]
             test_cutoff = 3
+            test_signs = dict(
+                sign_user_frequency=1,
+                sign_uim_frequency=1,
+                sign_uim_position=1,
+                sign_uim_last_seen=1,
+            )
             test_regs = dict(
                 reg_user_frequency=1.0,
                 reg_uim_frequency=1.0,
@@ -796,7 +878,7 @@ class TestImpressionsDiscountingRecommender:
             )
 
             # act
-            rec.fit(**test_regs, **test_funcs)  # type: ignore
+            rec.fit(**test_signs, **test_regs, **test_funcs)  # type: ignore
             recommendations, scores = rec.recommend(
                 user_id_array=test_users,
                 items_to_compute=test_items,
