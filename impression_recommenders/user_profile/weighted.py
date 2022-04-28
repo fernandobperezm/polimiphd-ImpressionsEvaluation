@@ -14,6 +14,7 @@ from Recommenders.BaseSimilarityMatrixRecommender import (
 from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO, attach_to_extended_json_decoder
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
+from recsys_framework_extensions.recommenders.mixins import MixinLoadModel
 from skopt.space import Real, Categorical
 
 
@@ -40,7 +41,7 @@ class SearchHyperParametersWeightedUserProfileRecommender(SearchHyperParametersB
     )
     weighted_user_profile_type: Categorical = attrs.field(
         default=Categorical(
-            categories=[EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS],
+            categories=[EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS.value],
         )
     )
 
@@ -49,7 +50,7 @@ DICT_SEARCH_CONFIGS = {
     "REPRODUCIBILITY_ORIGINAL_PAPER": SearchHyperParametersWeightedUserProfileRecommender(
         alpha=Categorical(categories=[0.]),
         sign=Categorical(categories=[1]),
-        weighted_user_profile_type=Categorical(categories=[EWeightedUserProfileType.ONLY_IMPRESSIONS]),
+        weighted_user_profile_type=Categorical(categories=[EWeightedUserProfileType.ONLY_IMPRESSIONS.value]),
     ),
 }
 
@@ -89,7 +90,7 @@ def compute_difference_between_impressions_and_interactions(
     return sp_impressions_profile
 
 
-class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
+class BaseWeightedUserProfileRecommender(MixinLoadModel, BaseRecommender, abc.ABC):
     RECOMMENDER_NAME = "BaseWeightedUserProfileRecommender"
     ATTR_NAME_W_SPARSE = "W_sparse"
 
@@ -134,7 +135,7 @@ class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
         self._uim_train: sp.csr_matrix = check_matrix(X=uim_train, format="csr", dtype=np.float32)
         self._alpha: float = 0.0
         self._sign: int = 1
-        self._user_weight_type: EWeightedUserProfileType = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
+        self._weighted_user_profile_type: EWeightedUserProfileType = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
 
         self.trained_recommender = trained_recommender
 
@@ -142,35 +143,36 @@ class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
         self,
         alpha: float,
         sign: int,
-        user_weight_type: EWeightedUserProfileType,
+        weighted_user_profile_type: str,
         **kwargs,
     ) -> None:
         assert sign == 1 or sign == -1
         assert alpha >= 0.
 
-        if EWeightedUserProfileType.ONLY_IMPRESSIONS == user_weight_type:
+        self._alpha = alpha
+        self._sign = sign
+        self._weighted_user_profile_type = EWeightedUserProfileType(weighted_user_profile_type)
+
+        if EWeightedUserProfileType.ONLY_IMPRESSIONS == self._weighted_user_profile_type:
             sparse_user_profile: sp.csr_matrix = self._uim_train.copy()
             sparse_user_profile.eliminate_zeros()
 
-        elif EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS == user_weight_type:
+        elif EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS == self._weighted_user_profile_type:
             sp_impressions_profile = compute_difference_between_impressions_and_interactions(
                 uim=self._uim_train,
                 urm=self.URM_train,
             )
 
             sparse_user_profile = (
-                self.URM_train + (sign * alpha * sp_impressions_profile)
+                self.URM_train + (self._sign * self._alpha * sp_impressions_profile)
             )
             sparse_user_profile.eliminate_zeros()
 
         else:
-            raise ValueError(f"Invalid {user_weight_type}. Valid values are {list(EWeightedUserProfileType)}.")
+            raise ValueError(f"Invalid {weighted_user_profile_type}. Valid values are {list(EWeightedUserProfileType)}.")
 
         sp_similarity = getattr(self.trained_recommender, self.ATTR_NAME_W_SPARSE)
 
-        self._alpha = alpha
-        self._sign = sign
-        self._user_weight_type = user_weight_type
         self._sparse_user_profile = check_matrix(X=sparse_user_profile, format="csr", dtype=np.float32)
         self._sparse_similarity = check_matrix(X=sp_similarity, format="csr", dtype=np.float32)
 
@@ -188,7 +190,7 @@ class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
             data_dict_to_save={
                 "_alpha": self._alpha,
                 "_sign": self._sign,
-                "_user_weight_type": self._user_weight_type,
+                "_weighted_user_profile_type": self._weighted_user_profile_type,
                 "_sparse_user_profile": self._sparse_user_profile,
                 "_sparse_similarity": self._sparse_similarity,
             }
@@ -197,7 +199,7 @@ class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
     def load_model(
         self,
         folder_path: str,
-        file_name: Optional[str] = None,
+        file_name: str = None,
     ) -> None:
         super().load_model(
             folder_path=folder_path,
@@ -206,7 +208,7 @@ class BaseWeightedUserProfileRecommender(BaseRecommender, abc.ABC):
 
         assert hasattr(self, "_alpha") and self._alpha > 0.
         assert hasattr(self, "_sign") and (self._sign == -1 or self._sign == 1)
-        assert hasattr(self, "_user_weight_type")
+        assert hasattr(self, "_weighted_user_profile_type")
         assert hasattr(self, "_sparse_similarity") and self._sparse_similarity.nnz > 0
         assert hasattr(self, "_sparse_user_profile") and self._sparse_user_profile.nnz > 0
 

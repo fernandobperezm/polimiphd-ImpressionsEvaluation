@@ -58,11 +58,7 @@ class TestBaseWeightedUserProfileRecommender:
         for test_sign in test_sign_values:
             test_expected_user_profile: sp.csr_matrix = urm + (test_sign * expected_user_profile)
 
-            rec.fit(
-                alpha=test_alpha,
-                sign=test_sign,
-                user_weight_type=test_user_weight_type,
-            )
+            rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
 
             # assert
             # For this particular recommender, we cannot test recommendations, as there might be several ties (same
@@ -129,11 +125,7 @@ class TestBaseWeightedUserProfileRecommender:
         for test_alpha in test_alpha_values:
             test_expected_user_profile: sp.csr_matrix = urm + (test_alpha * expected_user_profile)
 
-            rec.fit(
-                alpha=test_alpha,
-                sign=test_sign,
-                user_weight_type=test_user_weight_type,
-            )
+            rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
 
             # assert
             # For this particular recommender, we cannot test recommendations, as there might be several ties (same
@@ -172,11 +164,7 @@ class TestBaseWeightedUserProfileRecommender:
             else:
                 test_expected_user_profile = urm
 
-            rec.fit(
-                alpha=test_alpha,
-                sign=test_sign,
-                user_weight_type=test_user_weight_type,
-            )
+            rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
 
             # assert
             assert np.array_equal(
@@ -242,11 +230,7 @@ class TestItemWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,
-        )
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -308,10 +292,7 @@ class TestItemWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,)
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -377,10 +358,7 @@ class TestItemWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,)
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -439,10 +417,7 @@ class TestItemWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,)
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -501,10 +476,7 @@ class TestItemWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,)
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -562,10 +534,7 @@ class TestItemWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,)
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -632,10 +601,7 @@ class TestUserWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,)
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -705,10 +671,7 @@ class TestUserWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,)
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -776,10 +739,7 @@ class TestUserWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,)
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -840,10 +800,7 @@ class TestUserWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,)
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -904,10 +861,7 @@ class TestUserWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,)
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -967,10 +921,7 @@ class TestUserWeightedUserProfileRecommender:
         )
 
         # act
-        rec.fit(
-            alpha=test_alpha,
-            sign=test_sign,
-            user_weight_type=test_user_weight_type,)
+        rec.fit(alpha=test_alpha, sign=test_sign, weighted_user_profile_type=test_user_weight_type)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
