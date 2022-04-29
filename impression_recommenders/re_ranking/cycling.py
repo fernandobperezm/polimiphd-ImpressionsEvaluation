@@ -204,7 +204,7 @@ class CyclingRecommender(MixinLoadModel, BaseRecommender):
         )
         self._matrix_presentation_scores = check_matrix(X=matrix_presentation_scores, format="csr", dtype=np.float32)
 
-    def save_model(self, folder_path, file_name=None):
+    def save_model(self, folder_path: str, file_name: str =None):
         if file_name is None:
             file_name = self.RECOMMENDER_NAME
 
