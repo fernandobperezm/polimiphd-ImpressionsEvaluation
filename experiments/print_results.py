@@ -36,25 +36,42 @@ logger = get_logger(__name__)
 ####################################################################################################
 BASE_FOLDER = os.path.join(
     commons.RESULTS_EXPERIMENTS_DIR,
-    "latex",
+    "results_export",
     "{benchmark}",
     "{evaluation_strategy}",
     "",
 )
-ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
+DIR_CSV_RESULTS = os.path.join(
     BASE_FOLDER,
+    "csv",
+    "",
+)
+DIR_PARQUET_RESULTS = os.path.join(
+    BASE_FOLDER,
+    "parquet",
+    "",
+)
+DIR_LATEX_RESULTS = os.path.join(
+    BASE_FOLDER,
+    "latex",
+    "",
+)
+DIR_ARTICLE_ACCURACY_METRICS_BASELINES_LATEX = os.path.join(
+    DIR_LATEX_RESULTS,
     "article-accuracy_and_beyond_accuracy",
     "",
 )
-ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
-    BASE_FOLDER,
+DIR_ACCURACY_METRICS_BASELINES_LATEX = os.path.join(
+    DIR_LATEX_RESULTS,
     "accuracy_and_beyond_accuracy",
     "",
 )
 
 commons.FOLDERS.add(BASE_FOLDER)
-commons.FOLDERS.add(ACCURACY_METRICS_BASELINES_LATEX_DIR)
-commons.FOLDERS.add(ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR)
+commons.FOLDERS.add(DIR_CSV_RESULTS)
+commons.FOLDERS.add(DIR_PARQUET_RESULTS)
+commons.FOLDERS.add(DIR_ACCURACY_METRICS_BASELINES_LATEX)
+commons.FOLDERS.add(DIR_ARTICLE_ACCURACY_METRICS_BASELINES_LATEX)
 
 RESULT_EXPORT_CUTOFFS = [20]
 
@@ -119,7 +136,7 @@ ARTICLE_ALL_METRICS_LIST = [
 
 ####################################################################################################
 ####################################################################################################
-#                               Utility to load an already-tuned recommender                                #
+#                       Utility to mock the loading an already-tuned recommender                   #
 ####################################################################################################
 ####################################################################################################
 def mock_trained_recommender(
@@ -185,24 +202,27 @@ def mock_trained_recommender(
         BaseMatrixFactorizationRecommender,
     )
 
-    if try_folded_recommender and can_recommender_be_folded:
-        trained_recommender_instance = cast(
-            BaseMatrixFactorizationRecommender,
-            trained_recommender_instance,
-        )
+    if try_folded_recommender:
+        if can_recommender_be_folded:
+            trained_recommender_instance = cast(
+                BaseMatrixFactorizationRecommender,
+                trained_recommender_instance,
+            )
 
-        setattr(
-            trained_recommender_instance,
-            FoldedMatrixFactorizationRecommender.ATTR_NAME_ITEM_FACTORS,
-            np.array([], np.float32)
-        )
+            setattr(
+                trained_recommender_instance,
+                FoldedMatrixFactorizationRecommender.ATTR_NAME_ITEM_FACTORS,
+                np.array([], np.float32)
+            )
 
-        trained_folded_recommender_instance = FoldedMatrixFactorizationRecommender(
-            urm_train=urm_train.copy(),
-            trained_recommender=trained_recommender_instance,
-        )
+            trained_folded_recommender_instance = FoldedMatrixFactorizationRecommender(
+                urm_train=urm_train.copy(),
+                trained_recommender=trained_recommender_instance,
+            )
 
-        return trained_folded_recommender_instance
+            return trained_folded_recommender_instance
+        else:
+            return None
     else:
         return trained_recommender_instance
 
@@ -244,6 +264,8 @@ def _print_baselines_metrics(
             similarities = knn_similarity_list
 
         for similarity in similarities:
+            # This inner loop is to load Folded Recommenders. If we cannot mock a Folded recommender,
+            # then this method returns None.
             loaded_recommender = mock_trained_recommender(
                 experiment_recommender=baseline_experiment_recommender,
                 experiment_benchmark=experiment_benchmark,
@@ -262,8 +284,7 @@ def _print_baselines_metrics(
                 )
                 continue
 
-            if isinstance(loaded_recommender, FoldedMatrixFactorizationRecommender):
-                base_algorithm_list.append(loaded_recommender)
+            base_algorithm_list.append(loaded_recommender)
 
     return generate_accuracy_and_beyond_metrics_pandas(
         experiments_folder_path=experiments_folder_path,
@@ -361,39 +382,40 @@ def _print_impressions_re_ranking_metrics(
                 similarities = knn_similarity_list
 
             for similarity in similarities:
-                loaded_baseline_recommender = mock_trained_recommender(
-                    experiment_recommender=baseline_experiment_recommender,
-                    experiment_benchmark=baseline_experiment_benchmark,
-                    experiment_hyper_parameter_tuning_parameters=baseline_experiment_hyper_parameters,
-                    experiment_model_dir=baseline_experiments_folder_path,
-                    data_splits=interaction_data_splits,
-                    similarity=similarity,
-                    model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
-                    try_folded_recommender=True,
-                )
+                for try_folded_recommender in [True, False]:
+                    loaded_baseline_recommender = mock_trained_recommender(
+                        experiment_recommender=baseline_experiment_recommender,
+                        experiment_benchmark=baseline_experiment_benchmark,
+                        experiment_hyper_parameter_tuning_parameters=baseline_experiment_hyper_parameters,
+                        experiment_model_dir=baseline_experiments_folder_path,
+                        data_splits=interaction_data_splits,
+                        similarity=similarity,
+                        model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
+                        try_folded_recommender=try_folded_recommender,
+                    )
 
-                if loaded_baseline_recommender is None:
-                    continue
+                    if loaded_baseline_recommender is None:
+                        continue
 
-                re_ranking_class = cast(
-                    Type[Union[CyclingRecommender, ImpressionsDiscountingRecommender]],
-                    re_ranking_experiment_recommender.recommender
-                )
+                    re_ranking_class = cast(
+                        Type[Union[CyclingRecommender, ImpressionsDiscountingRecommender]],
+                        re_ranking_experiment_recommender.recommender
+                    )
 
-                re_ranking_recommender = re_ranking_class(
-                    urm_train=interaction_data_splits.sp_urm_train_validation,
-                    uim_position=sp.csr_matrix([[]]),
-                    uim_frequency=sp.csr_matrix([[]]),
-                    uim_last_seen=sp.csr_matrix([[]]),
-                    trained_recommender=loaded_baseline_recommender,
-                )
+                    re_ranking_recommender = re_ranking_class(
+                        urm_train=interaction_data_splits.sp_urm_train_validation,
+                        uim_position=sp.csr_matrix([[]]),
+                        uim_frequency=sp.csr_matrix([[]]),
+                        uim_last_seen=sp.csr_matrix([[]]),
+                        trained_recommender=loaded_baseline_recommender,
+                    )
 
-                re_ranking_recommender.RECOMMENDER_NAME = (
-                    f"{re_ranking_class.RECOMMENDER_NAME}"
-                    f"_{loaded_baseline_recommender.RECOMMENDER_NAME}"
-                )
+                    re_ranking_recommender.RECOMMENDER_NAME = (
+                        f"{re_ranking_class.RECOMMENDER_NAME}"
+                        f"_{loaded_baseline_recommender.RECOMMENDER_NAME}"
+                    )
 
-                base_algorithm_list.append(re_ranking_recommender)
+                    base_algorithm_list.append(re_ranking_recommender)
 
     return generate_accuracy_and_beyond_metrics_pandas(
         experiments_folder_path=re_ranking_experiments_folder_path,
@@ -466,82 +488,83 @@ def _print_impressions_user_profiles_metrics(
                 similarities = knn_similarity_list
 
             for similarity in similarities:
-                loaded_baseline_recommender = mock_trained_recommender(
-                    experiment_recommender=baseline_experiment_recommender,
-                    experiment_benchmark=baseline_experiment_benchmark,
-                    experiment_hyper_parameter_tuning_parameters=baseline_experiment_hyper_parameters,
-                    experiment_model_dir=baseline_experiments_folder_path,
-                    data_splits=interaction_data_splits,
-                    similarity=similarity,
-                    model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
-                    try_folded_recommender=True,
-                )
-
-                if loaded_baseline_recommender is None:
-                    logger.warning(
-                        f"The recommender {baseline_experiment_recommender.recommender} for the dataset "
-                        f"{baseline_experiment_benchmark} returned empty. Skipping."
+                for try_folded_recommender in [True, False]:
+                    loaded_baseline_recommender = mock_trained_recommender(
+                        experiment_recommender=baseline_experiment_recommender,
+                        experiment_benchmark=baseline_experiment_benchmark,
+                        experiment_hyper_parameter_tuning_parameters=baseline_experiment_hyper_parameters,
+                        experiment_model_dir=baseline_experiments_folder_path,
+                        data_splits=interaction_data_splits,
+                        similarity=similarity,
+                        model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
+                        try_folded_recommender=try_folded_recommender,
                     )
-                    continue
 
-                requires_user_similarity = issubclass(
-                    user_profiles_experiment_recommender.recommender,
-                    UserWeightedUserProfileRecommender,
-                )
+                    if loaded_baseline_recommender is None:
+                        logger.warning(
+                            f"The recommender {baseline_experiment_recommender.recommender} for the dataset "
+                            f"{baseline_experiment_benchmark} returned empty. Skipping."
+                        )
+                        continue
 
-                requires_item_similarity = issubclass(
-                    user_profiles_experiment_recommender.recommender,
-                    ItemWeightedUserProfileRecommender,
-                )
-
-                recommender_has_user_similarity = isinstance(
-                    loaded_baseline_recommender,
-                    BaseUserSimilarityMatrixRecommender,
-                )
-                recommender_has_item_similarity = isinstance(
-                    loaded_baseline_recommender,
-                    BaseItemSimilarityMatrixRecommender,
-                )
-
-                if requires_user_similarity and not recommender_has_user_similarity:
-                    logger.warning(
-                        f"Recommender {user_profiles_experiment_recommender.recommender} requires a user-user similarity "
-                        f"but instance of {loaded_baseline_recommender.__class__} does not inherit from "
-                        f"{BaseUserSimilarityMatrixRecommender}. Skip"
+                    requires_user_similarity = issubclass(
+                        user_profiles_experiment_recommender.recommender,
+                        UserWeightedUserProfileRecommender,
                     )
-                    continue
 
-                if requires_item_similarity and not recommender_has_item_similarity:
-                    logger.warning(
-                        f"Recommender {user_profiles_experiment_recommender.recommender} requires an item-item similarity "
-                        f"but instance of {loaded_baseline_recommender.__class__} does not inherit from "
-                        f"{BaseItemSimilarityMatrixRecommender}. Skip"
+                    requires_item_similarity = issubclass(
+                        user_profiles_experiment_recommender.recommender,
+                        ItemWeightedUserProfileRecommender,
                     )
-                    continue
 
-                loaded_baseline_recommender = cast(
-                    BaseSimilarityMatrixRecommender,
-                    loaded_baseline_recommender,
-                )
+                    recommender_has_user_similarity = isinstance(
+                        loaded_baseline_recommender,
+                        BaseUserSimilarityMatrixRecommender,
+                    )
+                    recommender_has_item_similarity = isinstance(
+                        loaded_baseline_recommender,
+                        BaseItemSimilarityMatrixRecommender,
+                    )
 
-                user_profiles_class = cast(
-                    Type[BaseWeightedUserProfileRecommender],
-                    user_profiles_experiment_recommender.recommender
-                )
+                    if requires_user_similarity and not recommender_has_user_similarity:
+                        logger.warning(
+                            f"Recommender {user_profiles_experiment_recommender.recommender} requires a user-user similarity "
+                            f"but instance of {loaded_baseline_recommender.__class__} does not inherit from "
+                            f"{BaseUserSimilarityMatrixRecommender}. Skip"
+                        )
+                        continue
 
-                setattr(
-                    loaded_baseline_recommender,
-                    BaseWeightedUserProfileRecommender.ATTR_NAME_W_SPARSE,
-                    sp.csr_matrix([], dtype=np.float32),
-                )
+                    if requires_item_similarity and not recommender_has_item_similarity:
+                        logger.warning(
+                            f"Recommender {user_profiles_experiment_recommender.recommender} requires an item-item similarity "
+                            f"but instance of {loaded_baseline_recommender.__class__} does not inherit from "
+                            f"{BaseItemSimilarityMatrixRecommender}. Skip"
+                        )
+                        continue
 
-                user_profiles_recommender = user_profiles_class(
-                    urm_train=interaction_data_splits.sp_urm_train_validation,
-                    uim_train=sp.csr_matrix([[]]),
-                    trained_recommender=loaded_baseline_recommender,
-                )
+                    loaded_baseline_recommender = cast(
+                        BaseSimilarityMatrixRecommender,
+                        loaded_baseline_recommender,
+                    )
 
-                base_algorithm_list.append(user_profiles_recommender)
+                    user_profiles_class = cast(
+                        Type[BaseWeightedUserProfileRecommender],
+                        user_profiles_experiment_recommender.recommender
+                    )
+
+                    setattr(
+                        loaded_baseline_recommender,
+                        BaseWeightedUserProfileRecommender.ATTR_NAME_W_SPARSE,
+                        sp.csr_matrix([], dtype=np.float32),
+                    )
+
+                    user_profiles_recommender = user_profiles_class(
+                        urm_train=interaction_data_splits.sp_urm_train_validation,
+                        uim_train=sp.csr_matrix([[]]),
+                        trained_recommender=loaded_baseline_recommender,
+                    )
+
+                    base_algorithm_list.append(user_profiles_recommender)
 
     return generate_accuracy_and_beyond_metrics_pandas(
         experiments_folder_path=user_profiles_experiments_folder_path,
@@ -556,6 +579,232 @@ def _print_impressions_user_profiles_metrics(
         cutoffs_list=cutoffs_list,
         icm_names=None
     )
+
+
+def _model_orders(value):
+    if value == "Baseline":
+        return 0
+    if value == "Folded":
+        return 1
+    if value == "Cycling":
+        return 2
+    if value == "Cycling Folded":
+        return 3
+    if value == "Impressions Discounting":
+        return 4
+    if value == "Impressions Discounting Folded":
+        return 5
+    if value == "Item Weighted Profile":
+        return 6
+    if value == "Item Weighted Profile Folded":
+        return 7
+    if value == "User Weighted Profile":
+        return 8
+    if value == "User Weighted Profile Folded":
+        return 9
+    else:
+        return 20
+
+
+def _results_to_pandas(
+    df_baselines: pd.DataFrame,
+    df_heuristics: pd.DataFrame,
+    df_re_ranking: pd.DataFrame,
+    df_user_profiles: pd.DataFrame,
+    results_name: str,
+    folder_path_latex: str,
+    folder_path_csv: str,
+    folder_path_parquet: str,
+) -> None:
+    MODEL_COLUMN = "Model"
+    CUTOFF_COLUMN = "Cutoff"
+    MODEL_BASE_COLUMN = "Model Name"
+    MODEL_TYPE_COLUMN = "Model Type"
+    ORDER_COLUMN = "Order"
+
+    df_results: pd.DataFrame = pd.concat(
+        [
+            df_baselines,
+            df_heuristics,
+            df_re_ranking,
+            df_user_profiles,
+        ],
+        axis=0,
+        ignore_index=False,  # The index is the list of recommender names.
+    )
+
+    if "accuracy-metrics" == results_name:
+        df_results = (
+            df_results
+                .stack(0, dropna=False)  # Sets the @20 column as index.
+                .reset_index(drop=False)  # Makes the @20 column as another column.
+                .rename(
+                    columns={
+                        "level_0": MODEL_COLUMN,
+                        "level_1": CUTOFF_COLUMN,
+                        "algorithm_row_label": MODEL_COLUMN,
+                    })
+        )
+    elif "times" == results_name:
+        df_results = (
+            df_results
+                .reset_index(drop=False)  # Makes the @20 column as another column.
+                .rename(
+                    columns={
+                        "level_0": MODEL_COLUMN,
+                        "index": MODEL_COLUMN,
+                    })
+        )
+    elif "hyper-parameters" == results_name:
+        # Resulting dataframe
+        # Index: (algorithm_row_label, hyperparameter_name)
+        # Columns: [hyperparameter_value]
+        df_results = (
+            df_results
+                .reset_index(drop=False)
+                .rename(
+                    columns={
+                        "algorithm_row_label": MODEL_COLUMN,
+                        "hyperparameter_name": "Hyper-Parameter",
+                        "hyperparameter_value": "Value",
+                    })
+        )
+    else:
+        return
+
+    df_results[MODEL_COLUMN] = (
+        df_results[MODEL_COLUMN]
+            .str.replace("ImpressionsDiscounting", "Impressions Discounting")
+            .str.replace("FrequencyRecency", "Frequency & Recency")
+            .str.replace("LastImpressions", "Last Impressions")
+            .str.replace("ItemWeightedUserProfile", "Item Weighted Profile")
+            .str.replace("UserWeightedUserProfile", "User Weighted Profile")
+            .str.replace("FoldedMF", "Folded")
+    )
+
+    df_results[MODEL_BASE_COLUMN] = (
+        df_results[MODEL_COLUMN]
+            .str.replace("Recommender ", "")
+            .str.replace("Cycling ", "")
+            .str.replace("Impressions Discounting ", "")
+            .str.replace("KNNCF", "KNN CF")
+            .str.replace("Item Weighted Profile", "")
+            .str.replace("User Weighted Profile", "")
+            .str.replace("Folded ", "")
+            .str.strip()
+    )
+    df_results[MODEL_TYPE_COLUMN] = (
+        df_results[MODEL_COLUMN]
+            .str.replace("ItemKNN", "")
+            .str.replace("UserKNN", "")
+            .str.replace("cosine", "")
+            .str.replace("dice", "")
+            .str.replace("jaccard", "")
+            .str.replace("tversky", "")
+            .str.replace("symmetric", "")
+            .str.replace("CF", "")
+            .str.replace("GlobalEffects", "")
+            .str.replace("LightFM", "")
+            .str.replace("FM", "")
+            .str.replace("MF AsySVD", "")
+            .str.replace("MF BPR", "")
+            .str.replace("MF FunkSVD", "")
+            .str.replace("MultVAE", "")
+            .str.replace("NMF", "")
+            .str.replace("PureSVD", "")
+            .str.replace("P3alpha", "")
+            .str.replace("RP3beta", "")
+            .str.replace("Random", "")
+            .str.replace("SLIM ElasticNet", "")
+            .str.replace("SLIM BPR", "")
+            .str.replace("TopPop", "")
+            .str.replace("IALS", "")
+            .str.replace("EASE R", "")
+            .str.replace("Frequency & Recency", "")
+            .str.replace("Recency", "")
+            .str.replace("Last Impressions", "")
+            .str.strip()
+    )
+
+    df_results[MODEL_TYPE_COLUMN] = df_results[MODEL_TYPE_COLUMN].where(
+        df_results[MODEL_TYPE_COLUMN] != "", "Baseline"
+    )
+
+    df_results[ORDER_COLUMN] = df_results[MODEL_TYPE_COLUMN].apply(
+        _model_orders
+    )
+
+    if results_name == "accuracy-metrics":
+        df_results = df_results.sort_values(
+            by=[CUTOFF_COLUMN, MODEL_BASE_COLUMN, ORDER_COLUMN],
+            ascending=True,
+            inplace=False,
+            ignore_index=False,
+        )
+
+        df_results_pivoted = df_results.pivot(
+            index=[MODEL_BASE_COLUMN, CUTOFF_COLUMN],
+            columns=[MODEL_TYPE_COLUMN],
+            values=["NDCG", "F1", "PRECISION", "RECALL", "DIVERSITY_MEAN_INTER_LIST", "COVERAGE_ITEM", "DIVERSITY_GINI"]
+        )
+    elif "times" == results_name:
+        df_results = df_results.sort_values(
+            by=[MODEL_BASE_COLUMN, ORDER_COLUMN],
+            ascending=True,
+            inplace=False,
+            ignore_index=False,
+        )
+
+        df_results_pivoted = df_results.pivot(
+            index=[MODEL_BASE_COLUMN],
+            columns=[MODEL_TYPE_COLUMN],
+            values=["Train Time", "Recommendation Time", "Recommendation Throughput"]
+        )
+    else:
+        df_results = df_results.sort_values(
+            by=[MODEL_BASE_COLUMN, ORDER_COLUMN],
+            ascending=True,
+            inplace=False,
+            ignore_index=False,
+        )
+        df_results_pivoted = df_results
+
+    with pd.option_context("max_colwidth", 1000):
+        df_results_pivoted.to_csv(
+            path_or_buf=os.path.join(folder_path_csv, f"pivot-{results_name}.csv"),
+            index=True,
+            header=True,
+            encoding="utf-8",
+            na_rep="-",
+        )
+        df_results.to_csv(
+            path_or_buf=os.path.join(folder_path_csv, f"{results_name}.csv"),
+            index=True,
+            header=True,
+            encoding="utf-8",
+            na_rep="-",
+        )
+
+        df_results_pivoted.to_latex(
+            buf=os.path.join(folder_path_latex, f"pivot-{results_name}.tex"),
+            index=True,
+            header=True,
+            escape=False,
+            float_format="{:.4f}".format,
+            encoding="utf-8",
+            na_rep="-",
+            longtable=True,
+        )
+        df_results.to_latex(
+            buf=os.path.join(folder_path_latex, f"{results_name}.tex"),
+            index=True,
+            header=True,
+            escape=False,
+            float_format="{:.4f}".format,
+            encoding="utf-8",
+            na_rep="-",
+            longtable=True,
+        )
 
 
 def print_results(
@@ -600,10 +849,23 @@ def print_results(
             )
         )
 
-        export_experiments_folder_path = ACCURACY_METRICS_BASELINES_LATEX_DIR.format(
+        folder_path_export_latex = DIR_ACCURACY_METRICS_BASELINES_LATEX.format(
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
+        folder_path_export_csv = DIR_CSV_RESULTS.format(
+            benchmark=experiment_benchmark.benchmark.value,
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+        )
+        folder_path_export_parquet = DIR_PARQUET_RESULTS.format(
+            benchmark=experiment_benchmark.benchmark.value,
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+        )
+
+        os.makedirs(folder_path_export_latex, exist_ok=True)
+        os.makedirs(folder_path_export_csv, exist_ok=True)
+        os.makedirs(folder_path_export_parquet, exist_ok=True)
+
         knn_similarity_list = experiment_hyper_parameters.knn_similarity_types
 
         results_baselines = _print_baselines_metrics(
@@ -617,7 +879,7 @@ def print_results(
             all_metrics_list=ALL_METRICS_LIST,
             cutoffs_list=RESULT_EXPORT_CUTOFFS,
             knn_similarity_list=knn_similarity_list,
-            export_experiments_folder_path=export_experiments_folder_path,
+            export_experiments_folder_path=folder_path_export_latex,
         )
 
         results_heuristics = _print_impressions_heuristics_metrics(
@@ -629,7 +891,7 @@ def print_results(
             beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
             all_metrics_list=ALL_METRICS_LIST,
             cutoffs_list=RESULT_EXPORT_CUTOFFS,
-            export_experiments_folder_path=export_experiments_folder_path
+            export_experiments_folder_path=folder_path_export_latex
         )
 
         results_re_ranking = _print_impressions_re_ranking_metrics(
@@ -644,7 +906,7 @@ def print_results(
             all_metrics_list=ALL_METRICS_LIST,
             cutoffs_list=RESULT_EXPORT_CUTOFFS,
             knn_similarity_list=knn_similarity_list,
-            export_experiments_folder_path=export_experiments_folder_path,
+            export_experiments_folder_path=folder_path_export_latex,
         )
 
         results_user_profiles = _print_impressions_user_profiles_metrics(
@@ -659,70 +921,41 @@ def print_results(
             all_metrics_list=ALL_METRICS_LIST,
             cutoffs_list=RESULT_EXPORT_CUTOFFS,
             knn_similarity_list=knn_similarity_list,
-            export_experiments_folder_path=export_experiments_folder_path,
+            export_experiments_folder_path=folder_path_export_latex,
         )
 
-        results_metrics: pd.DataFrame = pd.concat(
-            [
-                results_baselines.df_results,
-                results_heuristics.df_results,
-                results_re_ranking.df_results,
-                results_user_profiles.df_results,
-            ],
-            axis=0,
-            ignore_index=False,  # The index is the list of recommender names.
+        _results_to_pandas(
+            df_baselines=results_baselines.df_results,
+            df_heuristics=results_heuristics.df_results,
+            df_re_ranking=results_re_ranking.df_results,
+            df_user_profiles=results_user_profiles.df_results,
+            results_name="accuracy-metrics",
+            folder_path_latex=folder_path_export_latex,
+            folder_path_csv=folder_path_export_csv,
+            folder_path_parquet=folder_path_export_parquet,
         )
 
-        results_times: pd.DataFrame = pd.concat(
-            [
-                results_baselines.df_times,
-                results_heuristics.df_times,
-                results_re_ranking.df_times,
-                results_user_profiles.df_times,
-            ],
-            axis=0,
-            ignore_index=False,
+        _results_to_pandas(
+            df_baselines=results_baselines.df_times,
+            df_heuristics=results_heuristics.df_times,
+            df_re_ranking=results_re_ranking.df_times,
+            df_user_profiles=results_user_profiles.df_times,
+            results_name="times",
+            folder_path_latex=folder_path_export_latex,
+            folder_path_csv=folder_path_export_csv,
+            folder_path_parquet=folder_path_export_parquet,
         )
 
-        results_hyper_parameters: pd.DataFrame = pd.concat(
-            [
-                results_baselines.df_hyper_params,
-                results_heuristics.df_hyper_params,
-                results_re_ranking.df_hyper_params,
-                results_user_profiles.df_hyper_params,
-            ],
-            axis=0,
-            ignore_index=False,
+        _results_to_pandas(
+            df_baselines=results_baselines.df_hyper_params,
+            df_heuristics=results_heuristics.df_hyper_params,
+            df_re_ranking=results_re_ranking.df_hyper_params,
+            df_user_profiles=results_user_profiles.df_hyper_params,
+            results_name="hyper-parameters",
+            folder_path_latex=folder_path_export_latex,
+            folder_path_csv=folder_path_export_csv,
+            folder_path_parquet=folder_path_export_parquet,
         )
-
-        with pd.option_context("max_colwidth", 1000):
-            results_metrics.to_latex(
-                buf=os.path.join(export_experiments_folder_path, "accuracy-metrics.tex"),
-                index=True,
-                header=True,
-                escape=False,
-                float_format="{:.4f}".format,
-                encoding="utf-8",
-                na_rep="-",
-            )
-            results_times.to_latex(
-                buf=os.path.join(export_experiments_folder_path, "times.tex"),
-                index=True,
-                header=True,
-                escape=False,
-                float_format="{:.5f}".format,
-                encoding="utf-8",
-                na_rep="-",
-            )
-            results_hyper_parameters.to_latex(
-                buf=os.path.join(export_experiments_folder_path, "hyper-parameters.tex"),
-                index=True,
-                header=True,
-                escape=False,
-                float_format="{:.4f}".format,
-                encoding="utf-8",
-                na_rep="-",
-            )
 
         logger.info(
             f"Successfully finished exporting accuracy and beyond-accuracy results to LaTeX"

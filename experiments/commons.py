@@ -131,8 +131,8 @@ class HyperParameterTuningParameters:
     num_random_starts: int = attrs.field(default=int(50 / 3), validator=[attrs.validators.instance_of(int)])
     knn_similarity_types: list[T_SIMILARITY_TYPE] = attrs.field(default=[
         "cosine",
-        "dice",
-        "jaccard",
+        "dice",  # TODO: fernando-debugger put back again
+        "jaccard",  # TODO: fernando-debugger put back again
         "asymmetric",  # TODO: fernando-debugger put back again
         "tversky",  # TODO: fernando-debugger put back again
     ])
