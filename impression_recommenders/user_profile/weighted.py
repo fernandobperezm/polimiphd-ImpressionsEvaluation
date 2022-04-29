@@ -173,8 +173,9 @@ class BaseWeightedUserProfileRecommender(MixinLoadModel, BaseRecommender, abc.AB
 
         sp_similarity = getattr(self.trained_recommender, self.ATTR_NAME_W_SPARSE)
 
+        format = "csr" if sp.issparse(sp_similarity) else "npy"
+        self._sparse_similarity = check_matrix(X=sp_similarity, format=format, dtype=np.float32)
         self._sparse_user_profile = check_matrix(X=sparse_user_profile, format="csr", dtype=np.float32)
-        self._sparse_similarity = check_matrix(X=sp_similarity, format="csr", dtype=np.float32)
 
     def save_model(
         self,
