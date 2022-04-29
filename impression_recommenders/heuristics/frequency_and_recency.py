@@ -1,27 +1,44 @@
-from typing import Optional
+from typing import Optional, Literal
 
 import attrs
 import numpy as np
 import scipy.sparse as sp
-import scipy.stats as st
 from Recommenders.BaseRecommender import BaseRecommender
+from Recommenders.Recommender_utils import check_matrix
+from recsys_framework_extensions.data.io import DataIO
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
-from recsys_framework_extensions.recommenders.mixins import MixinEmptySaveModel
+from recsys_framework_extensions.recommenders.mixins import MixinLoadModel
+from recsys_framework_extensions.recommenders.rank import rank_data_by_row
+from skopt.space import Categorical
 
-from impression_recommenders.constants import ERankMethod
+
+T_SIGN = Literal[-1, 1]
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
 class SearchHyperParametersFrequencyRecencyRecommender(SearchHyperParametersBaseRecommender):
-    pass
+    sign_frequency: Categorical = attrs.field(
+        default=Categorical(
+            categories=[-1, 1],
+        )
+    )
+    sign_recency: Categorical = attrs.field(
+        default=Categorical(
+            categories=[-1, 1],
+        )
+    )
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
 class SearchHyperParametersRecencyRecommender(SearchHyperParametersBaseRecommender):
-    pass
+    sign_recency: Categorical = attrs.field(
+        default=Categorical(
+            categories=[-1, 1],
+        )
+    )
 
 
-class FrequencyRecencyRecommender(MixinEmptySaveModel, BaseRecommender):
+class FrequencyRecencyRecommender(MixinLoadModel, BaseRecommender):
     RECOMMENDER_NAME = "FrequencyRecencyRecommender"
 
     def __init__(
@@ -54,12 +71,68 @@ class FrequencyRecencyRecommender(MixinEmptySaveModel, BaseRecommender):
 
         self._uim_frequency: sp.csr_matrix = uim_frequency.copy()
         self._uim_timestamp: sp.csr_matrix = uim_timestamp.copy()
-        self._rank_method: ERankMethod = ERankMethod.ORDINAL
+
+        self._sign_frequency: T_SIGN = 1
+        self._sign_recency: T_SIGN = 1
+        self._sp_matrix_frequency_scores: sp.csr_matrix = sp.csr_matrix([], dtype=np.float32)
+        self._sp_matrix_timestamp_scores: sp.csr_matrix = sp.csr_matrix([], dtype=np.float32)
+
+    def fit(
+        self,
+        sign_frequency: T_SIGN,
+        sign_recency: T_SIGN,
+        **kwargs,
+    ) -> None:
+
+        sp_matrix_frequency_scores = sign_frequency * self._uim_frequency
+        sp_matrix_timestamp_scores = sign_recency * self._uim_timestamp
+
+        self._sign_frequency = sign_frequency
+        self._sign_recency = sign_recency
+        self._sp_matrix_frequency_scores = check_matrix(X=sp_matrix_frequency_scores, dtype=np.float32, format="csr")
+        self._sp_matrix_timestamp_scores = check_matrix(X=sp_matrix_timestamp_scores, dtype=np.float32, format="csr")
+
+    def save_model(
+        self,
+        folder_path: str,
+        file_name: str = None
+    ) -> None:
+        if file_name is None:
+            file_name = self.RECOMMENDER_NAME
+
+        DataIO.s_save_data(
+            folder_path=folder_path,
+            file_name=file_name,
+            data_dict_to_save={
+                "_sign_frequency": self._sign_frequency,
+                "_sign_recency": self._sign_recency,
+                "_sp_matrix_frequency_scores": self._sp_matrix_frequency_scores,
+                "_sp_matrix_timestamp_scores": self._sp_matrix_timestamp_scores,
+            }
+        )
+
+    def load_model(
+        self,
+        folder_path: str,
+        file_name: str = None,
+    ) -> None:
+        super().load_model(
+            folder_path=folder_path,
+            file_name=file_name,
+        )
+
+        assert hasattr(self, "_sign_frequency")
+        assert hasattr(self, "_sign_recency")
+        assert hasattr(self, "_sp_matrix_frequency_scores")
+        assert hasattr(self, "_sp_matrix_timestamp_scores")
+
+        self._sp_matrix_frequency_scores = check_matrix(X=self._sp_matrix_frequency_scores, format="csr", dtype=np.float32)
+        self._sp_matrix_timestamp_scores = check_matrix(X=self._sp_matrix_timestamp_scores, format="csr", dtype=np.float32)
 
     def _compute_item_score(
         self,
         user_id_array: list[int],
-        items_to_compute: Optional[list[int]] = None
+        items_to_compute: list[int] = None
     ) -> np.ndarray:
         """
         TODO: fernando-debbuger|Complete this.
@@ -75,32 +148,14 @@ class FrequencyRecencyRecommender(MixinEmptySaveModel, BaseRecommender):
         num_score_users: int = len(user_id_array)
         num_score_items: int = self.URM_train.shape[1]
 
-        arr_scores_timestamp = self._uim_timestamp[user_id_array, :].toarray()
-        arr_scores_frequency = self._uim_frequency[user_id_array, :].toarray()
+        arr_scores_timestamp = self._sp_matrix_timestamp_scores[user_id_array, :].toarray()
+        arr_scores_frequency = self._sp_matrix_frequency_scores[user_id_array, :].toarray()
 
         assert arr_scores_frequency.shape == arr_scores_timestamp.shape
         assert num_score_items == arr_scores_timestamp.shape[1]
 
-        arr_frequency_timestamp_scores = np.array(
-            [
-                [
-                    (arr_scores_frequency[row, col], arr_scores_timestamp[row, col])
-                    for col in range(arr_scores_frequency.shape[1])
-                ]
-                for row in range(arr_scores_frequency.shape[0])
-            ],
-            dtype=[
-                ("score_frequency", arr_scores_frequency.dtype),
-                ("score_timestamp", arr_scores_timestamp.dtype)
-            ]
-        )
-
-        # st.rankdata assigns rank in ascending order [(0,0) -> 1 while (4, 6) -> 10], where the highest rank is the
-        # most relevant item.
-        item_scores = st.rankdata(
-            a=arr_frequency_timestamp_scores,
-            method=self._rank_method.value,
-            axis=1,
+        item_scores = rank_data_by_row(
+            keys=(arr_scores_timestamp, arr_scores_frequency)
         )
 
         # If we want to compute for only a certain group of items (`items_to_compute` not being None),
@@ -124,7 +179,7 @@ class FrequencyRecencyRecommender(MixinEmptySaveModel, BaseRecommender):
         return item_scores
 
 
-class RecencyRecommender(MixinEmptySaveModel, BaseRecommender):
+class RecencyRecommender(MixinLoadModel, BaseRecommender):
     RECOMMENDER_NAME = "RecencyRecommender"
 
     def __init__(
@@ -151,6 +206,20 @@ class RecencyRecommender(MixinEmptySaveModel, BaseRecommender):
 
         self._uim_timestamp: sp.csr_matrix = uim_timestamp.copy()
 
+        self._sign_recency: T_SIGN = 1
+        self._sp_matrix_timestamp_scores: sp.csr_matrix = sp.csr_matrix([], dtype=np.float32)
+
+    def fit(
+        self,
+        sign_recency: T_SIGN,
+        **kwargs,
+    ) -> None:
+
+        sp_matrix_timestamp_scores = sign_recency * self._uim_timestamp
+
+        self._sign_recency = sign_recency
+        self._sp_matrix_timestamp_scores = check_matrix(X=sp_matrix_timestamp_scores, dtype=np.float32, format="csr")
+
     def _compute_item_score(
         self,
         user_id_array: list[int],
@@ -175,7 +244,7 @@ class RecencyRecommender(MixinEmptySaveModel, BaseRecommender):
         num_score_users: int = len(user_id_array)
         num_score_items: int = self.URM_train.shape[1]
 
-        arr_timestamp_users: np.ndarray = self._uim_timestamp[user_id_array, :].toarray()
+        arr_timestamp_users: np.ndarray = self._sp_matrix_timestamp_scores[user_id_array, :].toarray()
         if items_to_compute is None:
             arr_mask_items: np.ndarray = np.ones_like(arr_timestamp_users, dtype=np.bool8)
         else:
@@ -191,3 +260,35 @@ class RecencyRecommender(MixinEmptySaveModel, BaseRecommender):
         assert item_scores.shape == (num_score_users, num_score_items)
 
         return item_scores
+
+    def save_model(
+        self,
+        folder_path: str,
+        file_name: str = None
+    ) -> None:
+        if file_name is None:
+            file_name = self.RECOMMENDER_NAME
+
+        DataIO.s_save_data(
+            folder_path=folder_path,
+            file_name=file_name,
+            data_dict_to_save={
+                "_sign_recency": self._sign_recency,
+                "_sp_matrix_timestamp_scores": self._sp_matrix_timestamp_scores,
+            }
+        )
+
+    def load_model(
+        self,
+        folder_path: str,
+        file_name: str = None,
+    ) -> None:
+        super().load_model(
+            folder_path=folder_path,
+            file_name=file_name,
+        )
+
+        assert hasattr(self, "_sign_frequency")
+        assert hasattr(self, "_sp_matrix_timestamp_scores")
+
+        self._sp_matrix_timestamp_scores = check_matrix(X=self._sp_matrix_timestamp_scores, format="csr", dtype=np.float32)

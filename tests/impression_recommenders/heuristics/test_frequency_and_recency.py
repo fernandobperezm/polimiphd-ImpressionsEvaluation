@@ -1,18 +1,19 @@
 import numpy as np
-import pytest
 import scipy.sparse as sp
 
-from impression_recommenders.heuristics.frequency_and_recency import RecencyRecommender, FrequencyRecencyRecommender
+from impression_recommenders.heuristics.frequency_and_recency import RecencyRecommender, FrequencyRecencyRecommender, \
+    T_SIGN
 
 
 class TestRecencyRecommender:
     def test_all_users_no_items(
-        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_position: sp.csr_matrix,
+        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix,
     ):
         # arrange
         test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         test_items = None
         test_cutoff = 3
+        test_sign_recency: T_SIGN = 1
 
         expected_item_scores = np.array([
             [1641017209, 1641108375, 1641108375, 1641108375, np.NINF, 1641037317,  np.NINF],
@@ -33,7 +34,7 @@ class TestRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -47,16 +48,16 @@ class TestRecencyRecommender:
         # assert
         # For this particular recommender, we cannot test recommendations, as there might be several ties (same
         # timestamp for two impressions) and the .recommend handles ties in a non-deterministic way.
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)
 
     def test_all_users_some_items(
-        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_position: sp.csr_matrix,
+        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix,
     ):
         # arrange
         test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         test_items = [1, 2, 5]
         test_cutoff = 3
-
+        test_sign_recency: T_SIGN = 1
         expected_item_scores = np.array([
             [np.NINF, 1641108375, 1641108375, np.NINF, np.NINF, 1641037317, np.NINF],
 
@@ -84,7 +85,7 @@ class TestRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -96,16 +97,16 @@ class TestRecencyRecommender:
         )
 
         # assert
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)
 
     def test_all_users_all_items(
-        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_position: sp.csr_matrix,
+        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix,
     ):
         # arrange
         test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         test_items = [0, 1, 2, 3, 4, 5, 6]
         test_cutoff = 3
-
+        test_sign_recency: T_SIGN = 1
         expected_item_scores = np.array([
             [1641017209, 1641108375, 1641108375, 1641108375, np.NINF, 1641037317, np.NINF],
             [1641111467, np.NINF, np.NINF, 1641111467, 1641111467, np.NINF, 1641031516],
@@ -125,7 +126,7 @@ class TestRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -137,16 +138,16 @@ class TestRecencyRecommender:
         )
 
         # assert
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)
 
     def test_some_users_no_items(
-        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_position: sp.csr_matrix,
+        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix,
     ):
         # arrange
         test_users = [0, 1, 3, 6, 7, 8, 9]
         test_items = None
         test_cutoff = 3
-
+        test_sign_recency: T_SIGN = 1
         expected_item_scores = np.array([
             [1641017209, 1641108375, 1641108375, 1641108375, np.NINF, 1641037317, np.NINF],
             [1641111467, np.NINF, np.NINF, 1641111467, 1641111467, np.NINF, 1641031516],
@@ -163,7 +164,7 @@ class TestRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -177,16 +178,16 @@ class TestRecencyRecommender:
         # assert
         # For this particular recommender, we cannot test recommendations, as there might be several ties (same
         # timestamp for two impressions) and the .recommend handles ties in a non-deterministic way.
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)
 
     def test_some_users_some_items(
-        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_position: sp.csr_matrix,
+        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix,
     ):
         # arrange
         test_users = [0, 1, 3, 6, 7, 8, 9]
         test_items = [1, 2, 5]
         test_cutoff = 3
-
+        test_sign_recency: T_SIGN = 1
         expected_item_scores = np.array([
             [np.NINF, 1641108375, 1641108375, np.NINF, np.NINF, 1641037317, np.NINF],
 
@@ -210,7 +211,7 @@ class TestRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -222,16 +223,16 @@ class TestRecencyRecommender:
         )
 
         # assert
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)
 
     def test_some_users_all_items(
-        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix, uim_position: sp.csr_matrix,
+        self, urm: sp.csr_matrix, uim_timestamp: sp.csr_matrix,
     ):
         # arrange
         test_users = [0, 1, 3, 6, 7, 8, 9]
         test_items = [0, 1, 2, 3, 4, 5, 6]
         test_cutoff = 3
-
+        test_sign_recency: T_SIGN = 1
         expected_item_scores = np.array([
             [1641017209, 1641108375, 1641108375, 1641108375, np.NINF, 1641037317, np.NINF],
             [1641111467, np.NINF, np.NINF, 1641111467, 1641111467, np.NINF, 1641031516],
@@ -248,7 +249,7 @@ class TestRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -260,7 +261,7 @@ class TestRecencyRecommender:
         )
 
         # assert
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)
 
 
 class TestFrequencyRecencyRecommender:
@@ -271,7 +272,8 @@ class TestFrequencyRecencyRecommender:
         test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         test_items = None
         test_cutoff = 3
-
+        test_sign_recency: T_SIGN = 1
+        test_sign_frequency: T_SIGN = 1
         expected_item_scores = np.array([
             [3., 5., 6., 7., np.NINF, 4., np.NINF],
             [6., np.NINF, np.NINF, 7., 5., np.NINF, 4.],
@@ -292,7 +294,7 @@ class TestFrequencyRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency, sign_frequency=test_sign_frequency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -315,7 +317,8 @@ class TestFrequencyRecencyRecommender:
         test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         test_items = [1, 2, 5]
         test_cutoff = 3
-
+        test_sign_recency: T_SIGN = 1
+        test_sign_frequency: T_SIGN = 1
         expected_item_scores = np.array([
             [np.NINF, 5., 6., np.NINF, np.NINF, 4., np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
@@ -336,7 +339,7 @@ class TestFrequencyRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency, sign_frequency=test_sign_frequency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -357,7 +360,8 @@ class TestFrequencyRecencyRecommender:
         test_users = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         test_items = [0, 1, 2, 3, 4, 5, 6]
         test_cutoff = 3
-
+        test_sign_recency: T_SIGN = 1
+        test_sign_frequency: T_SIGN = 1
         expected_item_scores = np.array([
             [3., 5., 6., 7., np.NINF, 4., np.NINF],
             [6., np.NINF, np.NINF, 7., 5., np.NINF, 4.],
@@ -378,7 +382,7 @@ class TestFrequencyRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency, sign_frequency=test_sign_frequency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -399,7 +403,8 @@ class TestFrequencyRecencyRecommender:
         test_users = [0, 1, 3, 6, 7, 8, 9]
         test_items = None
         test_cutoff = 3
-
+        test_sign_recency: T_SIGN = 1
+        test_sign_frequency: T_SIGN = 1
         expected_item_scores = np.array([
             [3., 5., 6., 7., np.NINF, 4., np.NINF],
             [6., np.NINF, np.NINF, 7., 5., np.NINF, 4.],
@@ -417,7 +422,7 @@ class TestFrequencyRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency, sign_frequency=test_sign_frequency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -440,7 +445,8 @@ class TestFrequencyRecencyRecommender:
         test_users = [0, 1, 3, 6, 7, 8, 9]
         test_items = [1, 2, 5]
         test_cutoff = 3
-
+        test_sign_recency: T_SIGN = 1
+        test_sign_frequency: T_SIGN = 1
         expected_item_scores = np.array([
             [np.NINF, 5., 6., np.NINF, np.NINF, 4., np.NINF],
             [np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF, np.NINF],
@@ -458,7 +464,7 @@ class TestFrequencyRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency, sign_frequency=test_sign_frequency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -479,7 +485,8 @@ class TestFrequencyRecencyRecommender:
         test_users = [0, 1, 3, 6, 7, 8, 9]
         test_items = [0, 1, 2, 3, 4, 5, 6]
         test_cutoff = 3
-
+        test_sign_recency: T_SIGN = 1
+        test_sign_frequency: T_SIGN = 1
         expected_item_scores = np.array([
             [3., 5., 6., 7., np.NINF, 4., np.NINF],
             [6., np.NINF, np.NINF, 7., 5., np.NINF, 4.],
@@ -497,7 +504,7 @@ class TestFrequencyRecencyRecommender:
         )
 
         # act
-        rec.fit()
+        rec.fit(sign_recency=test_sign_recency, sign_frequency=test_sign_frequency)
         recommendations, scores = rec.recommend(
             user_id_array=test_users,
             items_to_compute=test_items,
@@ -509,4 +516,4 @@ class TestFrequencyRecencyRecommender:
         )
 
         # assert
-        assert np.array_equal(expected_item_scores, scores)
+        assert np.allclose(expected_item_scores, scores)

@@ -1,17 +1,15 @@
-import itertools
 import os
 import uuid
-from typing import Type, cast
 
-import numpy as np
+import attrs
 from HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
+from HyperparameterTuning.SearchBayesianSkopt import SearchBayesianSkopt
 from HyperparameterTuning.SearchSingleCase import SearchSingleCase
-from Recommenders.BaseRecommender import BaseRecommender
 from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.logging import get_logger
-from recsys_framework_extensions.plotting import generate_accuracy_and_beyond_metrics_latex
 
 import experiments.commons as commons
+from impression_recommenders.heuristics.frequency_and_recency import FrequencyRecencyRecommender, RecencyRecommender
 
 logger = get_logger(__name__)
 
@@ -28,18 +26,6 @@ BASE_FOLDER = os.path.join(
     "{evaluation_strategy}",
     "",
 )
-ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
-    BASE_FOLDER,
-    "latex",
-    "article-accuracy_and_beyond_accuracy",
-    "",
-)
-ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
-    BASE_FOLDER,
-    "latex",
-    "accuracy_and_beyond_accuracy",
-    "",
-)
 HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
     BASE_FOLDER,
     "experiments",
@@ -47,63 +33,12 @@ HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
 )
 
 commons.FOLDERS.add(BASE_FOLDER)
-commons.FOLDERS.add(ACCURACY_METRICS_BASELINES_LATEX_DIR)
-commons.FOLDERS.add(ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR)
 commons.FOLDERS.add(HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR)
 
-####################################################################################################
-####################################################################################################
-#                                REPRODUCIBILITY VARIABLES                            #
-####################################################################################################
-####################################################################################################
-RESULT_EXPORT_CUTOFFS = [20]
-
-ACCURACY_METRICS_LIST = [
-    "PRECISION",
-    "RECALL",
-    "MAP",
-    "MRR",
-    "NDCG",
-    "F1",
-]
-BEYOND_ACCURACY_METRICS_LIST = [
-    "NOVELTY",
-    "DIVERSITY_MEAN_INTER_LIST",
-    "COVERAGE_ITEM",
-    "DIVERSITY_GINI",
-    "SHANNON_ENTROPY"
-]
-ALL_METRICS_LIST = [
-    *ACCURACY_METRICS_LIST,
-    *BEYOND_ACCURACY_METRICS_LIST,
-]
-
-
-ARTICLE_KNN_SIMILARITY_LIST: list[commons.T_SIMILARITY_TYPE] = [
-    "asymmetric",
-]
-ARTICLE_CUTOFF = [20]
-ARTICLE_ACCURACY_METRICS_LIST = [
-    "PRECISION",
-    "RECALL",
-    "MRR",
-    "NDCG",
-]
-ARTICLE_BEYOND_ACCURACY_METRICS_LIST = [
-    "NOVELTY",
-    "COVERAGE_ITEM",
-    "DIVERSITY_MEAN_INTER_LIST",
-    "DIVERSITY_GINI",
-]
-ARTICLE_ALL_METRICS_LIST = [
-    *ARTICLE_ACCURACY_METRICS_LIST,
-    *ARTICLE_BEYOND_ACCURACY_METRICS_LIST,
-]
-
 
 ####################################################################################################
 ####################################################################################################
-#                               Hyper-parameter tuning of Baselines                                #
+#                               Hyper-parameter tuning of Heuristic                                #
 ####################################################################################################
 ####################################################################################################
 def _run_impressions_heuristics_hyper_parameter_tuning(
@@ -205,21 +140,6 @@ def _run_impressions_heuristics_hyper_parameter_tuning(
         experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameter_tuning_parameters,
     )
 
-    logger_info = {
-        "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
-        "dataset": experiment_benchmark.benchmark.value,
-        "urm_test_shape": interactions_data_splits.sp_urm_test.shape,
-        "urm_train_shape": interactions_data_splits.sp_urm_train.shape,
-        "urm_validation_shape": interactions_data_splits.sp_urm_validation.shape,
-        "urm_train_and_validation_shape": interactions_data_splits.sp_urm_train_validation.shape,
-        "hyper_parameter_tuning_parameters": experiment_hyper_parameter_tuning_parameters.__repr__(),
-    }
-
-    logger.info(
-        f"Hyper-parameter tuning arguments:"
-        f"\n\t* {logger_info}"
-    )
-
     recommender_init_validation_args_kwargs = SearchInputRecommenderArgs(
         CONSTRUCTOR_POSITIONAL_ARGS=[],
         CONSTRUCTOR_KEYWORD_ARGS={
@@ -248,34 +168,87 @@ def _run_impressions_heuristics_hyper_parameter_tuning(
         EARLYSTOPPING_KEYWORD_ARGS={},
     )
 
-    search_single_case = SearchSingleCase(
-        recommender_class=experiment_recommender.recommender,
-        evaluator_validation=evaluators.validation,
-        evaluator_test=evaluators.test,
-        verbose=True,
+    hyper_parameter_search_space = attrs.asdict(
+        experiment_recommender.search_hyper_parameters()
     )
 
-    search_single_case.search(
-        cutoff_to_optimize=experiment_hyper_parameter_tuning_parameters.cutoff_to_optimize,
+    logger_info = {
+        "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
+        "dataset": experiment_benchmark.benchmark.value,
+        "urm_test_shape": interactions_data_splits.sp_urm_test.shape,
+        "urm_train_shape": interactions_data_splits.sp_urm_train.shape,
+        "urm_validation_shape": interactions_data_splits.sp_urm_validation.shape,
+        "urm_train_and_validation_shape": interactions_data_splits.sp_urm_train_validation.shape,
+        "hyper_parameter_tuning_parameters": repr(experiment_hyper_parameter_tuning_parameters),
+        "hyper_parameter_search_space": hyper_parameter_search_space,
+    }
 
-        evaluate_on_test=experiment_hyper_parameter_tuning_parameters.evaluate_on_test,
-
-        fit_hyperparameters_values={},
-
-        metric_to_optimize=experiment_hyper_parameter_tuning_parameters.metric_to_optimize,
-
-        output_file_name_root=experiment_file_name_root,
-        output_folder_path=experiments_folder_path,
-
-        recommender_input_args=recommender_init_validation_args_kwargs,
-        recommender_input_args_last_test=recommender_init_test_args_kwargs,
-        resume_from_saved=experiment_hyper_parameter_tuning_parameters.resume_from_saved,
-
-        save_metadata=experiment_hyper_parameter_tuning_parameters.save_metadata,
-        save_model=experiment_hyper_parameter_tuning_parameters.save_model,
-
-        terminate_on_memory_error=experiment_hyper_parameter_tuning_parameters.terminate_on_memory_error,
+    logger.info(
+        f"Hyper-parameter tuning arguments:"
+        f"\n\t* {logger_info}"
     )
+
+    if experiment_recommender.recommender in [FrequencyRecencyRecommender, RecencyRecommender]:
+        search_bayesian_skopt = SearchBayesianSkopt(
+            recommender_class=experiment_recommender.recommender,
+            evaluator_validation=evaluators.validation,
+            evaluator_test=evaluators.test,
+            verbose=True,
+        )
+        search_bayesian_skopt.search(
+            cutoff_to_optimize=experiment_hyper_parameter_tuning_parameters.cutoff_to_optimize,
+
+            evaluate_on_test=experiment_hyper_parameter_tuning_parameters.evaluate_on_test,
+
+            hyperparameter_search_space=hyper_parameter_search_space,
+
+            max_total_time=experiment_hyper_parameter_tuning_parameters.max_total_time,
+            metric_to_optimize=experiment_hyper_parameter_tuning_parameters.metric_to_optimize,
+
+            n_cases=experiment_hyper_parameter_tuning_parameters.num_cases,
+            n_random_starts=experiment_hyper_parameter_tuning_parameters.num_random_starts,
+
+            output_file_name_root=experiment_file_name_root,
+            output_folder_path=experiments_folder_path,
+
+            recommender_input_args=recommender_init_validation_args_kwargs,
+            recommender_input_args_last_test=recommender_init_test_args_kwargs,
+            resume_from_saved=experiment_hyper_parameter_tuning_parameters.resume_from_saved,
+
+            save_metadata=experiment_hyper_parameter_tuning_parameters.save_metadata,
+            save_model=experiment_hyper_parameter_tuning_parameters.save_model,
+
+            terminate_on_memory_error=experiment_hyper_parameter_tuning_parameters.terminate_on_memory_error,
+        )
+    else:
+        search_single_case = SearchSingleCase(
+            recommender_class=experiment_recommender.recommender,
+            evaluator_validation=evaluators.validation,
+            evaluator_test=evaluators.test,
+            verbose=True,
+        )
+
+        search_single_case.search(
+            cutoff_to_optimize=experiment_hyper_parameter_tuning_parameters.cutoff_to_optimize,
+
+            evaluate_on_test=experiment_hyper_parameter_tuning_parameters.evaluate_on_test,
+
+            fit_hyperparameters_values={},
+
+            metric_to_optimize=experiment_hyper_parameter_tuning_parameters.metric_to_optimize,
+
+            output_file_name_root=experiment_file_name_root,
+            output_folder_path=experiments_folder_path,
+
+            recommender_input_args=recommender_init_validation_args_kwargs,
+            recommender_input_args_last_test=recommender_init_test_args_kwargs,
+            resume_from_saved=experiment_hyper_parameter_tuning_parameters.resume_from_saved,
+
+            save_metadata=experiment_hyper_parameter_tuning_parameters.save_metadata,
+            save_model=experiment_hyper_parameter_tuning_parameters.save_model,
+
+            terminate_on_memory_error=experiment_hyper_parameter_tuning_parameters.terminate_on_memory_error,
+        )
 
 
 def run_impressions_heuristics_experiments(
