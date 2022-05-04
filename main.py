@@ -5,49 +5,67 @@ from recsys_framework_extensions.dask import configure_dask_cluster
 from recsys_framework_extensions.logging import get_logger
 from tap import Tap
 
-from experiments.baselines import run_baselines_experiments, run_baselines_folded, print_baselines_results
+from experiments.baselines import run_baselines_experiments, run_baselines_folded
 from experiments.commons import (
     create_necessary_folders,
     ExperimentCasesInterface,
     Benchmarks,
     HyperParameterTuningParameters,
     plot_popularity_of_datasets,
-    ensure_datasets_exist, RecommenderBaseline, RecommenderImpressions, EHyperParameterTuningParameters,
+    ensure_datasets_exist, RecommenderImpressions, EHyperParameterTuningParameters, RecommenderBaseline,
 )
-from experiments.heuristics import run_impressions_heuristics_experiments, print_impressions_heuristics_results
+
+from experiments.heuristics import run_impressions_heuristics_experiments
 from experiments.print_results import print_results
-from experiments.re_ranking import run_impressions_re_ranking_experiments, print_impressions_re_ranking_results
-from experiments.user_profiles import run_impressions_user_profiles_experiments, print_impressions_user_profiles_results
+from experiments.print_statistics import print_datasets_statistics
+from experiments.re_ranking import run_impressions_re_ranking_experiments, \
+    run_ablation_impressions_re_ranking_experiments
+from experiments.user_profiles import run_impressions_user_profiles_experiments
 
 
 class ConsoleArguments(Tap):
     create_datasets: bool = False
-    """TODO: fernando-debugger."""
+    """If the flag is included, then the script ensures that datasets exists, i.e., it downloads the datasets if 
+    possible and then processes the data to create the splits."""
 
     include_baselines: bool = False
-    """Include baselines in the hyper-parameter tuning"""
+    """If the flag is included, then the script tunes the hyper-parameters of the base recommenders, e.g., ItemKNN, 
+    UserKNN, SLIM ElasticNet."""
 
     include_folded: bool = False
-    """Include baselines in the hyper-parameter tuning"""
+    """If the flag is included, then the script folds the tuned matrix-factorization base recommenders. If the 
+    recommenders are not previously tuned, then this flag fails."""
 
-    include_impressions_heuristics: bool = False
-    """Include baselines in the hyper-parameter tuning"""
+    include_impressions_time_aware: bool = False
+    """If the flag is included, then the script tunes the hyper-parameter of time-aware impressions recommenders: 
+    Last Impressions, Recency, and Frequency & Recency. These recommenders do not need base recommenders to be tuned."""
 
     include_impressions_reranking: bool = False
-    """Include baselines in the hyper-parameter tuning"""
+    """If the flag is included, then the script tunes the hyper-parameter of re-ranking impressions recommenders: 
+    Cycling and Impressions Discounting. These recommenders need base recommenders to be tuned, if they aren't then 
+    the method fails."""
+
+    include_ablation_impressions_reranking: bool = False
+    """If the flag is included, then the script tunes the hyper-parameter of re-ranking impressions recommenders: 
+    Impressions Discounting with only impressions frequency. These recommenders need base recommenders to be tuned, 
+    if they aren't then the method fails."""
 
     include_impressions_profile: bool = False
-    """Include baselines in the hyper-parameter tuning"""
+    """If the flag is included, then the script tunes the hyper-parameter of impressions as user profiles recommenders. 
+    These recommenders need similarity-based recommenders to be tuned, if they aren't then the method fails."""
 
     print_evaluation_results: bool = False
-    """Print LaTeX tables containing the accuracy and beyond accuracy metrics of the hyper-parameter tuned 
-    recommenders."""
+    """Export to CSV and LaTeX the accuracy, beyond-accuracy, optimal hyper-parameters, and scalability metrics of 
+    all tuned recommenders."""
+
+    print_datasets_statistics: bool = False
+    """Export to CSV statistics on the different sparse matrices existing for each dataset."""
 
     plot_popularity_of_datasets: bool = False
     """Creates plots depicting the popularity of each dataset split."""
 
     send_email: bool = False
-    """Send a notification email via GMAIL when experiments finish."""
+    """Send a notification email via GMAIL when experiments start and finish."""
 
 
 ####################################################################################################
@@ -57,8 +75,8 @@ class ConsoleArguments(Tap):
 ####################################################################################################
 _TO_USE_BENCHMARKS = [
     Benchmarks.ContentWiseImpressions,
-    # Benchmarks.MINDSmall,
-    # Benchmarks.FINNNoSlates,
+    Benchmarks.MINDSmall,
+    Benchmarks.FINNNoSlates,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE = [
@@ -72,18 +90,13 @@ _TO_USE_RECOMMENDERS_BASELINE = [
     RecommenderBaseline.PURE_SVD,
     RecommenderBaseline.NMF,
     RecommenderBaseline.MF_BPR,
-    RecommenderBaseline.IALS,
-    RecommenderBaseline.FUNK_SVD,
-    RecommenderBaseline.ASYMMETRIC_SVD,
 
-    RecommenderBaseline.P3_ALPHA,
     RecommenderBaseline.RP3_BETA,
 
     RecommenderBaseline.SLIM_ELASTIC_NET,
     RecommenderBaseline.SLIM_BPR,
 
     RecommenderBaseline.LIGHT_FM,
-    RecommenderBaseline.MULT_VAE,
     RecommenderBaseline.EASE_R,
 ]
 
@@ -95,6 +108,10 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS = [
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING = [
     RecommenderImpressions.CYCLING,
+    RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
+]
+
+_TO_USE_RECOMMENDERS_ABLATION_IMPRESSIONS_RE_RANKING = [
     RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
 ]
 
@@ -140,14 +157,6 @@ if __name__ == '__main__':
 
     common_hyper_parameter_tuning_parameters = HyperParameterTuningParameters()
 
-    # Training statistics.
-    # CW - UserKNN - 3 GB Training - 250 sec/it
-    # CW - ItemKNN - 3 GB Training - 320 sec/it
-    # CW - PureSVD - 2 GB Training - 170 sec/it
-    # CW - EASE-R - 28 GB Training - 400 sec/it
-    # MINDSmall - EASE_R - 16GB Training - 80sec/it
-    # MINDLarge - EASE_R - 29.3GB Training - 450sec/it
-    # FINNNoSlates - EASE R - 12.4TB Training - No Training.
     experiments_interface_baselines = ExperimentCasesInterface(
         to_use_benchmarks=_TO_USE_BENCHMARKS,
         to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
@@ -164,6 +173,12 @@ if __name__ == '__main__':
         to_use_benchmarks=_TO_USE_BENCHMARKS,
         to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
         to_use_recommenders=_TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING,
+    )
+
+    experiments_ablation_impressions_re_ranking_interface = ExperimentCasesInterface(
+        to_use_benchmarks=_TO_USE_BENCHMARKS,
+        to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        to_use_recommenders=_TO_USE_RECOMMENDERS_ABLATION_IMPRESSIONS_RE_RANKING,
     )
 
     experiments_impressions_user_profiles_interface = ExperimentCasesInterface(
@@ -188,26 +203,29 @@ if __name__ == '__main__':
             experiment_cases_interface=experiments_interface_baselines,
         )
 
-    if input_flags.include_impressions_heuristics:
-        run_impressions_heuristics_experiments(
-            dask_interface=dask_interface,
-            experiment_cases_interface=experiments_impressions_heuristics_interface,
-        )
-
-    dask_interface.wait_for_jobs()
-
     if input_flags.include_folded:
         run_baselines_folded(
             dask_interface=dask_interface,
             experiment_cases_interface=experiments_interface_baselines,
         )
 
-    dask_interface.wait_for_jobs()
+    if input_flags.include_impressions_time_aware:
+        run_impressions_heuristics_experiments(
+            dask_interface=dask_interface,
+            experiment_cases_interface=experiments_impressions_heuristics_interface,
+        )
 
     if input_flags.include_impressions_reranking:
         run_impressions_re_ranking_experiments(
             dask_interface=dask_interface,
             re_ranking_experiment_cases_interface=experiments_impressions_re_ranking_interface,
+            baseline_experiment_cases_interface=experiments_interface_baselines,
+        )
+
+    if input_flags.include_ablation_impressions_reranking:
+        run_ablation_impressions_re_ranking_experiments(
+            dask_interface=dask_interface,
+            ablation_re_ranking_experiment_cases_interface=experiments_ablation_impressions_re_ranking_interface,
             baseline_experiment_cases_interface=experiments_interface_baselines,
         )
 
@@ -221,29 +239,23 @@ if __name__ == '__main__':
     dask_interface.wait_for_jobs()
 
     if input_flags.plot_popularity_of_datasets:
-        plot_popularity_of_datasets(experiments_interface=experiments_interface_baselines)
+        plot_popularity_of_datasets(
+            experiments_interface=experiments_interface_baselines
+        )
+
+    if input_flags.print_datasets_statistics:
+        print_datasets_statistics(
+            experiment_cases_interface=experiments_interface_baselines,
+        )
 
     if input_flags.print_evaluation_results:
         print_results(
             baseline_experiment_cases_interface=experiments_interface_baselines,
             impressions_heuristics_experiment_cases_interface=experiments_impressions_heuristics_interface,
+            ablation_re_ranking_experiment_cases_interface=experiments_ablation_impressions_re_ranking_interface,
             re_ranking_experiment_cases_interface=experiments_impressions_re_ranking_interface,
             user_profiles_experiment_cases_interface=experiments_impressions_user_profiles_interface,
         )
-        # print_baselines_results(
-        #     baseline_experiment_cases_interface=experiments_interface_baselines,
-        # )
-        # print_impressions_heuristics_results(
-        #     impressions_heuristics_experiment_cases_interface=experiments_impressions_heuristics_interface,
-        # )
-        # print_impressions_re_ranking_results(
-        #     baseline_experiment_cases_interface=experiments_interface_baselines,
-        #     re_ranking_experiment_cases_interface=experiments_impressions_re_ranking_interface
-        # )
-        # print_impressions_user_profiles_results(
-        #     baseline_experiment_cases_interface=experiments_interface_baselines,
-        #     user_profiles_experiment_cases_interface=experiments_impressions_user_profiles_interface,
-        # )
 
     if input_flags.send_email:
         from recsys_framework_extensions.data.io import ExtendedJSONEncoderDecoder

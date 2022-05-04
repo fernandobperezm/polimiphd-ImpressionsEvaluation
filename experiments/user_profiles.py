@@ -54,7 +54,10 @@ def _run_impressions_user_profiles_hyper_parameter_tuning(
     experiment_case_baseline: commons.ExperimentCase,
     experiment_baseline_similarity: Optional[str],
 ) -> None:
-    """TODO: fernando-debugger| complete.
+    """
+    Runs in a dask worker the hyper-parameter tuning of an impression as user profiles recommender.
+
+    This method should not be called from outside.
     """
 
     experiment_user_profiles_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
@@ -280,6 +283,12 @@ def run_impressions_user_profiles_experiments(
     user_profiles_experiment_cases_interface: commons.ExperimentCasesInterface,
     baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
 ) -> None:
+    """
+    Public method that instructs dask to run in dask workers the hyper-parameter tuning of the impressions as user
+    profiles recommenders.
+
+    Processes are always preferred than threads as the hyper-parameter tuning loop is probably not thread-safe.
+    """
     for experiment_case_user_profiles in user_profiles_experiment_cases_interface.experiment_cases:
         for experiment_case_baseline in baseline_experiment_cases_interface.experiment_cases:
             if (

@@ -44,7 +44,10 @@ commons.FOLDERS.add(HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR)
 def _run_impressions_heuristics_hyper_parameter_tuning(
     experiment_case: commons.ExperimentCase,
 ) -> None:
-    """TODO: fernando-debugger| complete.
+    """
+    Runs in a dask worker the hyper-parameter tuning of a time-aware impression recommender.
+
+    This method should not be called from outside.
     """
     
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[experiment_case.benchmark]
@@ -255,6 +258,10 @@ def run_impressions_heuristics_experiments(
     dask_interface: DaskInterface,
     experiment_cases_interface: commons.ExperimentCasesInterface,
 ) -> None:
+    """
+    Public method that instructs dask to run in dask workers the hyper-parameter tuning of time-aware recommenders.
+    Processes are always preferred than threads as the hyper-parameter tuning loop is probably not thread-safe.
+    """
     for experiment_case in experiment_cases_interface.experiment_cases:
         experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[experiment_case.benchmark]
         experiment_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[experiment_case.recommender]

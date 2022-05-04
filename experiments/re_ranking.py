@@ -52,7 +52,10 @@ def _run_ablation_impressions_re_ranking_hyper_parameter_tuning(
     experiment_baseline_similarity: Optional[str],
     try_folded_recommender: bool,
 ) -> None:
-    """TODO: fernando-debugger| complete.
+    """
+    Runs in a dask worker the hyper-parameter tuning of a re-ranking impression recommender for the ablation study.
+
+    This method should not be called from outside.
     """
     experiment_can_be_executed = (
         experiment_case_ablation_reranking.benchmark == experiment_case_baseline.benchmark
@@ -364,7 +367,10 @@ def _run_impressions_re_ranking_hyper_parameter_tuning(
     experiment_case_baseline: commons.ExperimentCase,
     experiment_baseline_similarity: Optional[str],
 ) -> None:
-    """TODO: fernando-debugger| complete.
+    """
+    Runs in a dask worker the hyper-parameter tuning of a re-ranking impression recommender.
+
+    This method should not be called from outside.
     """
 
     experiment_re_ranking_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
@@ -654,12 +660,20 @@ def run_impressions_re_ranking_experiments(
     re_ranking_experiment_cases_interface: commons.ExperimentCasesInterface,
     baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
 ) -> None:
+    """
+    Public method that instructs dask to run in dask workers the hyper-parameter tuning of the impressions discounting
+    recommenders.
+
+    Processes are always preferred than threads as the hyper-parameter tuning loop is probably not thread-safe.
+    """
     for experiment_case_reranking in re_ranking_experiment_cases_interface.experiment_cases:
         for experiment_case_baseline in baseline_experiment_cases_interface.experiment_cases:
-            if (
-                experiment_case_reranking.benchmark != experiment_case_baseline.benchmark
-                and experiment_case_reranking.hyper_parameter_tuning_parameters != experiment_case_baseline.hyper_parameter_tuning_parameters
-            ):
+            experiment_can_be_tested = (
+                experiment_case_reranking.benchmark == experiment_case_baseline.benchmark
+                and experiment_case_baseline.hyper_parameter_tuning_parameters == experiment_case_baseline.hyper_parameter_tuning_parameters
+            )
+
+            if not experiment_can_be_tested:
                 continue
 
             re_ranking_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
@@ -716,6 +730,12 @@ def run_ablation_impressions_re_ranking_experiments(
     ablation_re_ranking_experiment_cases_interface: commons.ExperimentCasesInterface,
     baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
 ) -> None:
+    """
+    Public method that instructs dask to run in dask workers the hyper-parameter tuning of the impressions discounting
+    recommenders for the ablation study.
+
+    Processes are always preferred than threads as the hyper-parameter tuning loop is probably not thread-safe.
+    """
     for experiment_case_ablation_reranking in ablation_re_ranking_experiment_cases_interface.experiment_cases:
         for experiment_case_baseline in baseline_experiment_cases_interface.experiment_cases:
             experiment_can_be_tested = (

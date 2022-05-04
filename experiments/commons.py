@@ -765,4 +765,3 @@ def get_feature_key_by_benchmark(
     )
 
     return feature_key
-

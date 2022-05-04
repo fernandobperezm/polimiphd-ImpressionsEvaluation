@@ -937,6 +937,9 @@ def print_results(
     ablation_re_ranking_experiment_cases_interface: commons.ExperimentCasesInterface,
     user_profiles_experiment_cases_interface: commons.ExperimentCasesInterface,
 ) -> None:
+    """
+    Public method that exports into CSV and LaTeX tables the evaluation metrics, hyper-parameters, and times.
+    """
     printed_experiments: set[tuple[commons.Benchmarks, commons.EHyperParameterTuningParameters]] = set()
 
     baseline_benchmarks = baseline_experiment_cases_interface.to_use_benchmarks
