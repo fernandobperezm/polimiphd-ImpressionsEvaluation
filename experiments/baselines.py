@@ -1,4 +1,3 @@
-import itertools
 import os
 import uuid
 from enum import Enum
@@ -6,7 +5,6 @@ from typing import Type, Optional, Any, cast, Sequence
 
 import Recommenders.Recommender_import_list as recommenders
 import attrs
-import numpy as np
 from HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
 from HyperparameterTuning.SearchBayesianSkopt import SearchBayesianSkopt
 from Recommenders.BaseMatrixFactorizationRecommender import BaseMatrixFactorizationRecommender
@@ -18,7 +16,6 @@ from recsys_framework_extensions.hyper_parameter_search import (
     run_hyper_parameter_search_collaborative,
 )
 from recsys_framework_extensions.logging import get_logger
-from recsys_framework_extensions.plotting import generate_accuracy_and_beyond_metrics_latex
 
 import experiments.commons as commons
 from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
@@ -38,18 +35,6 @@ BASE_FOLDER = os.path.join(
     "{evaluation_strategy}",
     "",
 )
-ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
-    BASE_FOLDER,
-    "latex",
-    "article-accuracy_and_beyond_accuracy",
-    "",
-)
-ACCURACY_METRICS_BASELINES_LATEX_DIR = os.path.join(
-    BASE_FOLDER,
-    "latex",
-    "accuracy_and_beyond_accuracy",
-    "",
-)
 HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
     BASE_FOLDER,
     "experiments",
@@ -57,74 +42,7 @@ HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
 )
 
 commons.FOLDERS.add(BASE_FOLDER)
-commons.FOLDERS.add(ACCURACY_METRICS_BASELINES_LATEX_DIR)
-commons.FOLDERS.add(ARTICLE_ACCURACY_METRICS_BASELINES_LATEX_DIR)
 commons.FOLDERS.add(HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR)
-
-####################################################################################################
-####################################################################################################
-#                                REPRODUCIBILITY VARIABLES                            #
-####################################################################################################
-####################################################################################################
-RESULT_EXPORT_CUTOFFS = [20]
-
-ACCURACY_METRICS_LIST = [
-    "PRECISION",
-    "RECALL",
-    "MAP",
-    "MRR",
-    "NDCG",
-    "F1",
-]
-BEYOND_ACCURACY_METRICS_LIST = [
-    "NOVELTY",
-    "DIVERSITY_MEAN_INTER_LIST",
-    "COVERAGE_ITEM",
-    "DIVERSITY_GINI",
-    "SHANNON_ENTROPY"
-]
-ALL_METRICS_LIST = [
-    *ACCURACY_METRICS_LIST,
-    *BEYOND_ACCURACY_METRICS_LIST,
-]
-
-
-ARTICLE_BASELINES: list[Type[BaseRecommender]] = [
-    recommenders.Random,
-    recommenders.TopPop,
-    recommenders.UserKNNCFRecommender,
-    recommenders.ItemKNNCFRecommender,
-    recommenders.RP3betaRecommender,
-    recommenders.PureSVDRecommender,
-    recommenders.NMFRecommender,
-    recommenders.IALSRecommender,
-    recommenders.SLIMElasticNetRecommender,
-    recommenders.SLIM_BPR_Cython,
-    recommenders.MatrixFactorization_BPR_Cython,
-    recommenders.LightFMCFRecommender,
-    recommenders.MultVAERecommender,
-    # recommenders.EASE_R_Recommender,
-]
-ARTICLE_KNN_SIMILARITY_LIST: list[commons.T_SIMILARITY_TYPE] = [
-    "asymmetric",
-]
-ARTICLE_CUTOFF = [20]
-ARTICLE_ACCURACY_METRICS_LIST = [
-    "PRECISION",
-    "RECALL",
-    "MRR",
-    "NDCG",
-]
-ARTICLE_BEYOND_ACCURACY_METRICS_LIST = [
-    "NOVELTY",
-    "COVERAGE_ITEM",
-    "DIVERSITY_MEAN_INTER_LIST",
-    "DIVERSITY_GINI",
-]
-ARTICLE_ALL_METRICS_LIST = [
-    *ARTICLE_ACCURACY_METRICS_LIST,
-    *ARTICLE_BEYOND_ACCURACY_METRICS_LIST,
-]
 
 
 ####################################################################################################
@@ -138,6 +56,10 @@ def load_best_hyper_parameters(
     hyper_parameter_tuning_parameters: commons.HyperParameterTuningParameters,
     similarity: Optional[str],
 ) -> dict[Any, Any]:
+    """
+    Loads the dictionary of best hyper-parameters for a given recommender. Currently, not used and untested.
+    """
+
     tuned_recommender_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
         benchmark=benchmark.value,
         evaluation_strategy=hyper_parameter_tuning_parameters.evaluation_strategy.value,
@@ -179,8 +101,7 @@ def load_trained_recommender(
     """Loads to memory an already-trained recommender.
 
     This function loads the requested recommender (`experiment_recommender`) on disk. It can load a folded-in
-    or the original version of the recommender.
-
+    or the original version of the recommender. If the recommender cannot be loaded, then it returns None.
     """
     if TrainedRecommenderType.TRAIN == model_type:
         urm_train = data_splits.sp_urm_train.copy()
@@ -265,7 +186,11 @@ def _run_baselines_folded_hyper_parameter_tuning(
     experiment_case: commons.ExperimentCase,
     similarity: str,
 ) -> None:
-    """TODO: fernando-debugger| complete.
+    """
+    Runs in a dask worker the hyper-parameter tuning of folded recommender. This method return early if the base
+    recommender is not tuned or cannot be folded, e.g., if its a similarity-based recommender.
+
+    This method should not be called from outside.
     """
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[experiment_case.benchmark]
     experiment_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[experiment_case.recommender]
@@ -441,7 +366,10 @@ def _run_baselines_folded_hyper_parameter_tuning(
 def _run_baselines_hyper_parameter_tuning(
     experiment_case: commons.ExperimentCase,
 ) -> None:
-    """TODO: fernando-debugger| complete.
+    """
+    Runs in a dask worker the hyper-parameter tuning of a base recommender.
+
+    This method should not be called from outside.
     """
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[experiment_case.benchmark]
     experiment_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[experiment_case.recommender]
@@ -527,6 +455,12 @@ def run_baselines_experiments(
     dask_interface: DaskInterface,
     experiment_cases_interface: commons.ExperimentCasesInterface,
 ) -> None:
+    """
+    Public method that tells Dask to run the hyper-parameter tuning of recommenders. This function instructs Dask to
+    execute the hyper-parameter tuning of each recommender in a separate worker. Processes should be always preferred
+    instead of threads, as the hyper-parameter tuning loops are not thread-safe. Validations are not done in case of
+    debug.
+    """
     for experiment_case in experiment_cases_interface.experiment_cases:
         experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[experiment_case.benchmark]
         experiment_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[experiment_case.recommender]
@@ -554,6 +488,12 @@ def run_baselines_folded(
     dask_interface: DaskInterface,
     experiment_cases_interface: commons.ExperimentCasesInterface,
 ) -> None:
+    """
+    Public method that tells Dask to run the hyper-parameter tuning of folded recommenders. This function instructs
+    Dask to execute the hyper-parameter tuning of each recommender in a separate worker. Processes should be always
+    preferred instead of threads, as the hyper-parameter tuning loops are not thread-safe. Validations are not done
+    in case of debug.
+    """
     for experiment_case in experiment_cases_interface.experiment_cases:
         experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[experiment_case.benchmark]
         experiment_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[experiment_case.recommender]

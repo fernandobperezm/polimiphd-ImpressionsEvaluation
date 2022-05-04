@@ -122,6 +122,9 @@ T_SAVE_MODEL = Literal["all", "best", "last"]
 
 @attrs.define(frozen=True, kw_only=True)
 class HyperParameterTuningParameters:
+    """
+    Class that contains all the configuration to run the hyper-parameter tuning of any recommender.
+    """
     evaluation_strategy: EvaluationStrategy = attrs.field(default=EvaluationStrategy.LEAVE_LAST_K_OUT)
     reproducibility_seed: int = attrs.field(default=1234567890)
     max_total_time: int = attrs.field(default=60 * 60 * 24 * 14)
@@ -490,13 +493,13 @@ MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS = {
 #             Common Methods.
 ####################################################################################################
 ####################################################################################################
-
-
-# Should be called from main.py
 def create_necessary_folders(
     benchmarks: list[Benchmarks],
     evaluation_strategies: list[EvaluationStrategy]
 ):
+    """
+    Public method to create the results' folder structure needed by the framework.
+    """
     for benchmark, evaluation_strategy in zip(benchmarks, evaluation_strategies):
         for folder in FOLDERS:
             os.makedirs(
@@ -512,6 +515,9 @@ def get_reader_from_benchmark(
     benchmark_config: object,
     benchmark: Benchmarks,
 ) -> DataReader:
+    """
+    Returns a `DataReader` instance class that lets the user to load a dataset from disk.
+    """
     if Benchmarks.ContentWiseImpressions == benchmark:
         benchmark_config = cast(
             ContentWiseImpressionsConfig,
@@ -554,6 +560,10 @@ def get_evaluators(
     data_splits: InteractionsDataSplits,
     experiment_hyper_parameter_tuning_parameters: HyperParameterTuningParameters,
 ) -> Evaluators:
+    """
+    Encapsulates the configures of `Evaluators` object so the different methods that do hyper-parameter
+    tuning do not have to do it.
+    """
     if experiment_hyper_parameter_tuning_parameters.evaluation_percentage_ignore_users is None:
         users_to_exclude_validation = None
     else:
@@ -613,6 +623,10 @@ def get_evaluators(
 def ensure_datasets_exist(
     experiment_cases_interface: ExperimentCasesInterface,
 ) -> None:
+    """
+    Public method that will try to load a dataset. If the splits are not created then it will create the
+    splits accordingly. The dataset processing parameters are given by the `config` on the benchmark mappers.
+    """
     for benchmark in experiment_cases_interface.benchmarks:
         experiment_benchmark = MAPPER_AVAILABLE_BENCHMARKS[benchmark]
 
@@ -632,6 +646,9 @@ def ensure_datasets_exist(
 def plot_popularity_of_datasets(
     experiments_interface: ExperimentCasesInterface,
 ) -> None:
+    """
+    Public method that will plot the popularity of data splits. Currently untested.
+    """
     from Utils.plot_popularity import plot_popularity_bias
 
     for experiment_case in experiments_interface.experiment_cases:
@@ -724,7 +741,10 @@ def get_feature_key_by_benchmark(
     ],
     impressions_feature_split: ImpressionsFeaturesSplit,
 ) -> str:
-
+    """
+    Public method that loads an impressions feature by the dataset, evaluation strategy, the feature name,
+    and the feature column if it's the case.
+    """
     valid_enum = (
         benchmark in MAPPER_AVAILABLE_IMPRESSION_FEATURES
         and impressions_feature in MAPPER_AVAILABLE_IMPRESSION_FEATURES[benchmark]
