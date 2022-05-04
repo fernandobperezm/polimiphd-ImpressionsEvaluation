@@ -131,10 +131,10 @@ class HyperParameterTuningParameters:
     num_random_starts: int = attrs.field(default=int(50 / 3), validator=[attrs.validators.instance_of(int)])
     knn_similarity_types: list[T_SIMILARITY_TYPE] = attrs.field(default=[
         "cosine",
-        "dice",  # TODO: fernando-debugger put back again
-        "jaccard",  # TODO: fernando-debugger put back again
-        "asymmetric",  # TODO: fernando-debugger put back again
-        "tversky",  # TODO: fernando-debugger put back again
+        "dice",
+        "jaccard",
+        "asymmetric",
+        "tversky",
     ])
     resume_from_saved: bool = attrs.field(default=True)
     evaluate_on_test: T_EVALUATE_ON_TEST = attrs.field(default="last")
@@ -427,48 +427,56 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
     RecommenderFolded.FOLDED: ExperimentRecommender(
         recommender=FoldedMatrixFactorizationRecommender,
         search_hyper_parameters=SearchHyperParametersFoldedMatrixFactorizationRecommender,
-        priority=10,
+        priority=40,
     ),
 
     # IMPRESSIONS APPROACHES: HEURISTIC
     RecommenderImpressions.LAST_IMPRESSIONS: ExperimentRecommender(
         recommender=LastImpressionsRecommender,
         search_hyper_parameters=SearchHyperParametersLastImpressionsRecommender,
-        priority=10,
+        priority=50,
     ),
     RecommenderImpressions.FREQUENCY_RECENCY: ExperimentRecommender(
         recommender=FrequencyRecencyRecommender,
         search_hyper_parameters=SearchHyperParametersFrequencyRecencyRecommender,
-        priority=10,
+        priority=50,
     ),
     RecommenderImpressions.RECENCY: ExperimentRecommender(
         recommender=RecencyRecommender,
         search_hyper_parameters=SearchHyperParametersRecencyRecommender,
-        priority=10,
+        priority=50,
     ),
 
     # IMPRESSIONS APPROACHES: RE RANKING
     RecommenderImpressions.CYCLING: ExperimentRecommender(
         recommender=CyclingRecommender,
         search_hyper_parameters=SearchHyperParametersCyclingRecommender,
-        priority=20,
+        priority=60,
     ),
     RecommenderImpressions.IMPRESSIONS_DISCOUNTING: ExperimentRecommender(
         recommender=ImpressionsDiscountingRecommender,
         search_hyper_parameters=SearchHyperParametersImpressionsDiscountingRecommender,
-        priority=30,
+        priority=70,
     ),
 
     # IMPRESSIONS APPROACHES: USER PROFILES
     RecommenderImpressions.USER_WEIGHTED_USER_PROFILE: ExperimentRecommender(
         recommender=UserWeightedUserProfileRecommender,
         search_hyper_parameters=SearchHyperParametersWeightedUserProfileRecommender,
-        priority=20,
+        priority=65,
     ),
     RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE: ExperimentRecommender(
         recommender=ItemWeightedUserProfileRecommender,
         search_hyper_parameters=SearchHyperParametersWeightedUserProfileRecommender,
-        priority=30,
+        priority=70,
+    ),
+}
+
+MAPPER_ABLATION_AVAILABLE_RECOMMENDERS = {
+    RecommenderImpressions.IMPRESSIONS_DISCOUNTING: ExperimentRecommender(
+        recommender=ImpressionsDiscountingRecommender,
+        search_hyper_parameters=SearchHyperParametersImpressionsDiscountingRecommender,
+        priority=80,
     ),
 }
 
@@ -615,7 +623,7 @@ def ensure_datasets_exist(
 
         loaded_dataset = benchmark_reader.dataset
 
-        print(f"{benchmark_reader.config=}")
+        print(f"{experiment_benchmark.config=}")
         print(f"{loaded_dataset.interactions=}")
         print(f"{loaded_dataset.impressions=}")
         print(f"{loaded_dataset.sparse_matrices_available_features()=}")

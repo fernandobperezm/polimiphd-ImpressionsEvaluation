@@ -175,7 +175,7 @@ def load_trained_recommender(
     similarity: Optional[str],
     model_type: TrainedRecommenderType,
     try_folded_recommender: bool,
-) -> BaseRecommender:
+) -> Optional[BaseRecommender]:
     """Loads to memory an already-trained recommender.
 
     This function loads the requested recommender (`experiment_recommender`) on disk. It can load a folded-in
@@ -183,10 +183,10 @@ def load_trained_recommender(
 
     """
     if TrainedRecommenderType.TRAIN == model_type:
-        urm_train = data_splits.sp_urm_train
+        urm_train = data_splits.sp_urm_train.copy()
         file_name_postfix = "best_model"
     elif TrainedRecommenderType.TRAIN_VALIDATION == model_type:
-        urm_train = data_splits.sp_urm_train_validation
+        urm_train = data_splits.sp_urm_train_validation.copy()
         file_name_postfix = "best_model_last"
     else:
         raise ValueError(
@@ -206,37 +206,57 @@ def load_trained_recommender(
         evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy.value,
     )
 
-    trained_recommender_instance = experiment_recommender.recommender(
-        URM_train=urm_train.copy(),
-    )
-    trained_recommender_instance.load_model(
-        folder_path=folder_path,
-        file_name=f"{recommender_name}_{file_name_postfix}",
-    )
-    trained_recommender_instance.RECOMMENDER_NAME = recommender_name
-
-    can_recommender_be_folded = FoldedMatrixFactorizationRecommender.can_recommender_be_folded(
-        recommender_instance=trained_recommender_instance,
-    )
-    if try_folded_recommender and can_recommender_be_folded:
-        trained_recommender_instance = cast(
-            BaseMatrixFactorizationRecommender,
-            trained_recommender_instance,
+    try:
+        trained_recommender_instance = experiment_recommender.recommender(
+            URM_train=urm_train,
         )
-
-        file_name_prefix = FoldedMatrixFactorizationRecommender.RECOMMENDER_NAME.replace("Recommender", "")
-        file_name_prefix = f"{file_name_prefix}_{experiment_recommender.recommender.RECOMMENDER_NAME}"
-
-        trained_folded_recommender_instance = FoldedMatrixFactorizationRecommender(
-            urm_train=urm_train.copy(),
-            trained_recommender=trained_recommender_instance,
-        )
-        trained_folded_recommender_instance.load_model(
+        trained_recommender_instance.load_model(
             folder_path=folder_path,
-            file_name=f"{file_name_prefix}_{file_name_postfix}",
+            file_name=f"{recommender_name}_{file_name_postfix}",
+        )
+        trained_recommender_instance.RECOMMENDER_NAME = recommender_name
+    except:
+        logger.warning(
+            f"Could not load the recommender {recommender_name} for the benchmark {experiment_benchmark.benchmark} "
+            f"model type {model_type} similarity {similarity} and the following hyper-parameters"
+            f" {experiment_hyper_parameter_tuning_parameters} "
+        )
+        return None
+
+    if try_folded_recommender:
+        can_recommender_be_folded = FoldedMatrixFactorizationRecommender.can_recommender_be_folded(
+            recommender_instance=trained_recommender_instance,
         )
 
-        return trained_folded_recommender_instance
+        if can_recommender_be_folded:
+            trained_recommender_instance = cast(
+                BaseMatrixFactorizationRecommender,
+                trained_recommender_instance,
+            )
+
+            file_name_prefix = FoldedMatrixFactorizationRecommender.RECOMMENDER_NAME.replace("Recommender", "")
+            file_name_prefix = f"{file_name_prefix}_{experiment_recommender.recommender.RECOMMENDER_NAME}"
+
+            try:
+                trained_folded_recommender_instance = FoldedMatrixFactorizationRecommender(
+                    urm_train=urm_train.copy(),
+                    trained_recommender=trained_recommender_instance,
+                )
+                trained_folded_recommender_instance.load_model(
+                    folder_path=folder_path,
+                    file_name=f"{file_name_prefix}_{file_name_postfix}",
+                )
+            except:
+                logger.warning(
+                    f"Could not load the the folded recommender {file_name_prefix} for the benchmark"
+                    f" {experiment_benchmark.benchmark} model type {model_type} similarity {similarity} and the"
+                    f" following hyper-parameters {experiment_hyper_parameter_tuning_parameters} "
+                )
+                return None
+
+            return trained_folded_recommender_instance
+        else:
+            return None
     else:
         return trained_recommender_instance
 
@@ -284,6 +304,15 @@ def _run_baselines_folded_hyper_parameter_tuning(
         model_type=TrainedRecommenderType.TRAIN_VALIDATION,
         try_folded_recommender=False,
     )
+
+    if baseline_recommender_trained_train is None or baseline_recommender_trained_train_validation is None:
+        # We require a recommender that is already optimized.
+        logger.warning(
+            f"Early-returning from {_run_baselines_folded_hyper_parameter_tuning.__name__}. Could not load trained "
+            f"recommenders for {experiment_recommender.recommender} with the benchmark "
+            f"{experiment_benchmark.benchmark}. "
+        )
+        return
 
     if not FoldedMatrixFactorizationRecommender.can_recommender_be_folded(
         recommender_instance=baseline_recommender_trained_train
