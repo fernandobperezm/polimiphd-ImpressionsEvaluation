@@ -82,7 +82,6 @@ _TO_USE_BENCHMARKS = [
 _TO_USE_RECOMMENDERS_BASELINE = [
     RecommenderBaseline.RANDOM,
     RecommenderBaseline.TOP_POPULAR,
-    RecommenderBaseline.GLOBAL_EFFECTS,
 
     RecommenderBaseline.USER_KNN,
     RecommenderBaseline.ITEM_KNN,
@@ -203,11 +202,15 @@ if __name__ == '__main__':
             experiment_cases_interface=experiments_interface_baselines,
         )
 
+    dask_interface.wait_for_jobs()
+
     if input_flags.include_folded:
         run_baselines_folded(
             dask_interface=dask_interface,
             experiment_cases_interface=experiments_interface_baselines,
         )
+
+    dask_interface.wait_for_jobs()
 
     if input_flags.include_impressions_time_aware:
         run_impressions_heuristics_experiments(
