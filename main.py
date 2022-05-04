@@ -129,29 +129,6 @@ if __name__ == '__main__':
 
     logger = get_logger(__name__)
 
-    if input_flags.send_email:
-        from recsys_framework_extensions.data.io import ExtendedJSONEncoderDecoder
-        from recsys_framework_extensions.email.gmail import GmailEmailNotifier
-        import json
-
-        GmailEmailNotifier.send_email(
-            subject="[Impressions Datasets] Execution Started",
-            body=f"""An execution with the following properties just started:
-            \n\t* Input Flags: {json.dumps(input_flags.as_dict(), default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Benchmarks: {json.dumps(_TO_USE_BENCHMARKS, default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Hyper-parameters: {json.dumps(_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS, default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Baselines: {json.dumps(_TO_USE_RECOMMENDERS_BASELINE, default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Impressions Heuristics: {json.dumps(_TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS, default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Impressions Re Ranking: {json.dumps(_TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING, default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Impressions User Profiles: {json.dumps(_TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES, default=ExtendedJSONEncoderDecoder.to_json)} 
-            """,
-            sender="mistermaurera@gmail.com",
-            receivers=[
-                "fperezmaurera@gmail.com",
-                "fernandobenjamin.perez@polimi.it",
-            ],
-        )
-
     dask_interface = configure_dask_cluster()
 
     common_hyper_parameter_tuning_parameters = HyperParameterTuningParameters()
@@ -258,29 +235,6 @@ if __name__ == '__main__':
             ablation_re_ranking_experiment_cases_interface=experiments_ablation_impressions_re_ranking_interface,
             re_ranking_experiment_cases_interface=experiments_impressions_re_ranking_interface,
             user_profiles_experiment_cases_interface=experiments_impressions_user_profiles_interface,
-        )
-
-    if input_flags.send_email:
-        from recsys_framework_extensions.data.io import ExtendedJSONEncoderDecoder
-        from recsys_framework_extensions.email.gmail import GmailEmailNotifier
-        import json
-
-        GmailEmailNotifier.send_email(
-            subject="[Impressions Datasets] Execution finished",
-            body=f"""An execution with the following properties just finished:
-            \n\t* Input Flags: {json.dumps(input_flags.as_dict(), default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Benchmarks: {json.dumps(_TO_USE_BENCHMARKS, default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Hyper-parameters: {json.dumps(_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS, default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Baselines: {json.dumps(_TO_USE_RECOMMENDERS_BASELINE, default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Impressions Heuristics: {json.dumps(_TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS, default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Impressions Re Ranking: {json.dumps(_TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING, default=ExtendedJSONEncoderDecoder.to_json)} 
-            \n\t* Impressions User Profiles: {json.dumps(_TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES, default=ExtendedJSONEncoderDecoder.to_json)} 
-            """,
-            sender="mistermaurera@gmail.com",
-            receivers=[
-                "fperezmaurera@gmail.com",
-                "fernandobenjamin.perez@polimi.it",
-            ],
         )
 
     dask_interface.close()

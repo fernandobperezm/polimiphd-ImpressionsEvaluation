@@ -71,7 +71,7 @@ from recsys_framework_extensions.data.splitter import (
 from recsys_framework_extensions.decorators import timeit
 from recsys_framework_extensions.decorators import typed_cache
 from recsys_framework_extensions.evaluation import EvaluationStrategy
-from recsys_framework_extensions.hashing import compute_sha256_hash_from_object_repr
+from recsys_framework_extensions.hashing.mixins import MixinSHA256Hash
 from recsys_framework_extensions.http import download_remote_file
 from recsys_framework_extensions.logging import get_logger
 from tqdm import tqdm
@@ -223,12 +223,15 @@ class MINDSplits(NamedTuple):
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class MINDSmallConfig:
+class MINDSmallConfig(MixinSHA256Hash):
+    """
+    Class that holds the configuration used by the different data reader classes to read the raw data, process,
+    split, and compute features on it.
+    """
+
     data_folder = os.path.join(
         ".", "data", "MIND-SMALL",
     )
-
-    sha256_hash: str = ""
 
     first_str_timestamp_of_dataset_collection = "10/12/2019 12:00:01 AM"
 
@@ -301,9 +304,6 @@ class MINDSmallConfig:
             attrs.validators.in_([MINDVariant.SMALL]),
         ]
     )
-
-    def __attrs_post_init__(self):
-        object.__setattr__(self, "sha256_hash", compute_sha256_hash_from_object_repr(obj=self))
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
@@ -788,9 +788,7 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
         config: MINDSmallConfig,
     ):
         self.config = config
-        self.config_hash = compute_sha256_hash_from_object_repr(
-            obj=config
-        )
+        self.config_hash = config.sha256_hash
 
         self.pandas_raw_data = PandasMINDRawData(
             config=config,
@@ -1588,9 +1586,8 @@ class MINDReader(DatasetConfigBackupMixin, DataReader):
         super().__init__()
 
         self.config = config
-        self.config_hash = compute_sha256_hash_from_object_repr(
-            obj=config
-        )
+        self.config_hash = config.sha256_hash
+
         self.data_loader_processed = PandasMINDProcessedData(
             config=config,
         )
@@ -1671,13 +1668,9 @@ class MINDReader(DatasetConfigBackupMixin, DataReader):
 
 
 if __name__ == "__main__":
-    configs = [
-        MINDSmallConfig(),
-        # MINDLargeConfig(),
-    ]
+    config = MINDSmallConfig()
 
-    for config in configs:
-        data_reader = MINDReader(
-            config=config,
-        )
-        dataset = data_reader.dataset
+    data_reader = MINDReader(
+        config=config,
+    )
+    dataset = data_reader.dataset

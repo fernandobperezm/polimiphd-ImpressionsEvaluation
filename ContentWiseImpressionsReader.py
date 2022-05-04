@@ -1,26 +1,7 @@
 """ ContentWiseImpressionsReader.py
-This module reads the small or the large version of the Microsoft News ExperimentCase (ContentWiseImpressions).
+This module reads, processes, splits, creates impressiosn features, and saves into disk the ContentWiseImpressions
+dataset.
 
-Notes
------
-TODO: fernando-debugger. 
-Columns of the dataset
-    Impression ID
-        ContentWiseImpressions ExperimentCase identifier for the impression. THEY DO NOT COME IN ORDER, i.e., a higher impression ID
-        does not mean that the impression occurred later. See user "U1000" where impression "86767" comes first than
-        impression "46640", so do not rely on impression reproducibility.pyid to partition the dataset. Also, partition id is shuffled
-        across users, so two consecutive impression ids might refer to different users.
-    History
-        A column telling the previous interactions_exploded of users before the collection of data, i.e.,
-        interactions_exploded that happened before the dataset was created and before the collection window for the
-        dataset. There is no way to match any interaction here with a timestamp or impression. The paper mentions the
-        history is sorted by order of interactions_exploded, i.e., the first element is the first click of the user,
-        the second element is the second, and so on.
-    Impressions
-        A column telling the impressions and possible interactions_exploded that users had with that impression. A user
-        may have more than one interaction for a given impression. It is stored as a :class:`str` and with the following
-        format "NXXXX-Y" where XXXX are digits and represent the item id. Y is 0 or 1 and tells if the user interacted
-        or not with the item NXXXX in the impression.
 """
 import functools
 import json
@@ -37,8 +18,8 @@ from numba import jit
 from recsys_framework_extensions.data.dataset import BaseDataset
 from recsys_framework_extensions.data.features import extract_frequency_user_item, extract_last_seen_user_item, \
     extract_position_user_item, extract_timestamp_user_item
-from recsys_framework_extensions.data.mixins import ParquetDataMixin, DaskParquetDataMixin, DatasetStatisticsMixin, \
-    SparseDataMixin, DatasetConfigBackupMixin
+from recsys_framework_extensions.data.mixins import ParquetDataMixin, DaskParquetDataMixin, SparseDataMixin, \
+    DatasetConfigBackupMixin
 from recsys_framework_extensions.data.reader import DataReader
 from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe
 from recsys_framework_extensions.data.splitter import (
@@ -49,7 +30,7 @@ from recsys_framework_extensions.data.splitter import (
 )
 from recsys_framework_extensions.decorators import typed_cache, timeit
 from recsys_framework_extensions.evaluation import EvaluationStrategy
-from recsys_framework_extensions.hashing import compute_sha256_hash_from_object_repr
+from recsys_framework_extensions.hashing.mixins import MixinSHA256Hash
 from recsys_framework_extensions.logging import get_logger
 from tqdm import tqdm
 
@@ -105,12 +86,15 @@ class ContentWiseImpressionsVariant(Enum):
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class ContentWiseImpressionsConfig:
+class ContentWiseImpressionsConfig(MixinSHA256Hash):
+    """
+    Class that holds the configuration used by the different data reader classes to read the raw data, process,
+    split, and compute features on it.
+    """
+
     data_folder = os.path.join(
         ".", "data", "ContentWiseImpressions",
     )
-
-    sha256_hash: str = ""
 
     num_interaction_records = 10_457_810
     num_impression_records = 307_453
@@ -178,14 +162,9 @@ class ContentWiseImpressionsConfig:
                 f"Valid values are {list(ContentWiseImpressionsVariant)}"
             )
 
-        object.__setattr__(self, "sha256_hash", compute_sha256_hash_from_object_repr(obj=self))
-
 
 class ContentWiseImpressionsRawData(DaskParquetDataMixin):
     """Class that reads the 'raw' ContentWiseImpressionsContentWiseImpressions data from disk.
-
-    We refer to raw data as the original representation of the data,
-    without cleaning or much processing. The dataset originally has XYZ-fernando-debugger data points.
     """
 
     def __init__(
@@ -367,6 +346,9 @@ class PandasContentWiseImpressionsRawData(ParquetDataMixin):
 
 
 class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
+    """
+    Class that processes the data and creates the splits
+    """
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -444,10 +426,6 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
             to_pandas_func=self._timestamp_splits_to_pandas,
         )
 
-        # df_train = df_train.astype(dtype=self.config.pandas_dtypes)
-        # df_validation = df_validation.astype(dtype=self.config.pandas_dtypes)
-        # df_test = df_test.astype(dtype=self.config.pandas_dtypes)
-
         df_train = df_train.astype(dtype={"user_id": np.int32, "item_id": np.int32})
         df_validation = df_validation.astype(dtype={"user_id": np.int32, "item_id": np.int32})
         df_train_validation = df_train_validation.astype(dtype={"user_id": np.int32, "item_id": np.int32})
@@ -516,25 +494,6 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
         }
 
     def _filtered_to_pandas(self) -> pd.DataFrame:
-        """
-
-        Notes
-        -----
-        The main dataframe, to which all filters are applied, is `df_interactions` given that
-        `df_interactions_condensed` as the interactions in a "condensed" format (user_id, list[item_id]) instead of
-        tuple format (user_id, item_id). `df_interaction` has interactions in tuple format.
-
-        The main issue with this is that `df_interaction` *does not have unique indices*, given that it is
-        an exploded version of `df_interactions_condensed`.
-
-        What we do to avoid filtering problems is that we first reset the index of `df_interactions_exploded` without
-        dropping the index column, then we apply all filters to it, and then set the index again to be the
-        previously-reset index column.
-
-        After this, we can ensure that the set of indices values are the same across the three datasets and when we
-        filter datasets by their indices we are sure that we're doing the filtering correctly.
-        """
-
         logger.info(
             f"Filtering data sources (interactions, impressions, metadata)."
         )
@@ -610,6 +569,9 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
 
 
 class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBackupMixin):
+    """
+    Class that computes the impressions features on the splits created by previous data readers.
+    """
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -828,6 +790,9 @@ class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, Data
 
 
 class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, DatasetConfigBackupMixin):
+    """
+    Class that computes the impressions features on the splits created by previous data readers.
+    """
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -1253,6 +1218,10 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
 
 
 class ContentWiseImpressionsReader(DatasetConfigBackupMixin, DataReader):
+    """
+    Class that collects all dataframes and sparse matrices created by the other classes and converts them into a
+    dataset by saving these artifacts to disk.
+    """
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -1329,231 +1298,7 @@ class ContentWiseImpressionsReader(DatasetConfigBackupMixin, DataReader):
         )
 
 
-# class ContentWiseImpressionsStatistics(DatasetStatisticsMixin):
-#     def __init__(
-#         self,
-#         reader: ContentWiseImpressionsReader,
-#         config: ContentWiseImpressionsConfig,
-#     ):
-#         self.config = config
-#         self.reader = reader
-#         self.processed_data_reader = reader.processed_data_loader
-#         self.raw_data_reader = reader.processed_data_loader.pandas_raw_data
-#
-#         self.statistics_folder = os.path.join(
-#             self.config.data_folder, "statistics", self.config.variant.value, self.config.sha256_hash, "",
-#         )
-#         self.statistics_file_name = "statistics.zip"
-#
-#         self.users_column = self.reader.users_column
-#         self.items_column = self.reader.items_column
-#
-#         self.columns_for_unique = [
-#             "user_id",
-#             "item_id",
-#             "series_id",
-#             "episode_number",
-#             "series_length",
-#             "item_type",
-#             "impression_id",
-#             "interaction_type",
-#             "vision_factor",
-#             "explicit_rating",
-#             "num_impressions",
-#             "position_interactions",
-#             "num_interacted_items",
-#         ]
-#         self.columns_for_profile_length = [
-#             "user_id",
-#             "item_id",
-#             "series_id",
-#             "episode_number",
-#             "series_length",
-#             "item_type",
-#             "impression_id",
-#             "interaction_type",
-#             "vision_factor",
-#             "explicit_rating",
-#             "num_impressions",
-#             "position_interactions",
-#             "num_interacted_items",
-#         ]
-#         self.columns_for_gini = [
-#             "user_id",
-#             "item_id",
-#             "series_id",
-#             "num_impressions",
-#             "position_interactions",
-#             "num_interacted_items",
-#         ]
-#         self.columns_to_group_by = [
-#             "user_id",
-#             "item_id",
-#             "series_id",
-#             "num_impressions",
-#         ]
-#
-#         self.statistics: dict[str, Any] = dict()
-#
-#     @timeit
-#     def compare_dataframes_statistics(self) -> None:
-#         pass
-#
-#     @timeit
-#     def compare_splits_statistics(self) -> None:
-#         dataset = self.reader.dataset
-#
-#         urm_all = dataset.get_URM_all()
-#         uim_all = dataset.get_uim_all()
-#
-#         for urm_name, urm_split in dataset.get_loaded_URM_items():
-#             self.compare_two_sparse_matrices(
-#                 csr_matrix=urm_all,
-#                 csr_matrix_name="URM_all",
-#                 other_csr_matrix=urm_split,
-#                 other_csr_matrix_name=urm_name,
-#             )
-#
-#         for uim_name, uim_split in dataset.get_loaded_UIM_items():
-#             self.compare_two_sparse_matrices(
-#                 csr_matrix=uim_all,
-#                 csr_matrix_name="UIM_all",
-#                 other_csr_matrix=uim_split,
-#                 other_csr_matrix_name=uim_name,
-#             )
-#
-#     @timeit
-#     def raw_data_statistics(self) -> None:
-#         df_data = self.raw_data_reader.data
-#         dataset_name = "raw_data"
-#
-#         self.compute_statistics(
-#             df=df_data,
-#             dataset_name=dataset_name,
-#             columns_for_unique=self.columns_for_unique,
-#             columns_for_profile_length=self.columns_for_profile_length,
-#             columns_for_gini=self.columns_for_gini,
-#             columns_to_group_by=self.columns_to_group_by
-#         )
-#
-#         self.compute_statistics_df_on_csr_matrix(
-#             df=df_data,
-#             dataset_name=dataset_name,
-#             user_column="user_id",
-#             item_column=self.reader.items_column
-#         )
-#
-#     @timeit
-#     def filtered_data_statistics(self) -> None:
-#         df_data = self.processed_data_reader.filtered
-#         dataset_name = "data_filtered"
-#
-#         self.compute_statistics(
-#             df=df_data,
-#             dataset_name=dataset_name,
-#             columns_for_unique=self.columns_for_unique,
-#             columns_for_profile_length=self.columns_for_profile_length,
-#             columns_for_gini=self.columns_for_gini,
-#             columns_to_group_by=self.columns_to_group_by
-#         )
-#
-#         self.compute_statistics_df_on_csr_matrix(
-#             df=df_data,
-#             dataset_name=dataset_name,
-#             user_column=self.users_column,
-#             item_column=self.items_column,
-#         )
-#
-#     @timeit
-#     def splits_df_statistics(
-#         self,
-#         evaluation_strategy: EvaluationStrategy
-#     ) -> None:
-#         if evaluation_strategy.LEAVE_LAST_K_OUT:
-#             df_train, df_validation, df_test = self.processed_data_reader.leave_last_k_out_splits
-#             dataset_name_prefix = "leave_last_k_out"
-#         else:
-#             df_train, df_validation, df_test = self.processed_data_reader.timestamp_splits
-#             dataset_name_prefix = "timestamp"
-#
-#         for df_data, df_name in zip(
-#             [df_train, df_validation, df_test],
-#             ["train", "validation", "test"]
-#         ):
-#             self.compute_statistics(
-#                 df=df_data,
-#                 dataset_name=f"{dataset_name_prefix}_{df_name}",
-#                 columns_for_unique=self.columns_for_unique,
-#                 columns_for_profile_length=self.columns_for_profile_length,
-#                 columns_for_gini=self.columns_for_gini,
-#                 columns_to_group_by=self.columns_to_group_by
-#             )
-#
-#             self.compute_statistics_df_on_csr_matrix(
-#                 df=df_data,
-#                 dataset_name=f"{dataset_name_prefix}_{df_name}",
-#                 user_column=self.users_column,
-#                 item_column=self.items_column
-#             )
-#
-#     @timeit
-#     def splits_statistics(self) -> None:
-#         dataset = self.reader.dataset
-#
-#         for split_name, split_csr_matrix in dataset.get_loaded_URM_items():
-#             self.compute_statistics_csr_matrix(matrix=split_csr_matrix, dataset_name=split_name)
-#
-#         for split_name, split_csr_matrix in dataset.get_loaded_UIM_items():
-#             self.compute_statistics_csr_matrix(matrix=split_csr_matrix, dataset_name=split_name)
-
-
 if __name__ == "__main__":
     config = ContentWiseImpressionsConfig()
 
     dataset = ContentWiseImpressionsReader(config=config).dataset
-
-    # print(dataset.get_loaded_UIM_names())
-    # print(dataset.get_loaded_URM_names())
-    #
-    # statistics = ContentWiseImpressionsStatistics(
-    #     reader=data_reader,
-    #     config=config,
-    # )
-    #
-    # # statistics.splits_statistics()
-    # # statistics.raw_data_statistics()
-    # # statistics.filtered_data_statistics()
-    # # statistics.splits_df_statistics(
-    # #     evaluation_strategy=EvaluationStrategy.LEAVE_LAST_K_OUT,
-    # # )
-    # # statistics.splits_df_statistics(
-    # #     evaluation_strategy=EvaluationStrategy.TIMESTAMP,
-    # # )
-    # statistics.compare_splits_statistics()
-    # statistics.save_statistics()
-    #
-    # import json
-    # from recsys_framework_extensions.data.io import ExtendedJSONEncoderDecoder
-    # json_str = json.dumps(
-    #     statistics.statistics,
-    #     sort_keys=True,
-    #     indent=4,
-    #     default=ExtendedJSONEncoderDecoder.to_json
-    # )
-    # logger.info(
-    #     f"Results:\n "
-    #     f"{json_str}"
-    # )
-    #
-    # statistics2 = ContentWiseImpressionsStatistics(
-    #     # dask_interface=dask_interface,
-    #     reader=data_reader,
-    #     config=config,
-    # )
-    # statistics2.load_statistics()
-    #
-    # st1 = statistics.statistics
-    # st2 = statistics2.statistics
-    #
-    # assert len(st1) == len(st2)
-    # assert set(st1.keys()) == set(st2.keys())

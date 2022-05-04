@@ -1,28 +1,7 @@
 """ FINNNoReader.py
 
 This module holds the classes to read the FINN.NO Slates dataset.
-This dataset contains clicks and *no-actions* of users with items in a norwegian marketplace. In particular,
-the clicks and no-clicks are with items that may be recommended or searched. These interactions also contain their
-corresponding impression record (the list of items shown to the user).
 
-Notes
------
-Creating the UIM ALL requires 110 GB of RAM.
-
-Arrays of the dataset in its original form
-    userId
-        Identifier of the users (User ID).
-    click
-        Identifier of interacted items with two exceptions. click=0 means a filler item, it appears if the
-        recommendation list was empty for the user.
-    click_idx
-        The position where the interacted item was placed in the impression list.
-    slate
-        The impressions, a list of recommendations, searches, or unknown.
-    interaction_type
-        If the impression came from a recommendation, search, or unknown source.
-    slate_lengths
-        The number of items present in the recommendation list.
 """
 import functools
 import os
@@ -191,7 +170,11 @@ class FinnNoSlatesSplits(NamedTuple):
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
 class FinnNoSlatesConfig(MixinSHA256Hash):
-    """Configuration class used by data readers of the FINN.No dataset"""
+    """
+    Class that holds the configuration used by the different data reader classes to read the raw data, process,
+    split, and compute features on it.
+    """
+
     data_folder = os.path.join(
         ".", "data", "FINN-NO-SLATE",
     )
@@ -1507,14 +1490,10 @@ class FINNNoSlateReader(DatasetConfigBackupMixin, DataReader):
 
 if __name__ == "__main__":
     config = FinnNoSlatesConfig(
-        # frac_users_to_keep=0.05,
-        frac_users_to_keep=0.001,
+        frac_users_to_keep=0.05,
     )
 
     data_reader = FINNNoSlateReader(
         config=config,
     )
     dataset = data_reader.dataset
-
-    print(dataset.dataframe_available_features())
-    print(dataset.sparse_matrices_available_features())
