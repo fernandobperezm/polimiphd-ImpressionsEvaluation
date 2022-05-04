@@ -114,6 +114,15 @@ def _run_impressions_user_profiles_hyper_parameter_tuning(
             try_folded_recommender=try_folded_recommender,
         )
 
+        if baseline_recommender_trained_train is None or baseline_recommender_trained_train_validation is None:
+            # We require a recommender that is already optimized.
+            logger.warning(
+                f"Early-skipping on {_run_impressions_user_profiles_hyper_parameter_tuning.__name__}. Could not load "
+                f"trained recommenders for {experiment_baseline_recommender.recommender} with the benchmark "
+                f"{experiment_baseline_benchmark.benchmark}. Folded Recommender? {try_folded_recommender}"
+            )
+            continue
+
         instances_are_folded_recommenders = (
             isinstance(baseline_recommender_trained_train, FoldedMatrixFactorizationRecommender)
             and isinstance(baseline_recommender_trained_train_validation, FoldedMatrixFactorizationRecommender)
