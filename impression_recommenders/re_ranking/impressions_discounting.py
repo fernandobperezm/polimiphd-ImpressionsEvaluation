@@ -116,23 +116,23 @@ DICT_SEARCH_CONFIGS = {
         func_uim_position=Categorical(categories=_original_paper_enum_values),
         func_uim_last_seen=Categorical(categories=_original_paper_enum_values),
     ),
-    "ABLATION_ONLY_INTERACTIONS": SearchHyperParametersImpressionsDiscountingRecommender(
-        sign_uim_frequency=Categorical(categories=[1]),
-        sign_uim_position=Categorical(categories=[1]),
-        sign_uim_last_seen=Categorical(categories=[1]),
-
-        reg_uim_frequency=Categorical(categories=[0.]),
-        reg_uim_position=Categorical(categories=[0.]),
-        reg_uim_last_seen=Categorical(categories=[0.]),
-
-        func_uim_frequency=Categorical(categories=_only_linear_enum_values),
-        func_uim_position=Categorical(categories=_only_linear_enum_values),
-        func_uim_last_seen=Categorical(categories=_only_linear_enum_values),
-    ),
-    "ABLATION_ONLY_IMPRESSIONS": SearchHyperParametersImpressionsDiscountingRecommender(
+    "ABLATION_ONLY_IMPRESSIONS_FEATURES": SearchHyperParametersImpressionsDiscountingRecommender(
         sign_user_frequency=Categorical(categories=[1]),
         reg_user_frequency=Categorical(categories=[0.]),
         func_user_frequency=Categorical(categories=_only_linear_enum_values),
+    ),
+    "ABLATION_ONLY_UIM_FREQUENCY": SearchHyperParametersImpressionsDiscountingRecommender(
+        sign_user_frequency=Categorical(categories=[1]),
+        sign_uim_position=Categorical(categories=[1]),
+        sign_uim_last_seen=Categorical(categories=[1]),
+
+        reg_user_frequency=Categorical(categories=[0.]),
+        reg_uim_position=Categorical(categories=[0.]),
+        reg_uim_last_seen=Categorical(categories=[0.]),
+
+        func_user_frequency=Categorical(categories=_only_linear_enum_values),
+        func_uim_position=Categorical(categories=_only_linear_enum_values),
+        func_uim_last_seen=Categorical(categories=_only_linear_enum_values),
     ),
 }
 
@@ -391,10 +391,10 @@ class ImpressionsDiscountingRecommender(MixinLoadModel, BaseRecommender):
         assert sign_uim_position == -1 or sign_uim_position == 1
         assert sign_uim_last_seen == -1 or sign_uim_last_seen == 1
 
-        assert reg_user_frequency > 0.
-        assert reg_uim_frequency > 0.
-        assert reg_uim_position > 0.
-        assert reg_uim_last_seen > 0.
+        assert reg_user_frequency >= 0.
+        assert reg_uim_frequency >= 0.
+        assert reg_uim_position >= 0.
+        assert reg_uim_last_seen >= 0.
 
         self._sign_user_frequency = sign_user_frequency
         self._sign_uim_frequency = sign_uim_frequency
