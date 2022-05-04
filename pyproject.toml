@@ -10,7 +10,7 @@ path_token_json = "./token.json"
 use_processes = true
 dashboard_address = ":8787"
 scheduler_port = 8786
-num_workers = 1
+num_workers = 2
 threads_per_worker = 1
 memory_limit = 0
 
@@ -24,7 +24,7 @@ name = "impressions_datasets"
 version = "1.0.0"
 description = ""
 authors = [
-    "Fernando Benjamín Pérez Maurera <fernandobenjamin.perez@polimi.it>"
+    "Anonymous <Anonymous>"
 ]
 readme = "README.md"
 
@@ -40,6 +40,7 @@ kaleido = "=0.2.1"
 statsmodels = "^0.13.2"
 jupyter = "^1.0.0"
 jupyterlab = "^3.3.0"
+cattrs = "^22.1.0"
 
 [tool.poetry.dev-dependencies]
 mypy = "^0.910"
