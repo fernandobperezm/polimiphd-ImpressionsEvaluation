@@ -176,7 +176,7 @@ class FinnNoSlatesConfig(MixinSHA256Hash):
     """
 
     data_folder = os.path.join(
-        ".", "data", "FINN-NO-SLATE",
+        os.getcwd(), "data", "FINN-NO-SLATE", "",
     )
 
     try_low_memory_usage = True

@@ -230,7 +230,7 @@ class MINDSmallConfig(MixinSHA256Hash):
     """
 
     data_folder = os.path.join(
-        ".", "data", "MIND-SMALL",
+        os.getcwd(), "data", "MIND-SMALL", "",
     )
 
     first_str_timestamp_of_dataset_collection = "10/12/2019 12:00:01 AM"
@@ -309,7 +309,7 @@ class MINDSmallConfig(MixinSHA256Hash):
 @attrs.define(kw_only=True, frozen=True, slots=False)
 class MINDLargeConfig(MINDSmallConfig):
     data_folder = os.path.join(
-        ".", "data", "MIND-LARGE",
+        os.getcwd(), "data", "MIND-LARGE", "",
     )
 
     num_train_data_points = 2_232_748

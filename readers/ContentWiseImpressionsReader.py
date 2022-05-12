@@ -93,7 +93,7 @@ class ContentWiseImpressionsConfig(MixinSHA256Hash):
     """
 
     data_folder = os.path.join(
-        ".", "data", "ContentWiseImpressions",
+        os.getcwd(), "data", "ContentWiseImpressions", "",
     )
 
     num_interaction_records = 10_457_810
