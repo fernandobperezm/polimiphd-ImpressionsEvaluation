@@ -20,9 +20,7 @@ from recsys_framework_extensions.logging import get_logger
 import experiments.commons as commons
 from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
 
-
 logger = get_logger(__name__)
-
 
 ####################################################################################################
 ####################################################################################################
@@ -41,15 +39,9 @@ HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
     "experiments",
     ""
 )
-RESULTS_EXPERIMENTS_DIR = os.path.join(
-    BASE_FOLDER,
-    "results",
-    ""
-)
 
 commons.FOLDERS.add(BASE_FOLDER)
 commons.FOLDERS.add(HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR)
-commons.FOLDERS.add(RESULTS_EXPERIMENTS_DIR)
 
 
 ####################################################################################################
@@ -369,33 +361,6 @@ def _run_baselines_folded_hyper_parameter_tuning(
         terminate_on_memory_error=experiment_hyper_parameter_tuning_parameters.terminate_on_memory_error,
     )
 
-    loaded_trained_recommender = load_trained_recommender(
-        experiment_recommender=experiment_recommender,
-        experiment_benchmark=experiment_benchmark,
-        experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameter_tuning_parameters,
-        data_splits=interactions_data_splits,
-        similarity=similarity,
-        model_type=TrainedRecommenderType.TRAIN_VALIDATION,
-        try_folded_recommender=True,  # We just searched the hyper-parameters of a folded-recommender.
-    )
-
-    if loaded_trained_recommender is None:
-        return
-
-    results_folder_path = RESULTS_EXPERIMENTS_DIR.format(
-        benchmark=experiment_benchmark.benchmark.value,
-        evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy.value,
-    )
-    experiment_file_name_root = (
-        f"{loaded_trained_recommender.RECOMMENDER_NAME}_best_model_last"
-    )
-
-    evaluators.to_disk_test.compute_recommender_confidence_intervals(
-        recommender=loaded_trained_recommender,
-        recommender_name=experiment_file_name_root,
-        folder_export_results=results_folder_path,
-    )
-
 
 def _run_baselines_hyper_parameter_tuning(
     experiment_case: commons.ExperimentCase,
@@ -415,7 +380,7 @@ def _run_baselines_hyper_parameter_tuning(
         benchmark_config=experiment_benchmark.config,
         benchmark=experiment_benchmark.benchmark,
     )
-    
+
     dataset = benchmark_reader.dataset
 
     data_splits = dataset.get_urm_splits(
@@ -485,40 +450,7 @@ def _run_baselines_hyper_parameter_tuning(
     )
 
 
-def run_baselines_experiments(
-    dask_interface: DaskInterface,
-    experiment_cases_interface: commons.ExperimentCasesInterface,
-) -> None:
-    """
-    Public method that tells Dask to run the hyper-parameter tuning of recommenders. This function instructs Dask to
-    execute the hyper-parameter tuning of each recommender in a separate worker. Processes should be always preferred
-    instead of threads, as the hyper-parameter tuning loops are not thread-safe. Validations are not done in case of
-    debug.
-    """
-    for experiment_case in experiment_cases_interface.experiment_cases:
-        experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[experiment_case.benchmark]
-        experiment_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[experiment_case.recommender]
-
-        dask_interface.submit_job(
-            job_key=(
-                f"_run_baselines_hyper_parameter_tuning"
-                f"|{experiment_benchmark.benchmark.value}"
-                f"|{experiment_recommender.recommender.RECOMMENDER_NAME}"
-                f"|{uuid.uuid4()}"
-            ),
-            job_priority=experiment_benchmark.priority * experiment_recommender.priority,
-            job_info={
-                "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
-                "benchmark": experiment_benchmark.benchmark.value,
-            },
-            method=_run_baselines_hyper_parameter_tuning,
-            method_kwargs={
-                "experiment_case": experiment_case,
-            }
-        )
-
-
-def run_baselines_folded(
+def run_confidence_intervals(
     dask_interface: DaskInterface,
     experiment_cases_interface: commons.ExperimentCasesInterface,
 ) -> None:
@@ -542,24 +474,29 @@ def run_baselines_folded(
         ]:
             similarities = experiment_hyper_parameter_tuning_parameters.knn_similarity_types
 
+        folds = [False]
+        if issubclass(experiment_recommender.recommender, BaseMatrixFactorizationRecommender):
+            folds = [False, True]
+
         for similarity in similarities:
-            dask_interface.submit_job(
-                job_key=(
-                    f"_run_baselines_folded_hyper_parameter_tuning"
-                    f"|{experiment_benchmark.benchmark.value}"
-                    f"|{experiment_recommender.recommender.RECOMMENDER_NAME}"
-                    f"|{experiment_folded.recommender.RECOMMENDER_NAME}"
-                    f"|{uuid.uuid4()}"
-                ),
-                job_priority=experiment_benchmark.priority * experiment_recommender.priority,
-                job_info={
-                    "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
-                    "recommender_folded": experiment_folded.recommender.RECOMMENDER_NAME,
-                    "benchmark": experiment_benchmark.benchmark.value,
-                },
-                method=_run_baselines_folded_hyper_parameter_tuning,
-                method_kwargs={
-                    "experiment_case": experiment_case,
-                    "similarity": similarity,
-                }
-            )
+            for try_folded in folds:
+                dask_interface.submit_job(
+                    job_key=(
+                        f"_run_baselines_folded_hyper_parameter_tuning"
+                        f"|{experiment_benchmark.benchmark.value}"
+                        f"|{experiment_recommender.recommender.RECOMMENDER_NAME}"
+                        f"|{experiment_folded.recommender.RECOMMENDER_NAME}"
+                        f"|{uuid.uuid4()}"
+                    ),
+                    job_priority=experiment_benchmark.priority * experiment_recommender.priority,
+                    job_info={
+                        "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
+                        "recommender_folded": experiment_folded.recommender.RECOMMENDER_NAME,
+                        "benchmark": experiment_benchmark.benchmark.value,
+                    },
+                    method=_run_baselines_folded_hyper_parameter_tuning,
+                    method_kwargs={
+                        "experiment_case": experiment_case,
+                        "similarity": similarity,
+                    }
+                )

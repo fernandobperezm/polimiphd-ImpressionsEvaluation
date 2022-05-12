@@ -11,11 +11,12 @@ from recsys_framework_extensions.data.io import attach_to_extended_json_decoder
 from recsys_framework_extensions.data.mixins import InteractionsDataSplits
 from recsys_framework_extensions.data.reader import DataReader
 from recsys_framework_extensions.evaluation import EvaluationStrategy, exclude_from_evaluation
+from recsys_framework_extensions.evaluation.Evaluator import EvaluatorHoldoutToDisk
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
 
-from ContentWiseImpressionsReader import ContentWiseImpressionsReader, ContentWiseImpressionsConfig
-from FINNNoReader import FINNNoSlateReader, FinnNoSlatesConfig
-from MINDReader import MINDReader, MINDSmallConfig
+from readers.ContentWiseImpressionsReader import ContentWiseImpressionsReader, ContentWiseImpressionsConfig
+from readers.FINNNoReader import FINNNoSlateReader, FinnNoSlatesConfig
+from readers.MINDReader import MINDReader, MINDSmallConfig
 from impression_recommenders.heuristics.frequency_and_recency import FrequencyRecencyRecommender, RecencyRecommender, \
     SearchHyperParametersFrequencyRecencyRecommender, SearchHyperParametersRecencyRecommender
 from impression_recommenders.heuristics.latest_impressions import LastImpressionsRecommender, \
@@ -130,8 +131,8 @@ class HyperParameterTuningParameters:
     max_total_time: int = attrs.field(default=60 * 60 * 24 * 14)
     metric_to_optimize: T_METRIC = attrs.field(default="NDCG")
     cutoff_to_optimize: int = attrs.field(default=10)
-    num_cases: int = attrs.field(default=50, validator=[attrs.validators.instance_of(int)])
-    num_random_starts: int = attrs.field(default=int(50 / 3), validator=[attrs.validators.instance_of(int)])
+    num_cases: int = attrs.field(default=5, validator=[attrs.validators.instance_of(int)])
+    num_random_starts: int = attrs.field(default=int(1), validator=[attrs.validators.instance_of(int)])
     knn_similarity_types: list[T_SIMILARITY_TYPE] = attrs.field(default=[
         "cosine",
         "dice",
@@ -142,7 +143,7 @@ class HyperParameterTuningParameters:
     resume_from_saved: bool = attrs.field(default=True)
     evaluate_on_test: T_EVALUATE_ON_TEST = attrs.field(default="last")
     evaluation_cutoffs: list[int] = attrs.field(default=[5, 10, 20, 30, 40, 50, 100])
-    evaluation_min_ratings_per_user: list[int] = attrs.field(default=1)
+    evaluation_min_ratings_per_user: int = attrs.field(default=1)
     evaluation_exclude_seen: bool = attrs.field(default=True)
     evaluation_percentage_ignore_users: Optional[float] = attrs.field(
         default=None,
@@ -500,13 +501,14 @@ def create_necessary_folders(
     """
     Public method to create the results' folder structure needed by the framework.
     """
-    for benchmark, evaluation_strategy in zip(benchmarks, evaluation_strategies):
-        for folder in FOLDERS:
+    for folder in FOLDERS:
+        for benchmark, evaluation_strategy in itertools.product(benchmarks, evaluation_strategies):
+            formatted = folder.format(
+                benchmark=benchmark.value,
+                evaluation_strategy=evaluation_strategy.value,
+            )
             os.makedirs(
-                name=folder.format(
-                    benchmark=benchmark.value,
-                    evaluation_strategy=evaluation_strategy.value,
-                ),
+                name=formatted,
                 exist_ok=True,
             )
 
@@ -553,6 +555,7 @@ def get_reader_from_benchmark(
 class Evaluators:
     validation: EvaluatorHoldout = attrs.field()
     validation_early_stopping: EvaluatorHoldout = attrs.field()
+    to_disk_test: EvaluatorHoldoutToDisk = attrs.field()
     test: EvaluatorHoldout = attrs.field()
 
 
@@ -612,11 +615,21 @@ def get_evaluators(
         ignore_users=None,  # Always consider all users in the test set.
         ignore_items=None,  # Always consider all items in the test set.
     )
+    evaluator_to_disk_test = EvaluatorHoldoutToDisk(
+        urm_test=data_splits.sp_urm_test,
+        cutoff_list=experiment_hyper_parameter_tuning_parameters.evaluation_cutoffs,
+        exclude_seen=experiment_hyper_parameter_tuning_parameters.evaluation_exclude_seen,
+        min_ratings_per_user=experiment_hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
+        verbose=True,
+        ignore_users=None,  # Always consider all users in the test set.
+        ignore_items=None,  # Always consider all items in the test set.
+    )
 
     return Evaluators(
         validation=evaluator_validation,
         validation_early_stopping=evaluator_validation_early_stopping,
         test=evaluator_test,
+        to_disk_test=evaluator_to_disk_test,
     )
 
 
