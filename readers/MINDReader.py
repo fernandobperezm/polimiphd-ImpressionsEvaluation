@@ -259,19 +259,19 @@ class MINDSmallConfig(MixinSHA256Hash):
     validation_remote_filename = 'MINDsmall_dev.zip'
     test_remote_filename = ''
 
-    min_number_of_interactions = attrs.field(
+    min_number_of_interactions: int = attrs.field(
         default=3,
         validator=[
             attrs.validators.gt(0),
         ]
     )
-    binarize_impressions = attrs.field(
+    binarize_impressions: bool = attrs.field(
         default=True,
         validator=[
             attrs.validators.instance_of(bool),
         ]
     )
-    binarize_interactions = attrs.field(
+    binarize_interactions: bool = attrs.field(
         default=True,
         validator=[
             attrs.validators.instance_of(bool),
@@ -283,21 +283,21 @@ class MINDSmallConfig(MixinSHA256Hash):
             attrs.validators.in_(E_KEEP),  # type: ignore
         ]
     )
-    use_historical_interactions = attrs.field(
+    use_historical_interactions: bool = attrs.field(
         default=True,
         validator=[
             attrs.validators.instance_of(bool),
         ]
     )
     # The SMALL variant of the dataset has no test set, therefore it must always be false.
-    use_test_set = attrs.field(
+    use_test_set: bool = attrs.field(
         default=False,
         validator=[
             attrs.validators.instance_of(bool),
             attrs.validators.in_([False]),
         ]
     )
-    variant = attrs.field(
+    variant: MINDVariant = attrs.field(
         default=MINDVariant.SMALL,
         validator=[
             attrs.validators.instance_of(MINDVariant),
@@ -831,7 +831,6 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
         )
 
     @property  # type: ignore
-    @typed_cache
     def filtered(self) -> pd.DataFrame:
         return self.load_parquet(
             file_path=self._file_path_filtered_data,
@@ -841,7 +840,6 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
         )
 
     @property  # type: ignore
-    @typed_cache
     def leave_last_out_splits(
         self
     ) -> MINDSplits:
