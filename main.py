@@ -14,12 +14,13 @@ from experiments.commons import (
     plot_popularity_of_datasets,
     ensure_datasets_exist, RecommenderImpressions, EHyperParameterTuningParameters, RecommenderBaseline,
 )
-
+from experiments.confidence_intervals import compute_confidence_intervals
 from experiments.heuristics import run_impressions_heuristics_experiments
 from experiments.print_results import print_results
 from experiments.print_statistics import print_datasets_statistics
 from experiments.re_ranking import run_impressions_re_ranking_experiments, \
     run_ablation_impressions_re_ranking_experiments
+from experiments.statistical_tests import compute_statistical_tests
 from experiments.user_profiles import run_impressions_user_profiles_experiments
 
 
@@ -54,6 +55,12 @@ class ConsoleArguments(Tap):
     """If the flag is included, then the script tunes the hyper-parameter of impressions as user profiles recommenders. 
     These recommenders need similarity-based recommenders to be tuned, if they aren't then the method fails."""
 
+    compute_confidence_intervals: bool = False
+    """TODO: fernando-debugger"""
+
+    compute_statistical_tests: bool = False
+    """TODO: fernando-debugger"""
+
     print_evaluation_results: bool = False
     """Export to CSV and LaTeX the accuracy, beyond-accuracy, optimal hyper-parameters, and scalability metrics of 
     all tuned recommenders."""
@@ -75,34 +82,34 @@ class ConsoleArguments(Tap):
 ####################################################################################################
 _TO_USE_BENCHMARKS = [
     Benchmarks.ContentWiseImpressions,
-    Benchmarks.MINDSmall,
-    Benchmarks.FINNNoSlates,
+    # Benchmarks.MINDSmall,
+    # Benchmarks.FINNNoSlates,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE = [
-    RecommenderBaseline.RANDOM,
-    RecommenderBaseline.TOP_POPULAR,
-
-    RecommenderBaseline.USER_KNN,
-    RecommenderBaseline.ITEM_KNN,
-
+    # RecommenderBaseline.RANDOM,
+    # RecommenderBaseline.TOP_POPULAR,
+    #
+    # RecommenderBaseline.USER_KNN,
+    # RecommenderBaseline.ITEM_KNN,
+    #
     RecommenderBaseline.PURE_SVD,
-    RecommenderBaseline.NMF,
-    RecommenderBaseline.MF_BPR,
-
-    RecommenderBaseline.RP3_BETA,
-
-    RecommenderBaseline.SLIM_ELASTIC_NET,
-    RecommenderBaseline.SLIM_BPR,
-
-    RecommenderBaseline.LIGHT_FM,
-    RecommenderBaseline.EASE_R,
+    # RecommenderBaseline.NMF,
+    # RecommenderBaseline.MF_BPR,
+    #
+    # RecommenderBaseline.RP3_BETA,
+    #
+    # RecommenderBaseline.SLIM_ELASTIC_NET,
+    # RecommenderBaseline.SLIM_BPR,
+    #
+    # RecommenderBaseline.LIGHT_FM,
+    # RecommenderBaseline.EASE_R,
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS = [
-    RecommenderImpressions.LAST_IMPRESSIONS,
-    RecommenderImpressions.FREQUENCY_RECENCY,
-    RecommenderImpressions.RECENCY,
+    # RecommenderImpressions.LAST_IMPRESSIONS,
+    # RecommenderImpressions.FREQUENCY_RECENCY,
+    # RecommenderImpressions.RECENCY,
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING = [
@@ -120,7 +127,8 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES = [
 ]
 
 _TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS = [
-    EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
+    # EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
+    EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_5_2,
 ]
 
 
@@ -214,6 +222,23 @@ if __name__ == '__main__':
             dask_interface=dask_interface,
             user_profiles_experiment_cases_interface=experiments_impressions_user_profiles_interface,
             baseline_experiment_cases_interface=experiments_interface_baselines,
+        )
+
+    dask_interface.wait_for_jobs()
+
+    if input_flags.compute_confidence_intervals:
+        compute_confidence_intervals(
+            dask_interface=dask_interface,
+            experiment_cases_interface_baselines=experiments_interface_baselines,
+            experiment_cases_interface_impressions_heuristics=experiments_impressions_heuristics_interface,
+            experiment_cases_interface_impressions_re_ranking=experiments_impressions_re_ranking_interface,
+            experiment_cases_interface_impressions_user_profiles=experiments_impressions_user_profiles_interface,
+        )
+
+    if input_flags.compute_statistical_tests:
+        compute_statistical_tests(
+            dask_interface=dask_interface,
+            experiment_cases_interface_baselines=experiments_interface_baselines,
         )
 
     dask_interface.wait_for_jobs()

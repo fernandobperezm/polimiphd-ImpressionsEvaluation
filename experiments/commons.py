@@ -1,10 +1,11 @@
 import itertools
 import os
 from enum import Enum
-from typing import Type, Literal, Optional, cast, Union, TypeVar
+from typing import Type, Literal, Optional, cast, Union, TypeVar, Sequence
 
 import Recommenders.Recommender_import_list as recommenders
 import attrs
+import scipy.sparse as sp
 from Evaluation.Evaluator import EvaluatorHoldout
 from Recommenders.BaseRecommender import BaseRecommender
 from recsys_framework_extensions.data.io import attach_to_extended_json_decoder
@@ -12,7 +13,9 @@ from recsys_framework_extensions.data.mixins import InteractionsDataSplits
 from recsys_framework_extensions.data.reader import DataReader
 from recsys_framework_extensions.evaluation import EvaluationStrategy, exclude_from_evaluation
 from recsys_framework_extensions.evaluation.Evaluator import EvaluatorHoldoutToDisk
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
+    AbstractExtendedBaseRecommender, load_extended_recommender, load_recsys_framework_recommender
+from typing_extensions import ParamSpec
 
 from readers.ContentWiseImpressionsReader import ContentWiseImpressionsReader, ContentWiseImpressionsConfig
 from readers.FINNNoReader import FINNNoSlateReader, FinnNoSlatesConfig
@@ -28,7 +31,8 @@ from impression_recommenders.user_profile.folding import FoldedMatrixFactorizati
     SearchHyperParametersFoldedMatrixFactorizationRecommender
 from impression_recommenders.user_profile.weighted import (
     UserWeightedUserProfileRecommender,
-    ItemWeightedUserProfileRecommender, SearchHyperParametersWeightedUserProfileRecommender,
+    ItemWeightedUserProfileRecommender,
+    SearchHyperParametersWeightedUserProfileRecommender,
 )
 
 
@@ -113,6 +117,13 @@ class RecommenderImpressions(Enum):
 @attach_to_extended_json_decoder
 class EHyperParameterTuningParameters(Enum):
     LEAVE_LAST_OUT_BAYESIAN_50_16 = "LEAVE_LAST_OUT_BAYESIAN_50_16"
+    LEAVE_LAST_OUT_BAYESIAN_5_2 = "LEAVE_LAST_OUT_BAYESIAN_5_2"
+
+
+@attach_to_extended_json_decoder
+class TrainedRecommenderType(Enum):
+    TRAIN = "TRAIN"
+    TRAIN_VALIDATION = "TRAIN_VALIDATION"
 
 
 T_METRIC = Literal["NDCG", "MAP"]
@@ -131,8 +142,8 @@ class HyperParameterTuningParameters:
     max_total_time: int = attrs.field(default=60 * 60 * 24 * 14)
     metric_to_optimize: T_METRIC = attrs.field(default="NDCG")
     cutoff_to_optimize: int = attrs.field(default=10)
-    num_cases: int = attrs.field(default=5, validator=[attrs.validators.instance_of(int)])
-    num_random_starts: int = attrs.field(default=int(1), validator=[attrs.validators.instance_of(int)])
+    num_cases: int = attrs.field(default=50, validator=[attrs.validators.instance_of(int)])
+    num_random_starts: int = attrs.field(default=16, validator=[attrs.validators.instance_of(int)])
     knn_similarity_types: list[T_SIMILARITY_TYPE] = attrs.field(default=[
         "cosine",
         "dice",
@@ -179,7 +190,7 @@ class ExperimentBenchmark:
 
 @attrs.define(frozen=True, kw_only=True)
 class ExperimentRecommender:
-    recommender: Type[BaseRecommender] = attrs.field()
+    recommender: Type[Union[BaseRecommender, AbstractExtendedBaseRecommender]] = attrs.field()
     search_hyper_parameters: Type[SearchHyperParametersBaseRecommender] = attrs.field()
     priority: int = attrs.field()
 
@@ -485,8 +496,159 @@ MAPPER_ABLATION_AVAILABLE_RECOMMENDERS = {
 }
 
 MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS = {
-    EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16: HyperParameterTuningParameters()
+    EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16: HyperParameterTuningParameters(
+        num_cases=50,
+        num_random_starts=16,
+    ),
+    EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_5_2: HyperParameterTuningParameters(
+        num_cases=5,
+        num_random_starts=2,
+    ),
 }
+
+
+MAPPER_FILE_NAME_POSTFIX = {
+    TrainedRecommenderType.TRAIN: "best_model",
+    TrainedRecommenderType.TRAIN_VALIDATION: "best_model_last",
+}
+
+
+####################################################################################################
+####################################################################################################
+#             Trained-Recommenders Methods.
+####################################################################################################
+####################################################################################################
+_RecommenderInstance = TypeVar("_RecommenderInstance", bound=BaseRecommender)
+
+_RecommenderExtendedParams = ParamSpec("_RecommenderExtendedParams")
+_RecommenderExtendedInstance = TypeVar("_RecommenderExtendedInstance", bound=AbstractExtendedBaseRecommender)
+
+
+def load_recommender_trained_baseline(
+    *,
+    recommender_baseline_class: Type[_RecommenderInstance],
+    folder_path: str,
+    file_name_postfix: str,
+    urm_train: sp.csr_matrix,
+    similarity: Optional[str] = None,
+) -> Optional[_RecommenderInstance]:
+    recommender_impressions = load_recsys_framework_recommender(
+        recommender_class=recommender_baseline_class,
+        folder_path=folder_path,
+        file_name_postfix=file_name_postfix,
+        urm_train=urm_train,
+        similarity=similarity,
+    )
+
+    return recommender_impressions
+
+
+def load_recommender_trained_folded(
+    *,
+    recommender_baseline_instance: _RecommenderInstance,
+    folder_path: str,
+    file_name_postfix: str,
+    urm_train: sp.csr_matrix,
+) -> Optional[FoldedMatrixFactorizationRecommender]:
+    recommender_impressions = load_extended_recommender(
+        recommender_class=FoldedMatrixFactorizationRecommender,
+        folder_path=folder_path,
+        file_name_postfix=file_name_postfix,
+        urm_train=urm_train,
+        trained_recommender=recommender_baseline_instance,
+    )
+
+    return recommender_impressions
+
+
+def load_recommender_trained_impressions(
+    *,
+    recommender_class_impressions: Type[AbstractExtendedBaseRecommender],
+    folder_path: str,
+    file_name_postfix: str,
+    urm_train: sp.csr_matrix,
+    uim_train: sp.csr_matrix,
+    uim_frequency: sp.csr_matrix,
+    uim_position: sp.csr_matrix,
+    uim_last_seen: sp.csr_matrix,
+    uim_timestamp: sp.csr_matrix,
+    recommender_baseline: Union[BaseRecommender, FoldedMatrixFactorizationRecommender, None],
+) -> Optional[AbstractExtendedBaseRecommender]:
+    if recommender_class_impressions == ItemWeightedUserProfileRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=ItemWeightedUserProfileRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_train=uim_train,
+            trained_recommender=recommender_baseline,
+        )
+
+    elif recommender_class_impressions == UserWeightedUserProfileRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=UserWeightedUserProfileRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_train=uim_train,
+            trained_recommender=recommender_baseline,
+        )
+
+    elif recommender_class_impressions == ImpressionsDiscountingRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=ImpressionsDiscountingRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_frequency=uim_frequency,
+            uim_position=uim_position,
+            uim_last_seen=uim_last_seen,
+            trained_recommender=recommender_baseline,
+        )
+
+    elif recommender_class_impressions == CyclingRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=CyclingRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_frequency=uim_frequency,
+            trained_recommender=recommender_baseline,
+        )
+
+    elif recommender_class_impressions == FrequencyRecencyRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=FrequencyRecencyRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_frequency=uim_frequency,
+            uim_timestamp=uim_timestamp,
+        )
+
+    elif recommender_class_impressions == RecencyRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=RecencyRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_timestamp=uim_timestamp,
+        )
+
+    elif recommender_class_impressions == LastImpressionsRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=LastImpressionsRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_timestamp=uim_timestamp,
+            uim_position=uim_position,
+        )
+
+    else:
+        raise NotImplementedError("Non-supported impressions recommender.")
+
+    return recommender_impressions
 
 
 ####################################################################################################
@@ -587,7 +749,8 @@ def get_evaluators(
             seed=experiment_hyper_parameter_tuning_parameters.reproducibility_seed,
         )
 
-    evaluator_validation = EvaluatorHoldout(
+    # TODO: fernando-debugger|RETURN TO EvaluatorHoldout
+    evaluator_validation = EvaluatorHoldoutToDisk(
         data_splits.sp_urm_validation,
         cutoff_list=experiment_hyper_parameter_tuning_parameters.evaluation_cutoffs,
         exclude_seen=experiment_hyper_parameter_tuning_parameters.evaluation_exclude_seen,
@@ -596,7 +759,8 @@ def get_evaluators(
         ignore_users=users_to_exclude_validation,
         ignore_items=items_to_exclude_validation,
     )
-    evaluator_validation_early_stopping = EvaluatorHoldout(
+    # TODO: fernando-debugger|RETURN TO EvaluatorHoldout
+    evaluator_validation_early_stopping = EvaluatorHoldoutToDisk(
         data_splits.sp_urm_validation,
         # The example uses the hyper-param benchmark_config instead of the evaluation cutoff.
         cutoff_list=[experiment_hyper_parameter_tuning_parameters.cutoff_to_optimize],
@@ -606,7 +770,8 @@ def get_evaluators(
         ignore_users=users_to_exclude_validation,
         ignore_items=items_to_exclude_validation,
     )
-    evaluator_test = EvaluatorHoldout(
+    # TODO: fernando-debugger|RETURN TO EvaluatorHoldout
+    evaluator_test = EvaluatorHoldoutToDisk(
         data_splits.sp_urm_test,
         cutoff_list=experiment_hyper_parameter_tuning_parameters.evaluation_cutoffs,
         exclude_seen=experiment_hyper_parameter_tuning_parameters.evaluation_exclude_seen,
@@ -616,7 +781,7 @@ def get_evaluators(
         ignore_items=None,  # Always consider all items in the test set.
     )
     evaluator_to_disk_test = EvaluatorHoldoutToDisk(
-        urm_test=data_splits.sp_urm_test,
+        urm_test=data_splits.sp_urm_test.copy(),
         cutoff_list=experiment_hyper_parameter_tuning_parameters.evaluation_cutoffs,
         exclude_seen=experiment_hyper_parameter_tuning_parameters.evaluation_exclude_seen,
         min_ratings_per_user=experiment_hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
@@ -778,3 +943,26 @@ def get_feature_key_by_benchmark(
     )
 
     return feature_key
+
+
+def get_urm_train_by_trained_recommender_type(
+    data_splits: InteractionsDataSplits,
+    trained_recommender_type: TrainedRecommenderType,
+) -> sp.csr_matrix:
+    return (
+        data_splits.sp_urm_train.copy()
+        if TrainedRecommenderType.TRAIN == trained_recommender_type
+        else data_splits.sp_urm_train_validation.copy()
+    )
+
+
+def get_similarities_by_recommender_class(
+    recommender_class: Type[BaseRecommender],
+    knn_similarities: Sequence[T_SIMILARITY_TYPE],
+) -> Sequence[Optional[T_SIMILARITY_TYPE]]:
+    if recommender_class in [
+        recommenders.ItemKNNCFRecommender, recommenders.UserKNNCFRecommender
+    ]:
+        return knn_similarities
+
+    return [None]

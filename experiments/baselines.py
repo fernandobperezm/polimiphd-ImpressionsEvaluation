@@ -20,7 +20,6 @@ from recsys_framework_extensions.logging import get_logger
 import experiments.commons as commons
 from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
 
-
 logger = get_logger(__name__)
 
 
