@@ -1,11 +1,10 @@
-import abc
 import enum
+from abc import ABC
 from typing import Optional
 
 import attrs
 import numpy as np
 import scipy.sparse as sp
-from Recommenders.BaseRecommender import BaseRecommender
 from Recommenders.BaseSimilarityMatrixRecommender import (
     BaseSimilarityMatrixRecommender,
     BaseItemSimilarityMatrixRecommender,
@@ -13,9 +12,14 @@ from Recommenders.BaseSimilarityMatrixRecommender import (
 )
 from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO, attach_to_extended_json_decoder
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
-from recsys_framework_extensions.recommenders.mixins import MixinLoadModel
+from recsys_framework_extensions.logging import get_logger
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
+    AbstractExtendedBaseRecommender
 from skopt.space import Real, Categorical
+
+logger = get_logger(
+    logger_name=__file__,
+)
 
 
 @attach_to_extended_json_decoder
@@ -61,7 +65,7 @@ def compute_difference_between_impressions_and_interactions(
 ) -> sp.csr_matrix:
     """
     This function computes the set difference between `uim` and `urm`, i.e. it keeps the values inside `uim` that
-    does not exist in `urm`.  This function assumes that both matrices are binary, with values being either 1 or 0.
+    does not exist in `urm`. This function assumes that both matrices are binary, with values being either 1 or 0.
     """
 
     # The `-` operator yields a matrix with three possible outcomes on each cell of the matrix.
@@ -90,15 +94,17 @@ def compute_difference_between_impressions_and_interactions(
     return sp_impressions_profile
 
 
-class BaseWeightedUserProfileRecommender(MixinLoadModel, BaseRecommender, abc.ABC):
+class BaseWeightedUserProfileRecommender(AbstractExtendedBaseRecommender, ABC):
     RECOMMENDER_NAME = "BaseWeightedUserProfileRecommender"
     ATTR_NAME_W_SPARSE = "W_sparse"
 
     def __init__(
         self,
+        *,
         urm_train: sp.csr_matrix,
         uim_train: sp.csr_matrix,
         trained_recommender: BaseSimilarityMatrixRecommender,
+        **kwargs,
     ):
         """
         Notes
@@ -119,8 +125,7 @@ class BaseWeightedUserProfileRecommender(MixinLoadModel, BaseRecommender, abc.AB
             must be able to execute `trained_recommender._compute_item_scores` without raising exceptions.
         """
         super().__init__(
-            URM_train=urm_train,
-            verbose=True,
+            urm_train=urm_train,
         )
 
         if not hasattr(trained_recommender, self.ATTR_NAME_W_SPARSE):
@@ -197,24 +202,23 @@ class BaseWeightedUserProfileRecommender(MixinLoadModel, BaseRecommender, abc.AB
             }
         )
 
-    def load_model(
-        self,
-        folder_path: str,
-        file_name: str = None,
-    ) -> None:
-        super().load_model(
-            folder_path=folder_path,
-            file_name=file_name,
-        )
-
+    def validate_load_trained_recommender(self, *args, **kwargs) -> None:
         assert hasattr(self, "_alpha") and self._alpha > 0.
         assert hasattr(self, "_sign") and (self._sign == -1 or self._sign == 1)
         assert hasattr(self, "_weighted_user_profile_type")
         assert hasattr(self, "_sparse_similarity") and self._sparse_similarity.nnz > 0
         assert hasattr(self, "_sparse_user_profile") and self._sparse_user_profile.nnz > 0
 
-        self._sparse_similarity = check_matrix(X=self._sparse_similarity, format="csr", dtype=np.float32)
-        self._sparse_user_profile = check_matrix(X=self._sparse_user_profile, format="csr", dtype=np.float32)
+        self._sparse_similarity = check_matrix(
+            X=self._sparse_similarity,
+            format="csr",
+            dtype=np.float32
+        )
+        self._sparse_user_profile = check_matrix(
+            X=self._sparse_user_profile,
+            format="csr",
+            dtype=np.float32
+        )
 
 
 class ItemWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
@@ -274,6 +278,20 @@ class ItemWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
 
         return item_scores
 
+    @classmethod
+    def _validate_load_trained_recommender(cls, *args, **kwargs) -> bool:
+        if "trained_recommender" not in kwargs:
+            return False
+
+        trained_recommender = kwargs["trained_recommender"]
+
+        instance_has_item_similarity = (
+            isinstance(trained_recommender, BaseItemSimilarityMatrixRecommender)
+            and hasattr(trained_recommender, cls.ATTR_NAME_W_SPARSE)
+        )
+
+        return instance_has_item_similarity
+
 
 class UserWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
     RECOMMENDER_NAME = "UserWeightedUserProfileRecommender"
@@ -331,3 +349,17 @@ class UserWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
         assert (num_score_users, num_score_items) == item_scores.shape
 
         return item_scores
+
+    @classmethod
+    def _validate_load_trained_recommender(cls, *args, **kwargs) -> bool:
+        if "trained_recommender" not in kwargs:
+            return False
+
+        trained_recommender = kwargs["trained_recommender"]
+
+        instance_has_user_similarity = (
+            isinstance(trained_recommender, BaseUserSimilarityMatrixRecommender)
+            and hasattr(trained_recommender, cls.ATTR_NAME_W_SPARSE)
+        )
+
+        return instance_has_user_similarity

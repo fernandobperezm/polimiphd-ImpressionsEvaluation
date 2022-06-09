@@ -6,8 +6,8 @@ import scipy.sparse as sp
 from Recommenders.BaseRecommender import BaseRecommender
 from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
-from recsys_framework_extensions.recommenders.mixins import MixinLoadModel
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
+    AbstractExtendedBaseRecommender
 from recsys_framework_extensions.recommenders.rank import rank_data_by_row
 from skopt.space import Integer, Categorical
 
@@ -91,7 +91,7 @@ assert np.array_equal(
 )
 
 
-class CyclingRecommender(MixinLoadModel, BaseRecommender):
+class CyclingRecommender(AbstractExtendedBaseRecommender):
     RECOMMENDER_NAME = "CyclingRecommender"
 
     def __init__(
@@ -102,8 +102,7 @@ class CyclingRecommender(MixinLoadModel, BaseRecommender):
         **kwargs,
     ):
         super().__init__(
-            URM_train=urm_train,
-            verbose=True,
+            urm_train=urm_train,
         )
 
         self._trained_recommender = trained_recommender
@@ -111,6 +110,8 @@ class CyclingRecommender(MixinLoadModel, BaseRecommender):
         self._matrix_presentation_scores = sp.csr_matrix(np.array([], dtype=np.float32))
         self._cycling_weight: int = 3
         self._cycling_sign: T_SIGN = -1
+
+        self.RECOMMENDER_NAME = f"CyclingRecommender_{trained_recommender.RECOMMENDER_NAME}"
 
     def _compute_item_score(
         self,
@@ -204,7 +205,11 @@ class CyclingRecommender(MixinLoadModel, BaseRecommender):
         )
         self._matrix_presentation_scores = check_matrix(X=matrix_presentation_scores, format="csr", dtype=np.float32)
 
-    def save_model(self, folder_path: str, file_name: str =None):
+    def save_model(
+        self,
+        folder_path: str,
+        file_name: Optional[str] = None
+    ):
         if file_name is None:
             file_name = self.RECOMMENDER_NAME
 
@@ -218,18 +223,15 @@ class CyclingRecommender(MixinLoadModel, BaseRecommender):
             }
         )
 
-    def load_model(
-        self,
-        folder_path: str,
-        file_name: str = None,
+    def validate_load_trained_recommender(
+        self, *args, **kwargs
     ) -> None:
-        super().load_model(
-            folder_path=folder_path,
-            file_name=file_name,
-        )
-
         assert hasattr(self, "_cycling_weight")
         assert hasattr(self, "_cycling_sign")
         assert hasattr(self, "_matrix_presentation_scores") and self._matrix_presentation_scores.nnz > 0
 
-        self._matrix_presentation_scores = check_matrix(X=self._matrix_presentation_scores, format="csr", dtype=np.float32)
+        self._matrix_presentation_scores = check_matrix(
+            X=self._matrix_presentation_scores,
+            format="csr",
+            dtype=np.float32
+        )

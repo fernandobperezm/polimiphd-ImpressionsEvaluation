@@ -3,8 +3,8 @@ from typing import Optional
 import attrs
 import numpy as np
 import scipy.sparse as sp
-from Recommenders.BaseRecommender import BaseRecommender
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
+    AbstractExtendedBaseRecommender
 from recsys_framework_extensions.recommenders.mixins import MixinEmptySaveModel
 
 
@@ -13,9 +13,8 @@ class SearchHyperParametersLastImpressionsRecommender(SearchHyperParametersBaseR
     pass
 
 
-class LastImpressionsRecommender(MixinEmptySaveModel, BaseRecommender):
+class LastImpressionsRecommender(MixinEmptySaveModel, AbstractExtendedBaseRecommender):
     """
-    TODO: fernando-debugger| Finish this
     LastImpressionsRecommender
 
 
@@ -31,7 +30,6 @@ class LastImpressionsRecommender(MixinEmptySaveModel, BaseRecommender):
         urm_train: sp.csr_matrix,
         uim_position: sp.csr_matrix,
         uim_timestamp: sp.csr_matrix,
-        **kwargs,
     ):
         """
         Parameters
@@ -50,8 +48,7 @@ class LastImpressionsRecommender(MixinEmptySaveModel, BaseRecommender):
             latest recorded timestamp for the user-item pair (u,i), i.e., uim_timestamp[u,i] = timestamp.
         """
         super().__init__(
-            URM_train=urm_train,
-            verbose=True,
+            urm_train=urm_train,
         )
 
         self._uim_position: sp.csr_matrix = uim_position.copy()
@@ -59,6 +56,13 @@ class LastImpressionsRecommender(MixinEmptySaveModel, BaseRecommender):
 
         assert self.URM_train.shape == self._uim_position.shape
         assert self.URM_train.shape == self._uim_timestamp.shape
+
+    def fit(
+        self,
+        *args,
+        **kwargs
+    ) -> None:
+        pass
 
     def _compute_item_score(
         self,
@@ -128,4 +132,9 @@ class LastImpressionsRecommender(MixinEmptySaveModel, BaseRecommender):
         assert np.array_equal(item_scores, item_scores2)
 
         return item_scores
+
+    def validate_load_trained_recommender(
+        self, *args, **kwargs,
+    ) -> None:
+        pass
 

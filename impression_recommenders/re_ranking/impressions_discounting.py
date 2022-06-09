@@ -7,9 +7,15 @@ import scipy.sparse as sp
 from Recommenders.BaseRecommender import BaseRecommender
 from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO, attach_to_extended_json_decoder
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
-from recsys_framework_extensions.recommenders.mixins import MixinLoadModel
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
+    AbstractExtendedBaseRecommender
+from recsys_framework_extensions.logging import get_logger
 from skopt.space import Real, Categorical
+
+
+logger = get_logger(
+    logger_name=__file__,
+)
 
 
 @attach_to_extended_json_decoder
@@ -254,7 +260,7 @@ _DICT_IMPRESSIONS_DISCOUNTING_FUNCTIONS: dict[EImpressionsDiscountingFunctions, 
 }
 
 
-class ImpressionsDiscountingRecommender(MixinLoadModel, BaseRecommender):
+class ImpressionsDiscountingRecommender(AbstractExtendedBaseRecommender):
     RECOMMENDER_NAME = "ImpressionsDiscountingRecommender"
 
     def __init__(
@@ -267,8 +273,7 @@ class ImpressionsDiscountingRecommender(MixinLoadModel, BaseRecommender):
         **kwargs,
     ):
         super().__init__(
-            URM_train=urm_train,
-            verbose=True,
+            urm_train=urm_train,
         )
 
         self._trained_recommender = trained_recommender
@@ -301,6 +306,8 @@ class ImpressionsDiscountingRecommender(MixinLoadModel, BaseRecommender):
         self._func_uim_frequency: EImpressionsDiscountingFunctions = EImpressionsDiscountingFunctions.LINEAR
         self._func_uim_position:  EImpressionsDiscountingFunctions = EImpressionsDiscountingFunctions.LINEAR
         self._func_uim_last_seen:  EImpressionsDiscountingFunctions = EImpressionsDiscountingFunctions.LINEAR
+
+        self.RECOMMENDER_NAME = f"ImpressionsDiscountingRecommender_{trained_recommender.RECOMMENDER_NAME}"
 
     def _compute_item_score(
         self,
@@ -468,16 +475,9 @@ class ImpressionsDiscountingRecommender(MixinLoadModel, BaseRecommender):
             }
         )
 
-    def load_model(
-        self,
-        folder_path: str,
-        file_name: str = None,
+    def validate_load_trained_recommender(
+        self, *args, **kwargs
     ) -> None:
-        super().load_model(
-            folder_path=folder_path,
-            file_name=file_name,
-        )
-
         assert hasattr(self, "_sign_user_frequency")
         assert hasattr(self, "_sign_uim_frequency")
         assert hasattr(self, "_sign_uim_position")

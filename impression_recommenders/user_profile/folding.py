@@ -1,14 +1,22 @@
+from typing import Optional
+
 import attrs
 import numpy as np
 import scipy.sparse as sp
+from skopt.space import Integer
 from Recommenders.BaseMatrixFactorizationRecommender import BaseMatrixFactorizationRecommender
 from Recommenders.BaseRecommender import BaseRecommender
 from Recommenders.BaseSimilarityMatrixRecommender import BaseItemSimilarityMatrixRecommender
 from Recommenders.MatrixFactorization.PureSVDRecommender import compute_W_sparse_from_item_latent_factors
-
 from Recommenders.Recommender_utils import check_matrix
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
-from skopt.space import Integer
+from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
+    AbstractExtendedBaseRecommender
+from recsys_framework_extensions.logging import get_logger
+
+
+logger = get_logger(
+    logger_name=__file__,
+)
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
@@ -23,9 +31,10 @@ class SearchHyperParametersFoldedMatrixFactorizationRecommender(SearchHyperParam
     )
 
 
-class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
+class FoldedMatrixFactorizationRecommender(AbstractExtendedBaseRecommender, BaseItemSimilarityMatrixRecommender):
     RECOMMENDER_NAME = f"FoldedMatrixFactorizationRecommender"
     ATTR_NAME_ITEM_FACTORS = "ITEM_factors"
+    ATTR_NAME_W_SPARSE = "W_sparse"
 
     def __init__(
         self,
@@ -54,8 +63,7 @@ class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
             `trained_recommender._compute_item_scores` without raising exceptions.
         """
         super().__init__(
-            URM_train=urm_train,
-            verbose=True,
+            urm_train=urm_train
         )
 
         if not self.can_recommender_be_folded(recommender_instance=trained_recommender):
@@ -69,7 +77,7 @@ class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
         self.trained_recommender = trained_recommender
         self.W_sparse: sp.csr_matrix = sp.csr_matrix([])
 
-    def fit(self, top_k: int = None) -> None:
+    def fit(self, top_k: Optional[int] = None, *args, **kwargs) -> None:
         item_factors: np.ndarray = getattr(self.trained_recommender, self.ATTR_NAME_ITEM_FACTORS)
 
         if top_k is None:
@@ -83,6 +91,16 @@ class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
         self.W_sparse = check_matrix(
             X=sparse_similarity_matrix,
             format='csr',
+            dtype=np.float64,
+        )
+
+    def validate_load_trained_recommender(self, *args, **kwargs) -> None:
+        assert hasattr(self, self.ATTR_NAME_W_SPARSE)
+
+        self.W_sparse = check_matrix(
+            X=self.W_sparse,
+            format="csr",
+            dtype=np.float64,
         )
 
     @staticmethod
@@ -91,4 +109,3 @@ class FoldedMatrixFactorizationRecommender(BaseItemSimilarityMatrixRecommender):
             recommender_instance,
             FoldedMatrixFactorizationRecommender.ATTR_NAME_ITEM_FACTORS
         )
-

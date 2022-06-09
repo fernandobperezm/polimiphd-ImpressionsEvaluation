@@ -3,11 +3,12 @@ from typing import Optional, Literal
 import attrs
 import numpy as np
 import scipy.sparse as sp
-from Recommenders.BaseRecommender import BaseRecommender
 from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
-from recsys_framework_extensions.recommenders.mixins import MixinLoadModel
+from recsys_framework_extensions.recommenders.base import (
+    SearchHyperParametersBaseRecommender,
+    AbstractExtendedBaseRecommender,
+)
 from recsys_framework_extensions.recommenders.rank import rank_data_by_row
 from skopt.space import Categorical
 
@@ -38,7 +39,7 @@ class SearchHyperParametersRecencyRecommender(SearchHyperParametersBaseRecommend
     )
 
 
-class FrequencyRecencyRecommender(MixinLoadModel, BaseRecommender):
+class FrequencyRecencyRecommender(AbstractExtendedBaseRecommender):
     RECOMMENDER_NAME = "FrequencyRecencyRecommender"
 
     def __init__(
@@ -46,7 +47,6 @@ class FrequencyRecencyRecommender(MixinLoadModel, BaseRecommender):
         urm_train: sp.csr_matrix,
         uim_frequency: sp.csr_matrix,
         uim_timestamp: sp.csr_matrix,
-        **kwargs,
     ):
         """
         Parameters
@@ -65,8 +65,7 @@ class FrequencyRecencyRecommender(MixinLoadModel, BaseRecommender):
             latest recorded timestamp for the user-item pair (u,i), i.e., uim_timestamp[u,i] = timestamp.
         """
         super().__init__(
-            URM_train=urm_train,
-            verbose=True,
+            urm_train=urm_train,
         )
 
         self._uim_frequency: sp.csr_matrix = uim_frequency.copy()
@@ -95,7 +94,7 @@ class FrequencyRecencyRecommender(MixinLoadModel, BaseRecommender):
     def save_model(
         self,
         folder_path: str,
-        file_name: str = None
+        file_name: Optional[str] = None,
     ) -> None:
         if file_name is None:
             file_name = self.RECOMMENDER_NAME
@@ -111,32 +110,31 @@ class FrequencyRecencyRecommender(MixinLoadModel, BaseRecommender):
             }
         )
 
-    def load_model(
-        self,
-        folder_path: str,
-        file_name: str = None,
+    def validate_load_trained_recommender(
+        self, *args, **kwargs,
     ) -> None:
-        super().load_model(
-            folder_path=folder_path,
-            file_name=file_name,
-        )
-
         assert hasattr(self, "_sign_frequency")
         assert hasattr(self, "_sign_recency")
         assert hasattr(self, "_sp_matrix_frequency_scores")
         assert hasattr(self, "_sp_matrix_timestamp_scores")
 
-        self._sp_matrix_frequency_scores = check_matrix(X=self._sp_matrix_frequency_scores, format="csr", dtype=np.float32)
-        self._sp_matrix_timestamp_scores = check_matrix(X=self._sp_matrix_timestamp_scores, format="csr", dtype=np.float32)
+        self._sp_matrix_frequency_scores = check_matrix(
+            X=self._sp_matrix_frequency_scores,
+            format="csr",
+            dtype=np.float32
+        )
+        self._sp_matrix_timestamp_scores = check_matrix(
+            X=self._sp_matrix_timestamp_scores,
+            format="csr",
+            dtype=np.float32
+        )
 
     def _compute_item_score(
         self,
         user_id_array: list[int],
-        items_to_compute: list[int] = None
+        items_to_compute: Optional[list[int]] = None
     ) -> np.ndarray:
         """
-        TODO: fernando-debbuger|Complete this.
-
         Return
         ------
         np.ndarray
@@ -179,14 +177,13 @@ class FrequencyRecencyRecommender(MixinLoadModel, BaseRecommender):
         return item_scores
 
 
-class RecencyRecommender(MixinLoadModel, BaseRecommender):
+class RecencyRecommender(AbstractExtendedBaseRecommender):
     RECOMMENDER_NAME = "RecencyRecommender"
 
     def __init__(
         self,
         urm_train: sp.csr_matrix,
         uim_timestamp: sp.csr_matrix,
-        **kwargs,
     ):
         """
         Parameters
@@ -200,8 +197,7 @@ class RecencyRecommender(MixinLoadModel, BaseRecommender):
             latest recorded timestamp for the user-item pair (u,i), i.e., uim_timestamp[u,i] = timestamp.
         """
         super().__init__(
-            URM_train=urm_train,
-            verbose=True,
+            urm_train=urm_train,
         )
 
         self._uim_timestamp: sp.csr_matrix = uim_timestamp.copy()
@@ -214,10 +210,9 @@ class RecencyRecommender(MixinLoadModel, BaseRecommender):
         sign_recency: T_SIGN,
         **kwargs,
     ) -> None:
+        self._sign_recency = sign_recency
 
         sp_matrix_timestamp_scores = sign_recency * self._uim_timestamp
-
-        self._sign_recency = sign_recency
         self._sp_matrix_timestamp_scores = check_matrix(X=sp_matrix_timestamp_scores, dtype=np.float32, format="csr")
 
     def _compute_item_score(
@@ -264,7 +259,7 @@ class RecencyRecommender(MixinLoadModel, BaseRecommender):
     def save_model(
         self,
         folder_path: str,
-        file_name: str = None
+        file_name: Optional[str] = None,
     ) -> None:
         if file_name is None:
             file_name = self.RECOMMENDER_NAME
@@ -278,17 +273,14 @@ class RecencyRecommender(MixinLoadModel, BaseRecommender):
             }
         )
 
-    def load_model(
-        self,
-        folder_path: str,
-        file_name: str = None,
+    def validate_load_trained_recommender(
+        self, *args, **kwargs,
     ) -> None:
-        super().load_model(
-            folder_path=folder_path,
-            file_name=file_name,
-        )
-
-        assert hasattr(self, "_sign_frequency")
+        assert hasattr(self, "_sign_recency")
         assert hasattr(self, "_sp_matrix_timestamp_scores")
 
-        self._sp_matrix_timestamp_scores = check_matrix(X=self._sp_matrix_timestamp_scores, format="csr", dtype=np.float32)
+        self._sp_matrix_timestamp_scores = check_matrix(
+            X=self._sp_matrix_timestamp_scores,
+            format="csr",
+            dtype=np.float32,
+        )
