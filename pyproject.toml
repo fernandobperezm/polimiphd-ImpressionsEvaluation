@@ -1,16 +1,29 @@
 [tool.mypy]
 python_version = 3.9
+allow_redefinition = false
+check_untyped_defs = true
+ignore_errors = false
 ignore_missing_imports = true
+implicit_reexport = false
+local_partial_types = true
+strict_optional = true
+strict_equality = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_unreachable = true
+warn_no_return = true
 
 [email.gmail]
 path_credential_json = "./credentials.json"
 path_token_json = "./token.json"
 
 [dask]
-use_processes = true
+use_processes = false
 dashboard_address = ":8787"
 scheduler_port = 8786
-num_workers = 2
+num_workers = 1
 threads_per_worker = 1
 memory_limit = 0
 
@@ -37,13 +50,12 @@ recsys-framework-extensions = { path = "../recsys-framework-extensions/", develo
 plotly = "^5.5.0"
 datashader = "^0.13.0"
 kaleido = "=0.2.1"
-statsmodels = "^0.13.2"
 jupyter = "^1.0.0"
 jupyterlab = "^3.3.0"
 cattrs = "^22.1.0"
 
 [tool.poetry.dev-dependencies]
-mypy = "^0.910"
+mypy = "^0.950"
 black = "^21.11b1"
 pytest = "^6.2.4"
 memory-profiler = "^0.58.0"
