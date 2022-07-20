@@ -37,33 +37,26 @@ name = "impressions_datasets"
 version = "1.0.0"
 description = ""
 authors = [
-    "Anonymous <Anonymous>"
+    "Fernando Benjamin PEREZ MAURERA <fernandobenjamin.perez@polimi.it>"
 ]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "~3.9"
-typed-argument-parser = "^1.7.1"
+typed-argument-parser = "^1.7.2"
 recsys-framework-public = { path = "../RecSysFramework_public/", develop = true }  # Use this when publishing the repo.
-# recsys-framework-public = { git = "https://github.com/fernandobperezm/RecSysFramework_public.git", rev = "5dbd3344b21750efee17250d6788fb6de8f850e1" }
 recsys-framework-extensions = { path = "../recsys-framework-extensions/", develop = true, extras = ["email-gmail"] }  # Use this when publishing the repo.
-plotly = "^5.5.0"
-datashader = "^0.13.0"
-kaleido = "=0.2.1"
-jupyter = "^1.0.0"
-jupyterlab = "^3.3.0"
-cattrs = "^22.1.0"
 
 [tool.poetry.dev-dependencies]
-mypy = "^0.950"
-black = "^21.11b1"
-pytest = "^6.2.4"
-memory-profiler = "^0.58.0"
-types-toml = "^0.10.0"
-pylint = "^2.12.2"
-Faker = "^13.3.4"
+mypy = "^0.971"
+black = "^22.6.0"
+pytest = "^7.1.2"
+memory-profiler = "^0.60.0"
+types-toml = "^0.10.8"
+pylint = "^2.14.5"
+Faker = "^13.15.0"
 mock = "^4.0.3"
-types-mock = "^4.0.13"
+types-mock = "^4.0.15"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
