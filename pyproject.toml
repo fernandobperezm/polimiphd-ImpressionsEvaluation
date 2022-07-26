@@ -20,7 +20,7 @@ path_credential_json = "./credentials.json"
 path_token_json = "./token.json"
 
 [dask]
-use_processes = false
+use_processes = true
 dashboard_address = ":8787"
 scheduler_port = 8786
 num_workers = 1

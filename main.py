@@ -18,8 +18,11 @@ from experiments.confidence_intervals import compute_confidence_intervals
 from experiments.heuristics import run_impressions_heuristics_experiments
 from experiments.print_results import print_results
 from experiments.print_statistics import print_datasets_statistics
-from experiments.re_ranking import run_impressions_re_ranking_experiments, \
-    run_ablation_impressions_re_ranking_experiments
+from experiments.re_ranking import (
+    run_impressions_re_ranking_experiments,
+    run_ablation_impressions_re_ranking_experiments,
+    run_signal_analysis_ablation_impressions_re_ranking_experiments,
+)
 from experiments.statistical_tests import compute_statistical_tests
 from experiments.user_profiles import run_impressions_user_profiles_experiments
 
@@ -81,35 +84,35 @@ class ConsoleArguments(Tap):
 ####################################################################################################
 ####################################################################################################
 _TO_USE_BENCHMARKS = [
-    Benchmarks.ContentWiseImpressions,
-    # Benchmarks.MINDSmall,
+    # Benchmarks.ContentWiseImpressions,
+    Benchmarks.MINDSmall,
     # Benchmarks.FINNNoSlates,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE = [
-    # RecommenderBaseline.RANDOM,
-    # RecommenderBaseline.TOP_POPULAR,
+    RecommenderBaseline.RANDOM,
+    RecommenderBaseline.TOP_POPULAR,
     #
-    # RecommenderBaseline.USER_KNN,
-    # RecommenderBaseline.ITEM_KNN,
+    RecommenderBaseline.USER_KNN,
+    RecommenderBaseline.ITEM_KNN,
     #
     RecommenderBaseline.PURE_SVD,
-    # RecommenderBaseline.NMF,
-    # RecommenderBaseline.MF_BPR,
+    RecommenderBaseline.NMF,
+    RecommenderBaseline.MF_BPR,
     #
-    # RecommenderBaseline.RP3_BETA,
+    RecommenderBaseline.RP3_BETA,
     #
-    # RecommenderBaseline.SLIM_ELASTIC_NET,
-    # RecommenderBaseline.SLIM_BPR,
+    RecommenderBaseline.SLIM_ELASTIC_NET,
+    RecommenderBaseline.SLIM_BPR,
     #
-    # RecommenderBaseline.LIGHT_FM,
-    # RecommenderBaseline.EASE_R,
+    RecommenderBaseline.LIGHT_FM,
+    RecommenderBaseline.EASE_R,
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS = [
-    # RecommenderImpressions.LAST_IMPRESSIONS,
-    # RecommenderImpressions.FREQUENCY_RECENCY,
-    # RecommenderImpressions.RECENCY,
+    RecommenderImpressions.LAST_IMPRESSIONS,
+    RecommenderImpressions.FREQUENCY_RECENCY,
+    RecommenderImpressions.RECENCY,
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING = [
@@ -127,8 +130,7 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES = [
 ]
 
 _TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS = [
-    # EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
-    EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_5_2,
+    EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
 ]
 
 
@@ -212,6 +214,11 @@ if __name__ == '__main__':
 
     if input_flags.include_ablation_impressions_reranking:
         run_ablation_impressions_re_ranking_experiments(
+            dask_interface=dask_interface,
+            ablation_re_ranking_experiment_cases_interface=experiments_ablation_impressions_re_ranking_interface,
+            baseline_experiment_cases_interface=experiments_interface_baselines,
+        )
+        run_signal_analysis_ablation_impressions_re_ranking_experiments(
             dask_interface=dask_interface,
             ablation_re_ranking_experiment_cases_interface=experiments_ablation_impressions_re_ranking_interface,
             baseline_experiment_cases_interface=experiments_interface_baselines,

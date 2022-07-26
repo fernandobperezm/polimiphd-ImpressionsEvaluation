@@ -12,7 +12,7 @@ from recsys_framework_extensions.data.io import attach_to_extended_json_decoder
 from recsys_framework_extensions.data.mixins import InteractionsDataSplits
 from recsys_framework_extensions.data.reader import DataReader
 from recsys_framework_extensions.evaluation import EvaluationStrategy, exclude_from_evaluation
-from recsys_framework_extensions.evaluation.Evaluator import EvaluatorHoldoutToDisk
+from recsys_framework_extensions.evaluation.Evaluator import ExtendedEvaluatorHoldout
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
     AbstractExtendedBaseRecommender, load_extended_recommender, load_recsys_framework_recommender
 from typing_extensions import ParamSpec
@@ -67,6 +67,11 @@ class ImpressionsFeatureColumnsLastSeen(Enum):
     TOTAL_HOURS = "feature_last_seen_total_hours"
     TOTAL_DAYS = "feature_last_seen_total_days"
     TOTAL_WEEKS = "feature_last_seen_total_weeks"
+
+
+class SignalAnalysisType(Enum):
+    POSITIVE = "SIGNAL_ANALYSIS_POSITIVE"
+    NEGATIVE = "SIGNAL_ANALYSIS_NEGATIVE"
 
 
 @attach_to_extended_json_decoder
@@ -717,7 +722,7 @@ def get_reader_from_benchmark(
 class Evaluators:
     validation: EvaluatorHoldout = attrs.field()
     validation_early_stopping: EvaluatorHoldout = attrs.field()
-    to_disk_test: EvaluatorHoldoutToDisk = attrs.field()
+    to_disk_test: ExtendedEvaluatorHoldout = attrs.field()
     test: EvaluatorHoldout = attrs.field()
 
 
@@ -750,8 +755,9 @@ def get_evaluators(
         )
 
     # TODO: fernando-debugger|RETURN TO EvaluatorHoldout
-    evaluator_validation = EvaluatorHoldoutToDisk(
-        data_splits.sp_urm_validation,
+    evaluator_validation = ExtendedEvaluatorHoldout(
+        urm_test=data_splits.sp_urm_validation,
+        urm_train=data_splits.sp_urm_train,
         cutoff_list=experiment_hyper_parameter_tuning_parameters.evaluation_cutoffs,
         exclude_seen=experiment_hyper_parameter_tuning_parameters.evaluation_exclude_seen,
         min_ratings_per_user=experiment_hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
@@ -760,8 +766,9 @@ def get_evaluators(
         ignore_items=items_to_exclude_validation,
     )
     # TODO: fernando-debugger|RETURN TO EvaluatorHoldout
-    evaluator_validation_early_stopping = EvaluatorHoldoutToDisk(
-        data_splits.sp_urm_validation,
+    evaluator_validation_early_stopping = ExtendedEvaluatorHoldout(
+        urm_test=data_splits.sp_urm_validation,
+        urm_train=data_splits.sp_urm_train,
         # The example uses the hyper-param benchmark_config instead of the evaluation cutoff.
         cutoff_list=[experiment_hyper_parameter_tuning_parameters.cutoff_to_optimize],
         exclude_seen=experiment_hyper_parameter_tuning_parameters.evaluation_exclude_seen,
@@ -771,8 +778,9 @@ def get_evaluators(
         ignore_items=items_to_exclude_validation,
     )
     # TODO: fernando-debugger|RETURN TO EvaluatorHoldout
-    evaluator_test = EvaluatorHoldoutToDisk(
-        data_splits.sp_urm_test,
+    evaluator_test = ExtendedEvaluatorHoldout(
+        urm_test=data_splits.sp_urm_test,
+        urm_train=data_splits.sp_urm_train_validation,
         cutoff_list=experiment_hyper_parameter_tuning_parameters.evaluation_cutoffs,
         exclude_seen=experiment_hyper_parameter_tuning_parameters.evaluation_exclude_seen,
         min_ratings_per_user=experiment_hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
@@ -780,8 +788,9 @@ def get_evaluators(
         ignore_users=None,  # Always consider all users in the test set.
         ignore_items=None,  # Always consider all items in the test set.
     )
-    evaluator_to_disk_test = EvaluatorHoldoutToDisk(
+    evaluator_to_disk_test = ExtendedEvaluatorHoldout(
         urm_test=data_splits.sp_urm_test.copy(),
+        urm_train=data_splits.sp_urm_train_validation.copy(),
         cutoff_list=experiment_hyper_parameter_tuning_parameters.evaluation_cutoffs,
         exclude_seen=experiment_hyper_parameter_tuning_parameters.evaluation_exclude_seen,
         min_ratings_per_user=experiment_hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
