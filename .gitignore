@@ -134,3 +134,6 @@ result_experiments/
 result_experiments*/
 data/
 __*/
+
+# Poetry
+poetry.lock
