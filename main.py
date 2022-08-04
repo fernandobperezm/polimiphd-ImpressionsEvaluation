@@ -84,15 +84,15 @@ class ConsoleArguments(Tap):
 ####################################################################################################
 ####################################################################################################
 _TO_USE_BENCHMARKS = [
-    # Benchmarks.ContentWiseImpressions,
+    Benchmarks.ContentWiseImpressions,
     Benchmarks.MINDSmall,
-    # Benchmarks.FINNNoSlates,
+    Benchmarks.FINNNoSlates,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE = [
     RecommenderBaseline.RANDOM,
     RecommenderBaseline.TOP_POPULAR,
-    #
+
     RecommenderBaseline.USER_KNN,
     RecommenderBaseline.ITEM_KNN,
     #
@@ -100,6 +100,7 @@ _TO_USE_RECOMMENDERS_BASELINE = [
     RecommenderBaseline.NMF,
     RecommenderBaseline.MF_BPR,
     #
+    RecommenderBaseline.P3_ALPHA,
     RecommenderBaseline.RP3_BETA,
     #
     RecommenderBaseline.SLIM_ELASTIC_NET,
@@ -131,6 +132,7 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES = [
 
 _TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS = [
     EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
+    # EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_5_2,
 ]
 
 
