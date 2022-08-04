@@ -138,7 +138,7 @@ def _compute_confidence_intervals_recommender_trained_baseline(
         experiment_hyper_parameter_tuning_parameters=experiment_baseline_hyper_parameters,
     )
 
-    evaluators.to_disk_test.compute_recommender_confidence_intervals(
+    evaluators.test.compute_recommender_confidence_intervals(
         recommender=recommender_trained_baseline,
         recommender_name=f"{recommender_trained_baseline.RECOMMENDER_NAME}_{file_name_postfix}",
         folder_export_results=folder_path_export_confidence_intervals,
@@ -233,7 +233,7 @@ def _compute_confidence_intervals_recommender_trained_folded(
         experiment_hyper_parameter_tuning_parameters=experiment_baseline_hyper_parameters,
     )
 
-    evaluators.to_disk_test.compute_recommender_confidence_intervals(
+    evaluators.test.compute_recommender_confidence_intervals(
         recommender=recommender_trained_folded,
         recommender_name=f"{recommender_trained_folded.RECOMMENDER_NAME}_{file_name_postfix}",
         folder_export_results=folder_path_export_confidence_intervals,
@@ -375,7 +375,7 @@ def _compute_confidence_intervals_recommender_trained_impressions_heuristics(
         experiment_hyper_parameter_tuning_parameters=experiment_impressions_hyper_parameters,
     )
 
-    evaluators.to_disk_test.compute_recommender_confidence_intervals(
+    evaluators.test.compute_recommender_confidence_intervals(
         recommender=recommender_trained_impressions,
         recommender_name=f"{recommender_trained_impressions.RECOMMENDER_NAME}_{file_name_postfix}",
         folder_export_results=folder_path_export_confidence_intervals,
@@ -565,7 +565,7 @@ def _compute_confidence_intervals_recommender_trained_impressions(
         experiment_hyper_parameter_tuning_parameters=experiment_impressions_hyper_parameters,
     )
 
-    evaluators.to_disk_test.compute_recommender_confidence_intervals(
+    evaluators.test.compute_recommender_confidence_intervals(
         recommender=recommender_trained_impressions,
         recommender_name=f"{recommender_trained_impressions.RECOMMENDER_NAME}_{file_name_postfix}",
         folder_export_results=folder_path_export_confidence_intervals,

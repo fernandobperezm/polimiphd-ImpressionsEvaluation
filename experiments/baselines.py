@@ -389,7 +389,7 @@ def _run_baselines_folded_hyper_parameter_tuning(
         f"{loaded_trained_recommender.RECOMMENDER_NAME}_best_model_last"
     )
 
-    evaluators.to_disk_test.compute_recommender_confidence_intervals(
+    evaluators.test.compute_recommender_confidence_intervals(
         recommender=loaded_trained_recommender,
         recommender_name=experiment_file_name_root,
         folder_export_results=results_folder_path,

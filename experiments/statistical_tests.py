@@ -304,7 +304,7 @@ def _compute_statistical_test_on_users(
         experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
     )
 
-    evaluators.to_disk_test.compute_recommenders_statistical_tests(
+    evaluators.test.compute_recommenders_statistical_tests(
         recommender_baseline=recommender_baseline,
         recommender_baseline_name=recommender_baseline_name,
         recommender_baseline_folder=recommender_baseline_folder,

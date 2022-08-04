@@ -720,10 +720,9 @@ def get_reader_from_benchmark(
 
 @attrs.define(frozen=True, kw_only=True, slots=False)
 class Evaluators:
-    validation: EvaluatorHoldout = attrs.field()
-    validation_early_stopping: EvaluatorHoldout = attrs.field()
-    to_disk_test: ExtendedEvaluatorHoldout = attrs.field()
-    test: EvaluatorHoldout = attrs.field()
+    validation: ExtendedEvaluatorHoldout = attrs.field()
+    validation_early_stopping: ExtendedEvaluatorHoldout = attrs.field()
+    test: ExtendedEvaluatorHoldout = attrs.field()
 
 
 def get_evaluators(
@@ -754,10 +753,9 @@ def get_evaluators(
             seed=experiment_hyper_parameter_tuning_parameters.reproducibility_seed,
         )
 
-    # TODO: fernando-debugger|RETURN TO EvaluatorHoldout
     evaluator_validation = ExtendedEvaluatorHoldout(
-        urm_test=data_splits.sp_urm_validation,
-        urm_train=data_splits.sp_urm_train,
+        urm_test=data_splits.sp_urm_validation.copy(),
+        urm_train=data_splits.sp_urm_train.copy(),
         cutoff_list=experiment_hyper_parameter_tuning_parameters.evaluation_cutoffs,
         exclude_seen=experiment_hyper_parameter_tuning_parameters.evaluation_exclude_seen,
         min_ratings_per_user=experiment_hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
@@ -765,10 +763,9 @@ def get_evaluators(
         ignore_users=users_to_exclude_validation,
         ignore_items=items_to_exclude_validation,
     )
-    # TODO: fernando-debugger|RETURN TO EvaluatorHoldout
     evaluator_validation_early_stopping = ExtendedEvaluatorHoldout(
-        urm_test=data_splits.sp_urm_validation,
-        urm_train=data_splits.sp_urm_train,
+        urm_test=data_splits.sp_urm_validation.copy(),
+        urm_train=data_splits.sp_urm_train.copy(),
         # The example uses the hyper-param benchmark_config instead of the evaluation cutoff.
         cutoff_list=[experiment_hyper_parameter_tuning_parameters.cutoff_to_optimize],
         exclude_seen=experiment_hyper_parameter_tuning_parameters.evaluation_exclude_seen,
@@ -777,18 +774,7 @@ def get_evaluators(
         ignore_users=users_to_exclude_validation,
         ignore_items=items_to_exclude_validation,
     )
-    # TODO: fernando-debugger|RETURN TO EvaluatorHoldout
     evaluator_test = ExtendedEvaluatorHoldout(
-        urm_test=data_splits.sp_urm_test,
-        urm_train=data_splits.sp_urm_train_validation,
-        cutoff_list=experiment_hyper_parameter_tuning_parameters.evaluation_cutoffs,
-        exclude_seen=experiment_hyper_parameter_tuning_parameters.evaluation_exclude_seen,
-        min_ratings_per_user=experiment_hyper_parameter_tuning_parameters.evaluation_min_ratings_per_user,
-        verbose=True,
-        ignore_users=None,  # Always consider all users in the test set.
-        ignore_items=None,  # Always consider all items in the test set.
-    )
-    evaluator_to_disk_test = ExtendedEvaluatorHoldout(
         urm_test=data_splits.sp_urm_test.copy(),
         urm_train=data_splits.sp_urm_train_validation.copy(),
         cutoff_list=experiment_hyper_parameter_tuning_parameters.evaluation_cutoffs,
@@ -803,7 +789,6 @@ def get_evaluators(
         validation=evaluator_validation,
         validation_early_stopping=evaluator_validation_early_stopping,
         test=evaluator_test,
-        to_disk_test=evaluator_to_disk_test,
     )
 
 
