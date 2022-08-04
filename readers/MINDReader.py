@@ -49,7 +49,7 @@ import os
 import re
 import zipfile
 from enum import Enum
-from typing import Optional, NamedTuple, Callable
+from typing import Optional, NamedTuple, Callable, Sequence, Any
 
 import attrs  # Use the newest API of attrs package.
 import numpy as np
@@ -82,6 +82,75 @@ tqdm.pandas()
 logger = get_logger(
     logger_name=__file__,
 )
+
+
+def convert_user_item_impressions_dataframe(
+    df: pd.DataFrame,
+    column_item: str,
+    column_new_item: str,
+    column_dtype: Any,
+) -> pd.DataFrame:
+    """
+    This method transforms a dataframe with the form of
+    | user: int | items: list[int] | impressions: list[int] |
+
+    into a dataframe of the form:
+    | user: int | items: int | impressions: list[int] | order: int |
+
+    In a future version, this method may also support expanding other feature columns if needed.
+    """
+    # df_to_explode is a dataframe with a single column as follows:
+    # | item_ids: list[int] |
+    df_to_explode: pd.DataFrame = df[
+        [column_item]
+    ].copy()
+
+    # df_to_explode is a dataframe with two columns as follows:
+    # | item_ids: list[int] | order: list[int] |
+    df_to_explode["order"] = df_to_explode[
+        column_item
+    ].apply(
+        lambda l: np.arange(start=0, step=1, stop=len(l), dtype=np.int32)
+    )
+
+    # df_exploded is a dataframe with a single column as follows:
+    # | item_id: int | order: int |
+    # It is important to keep the index as it was as we'll use that to merge with df dataframe.
+    # Also, we cast to the new dtype right away, so we can take advantage of pandas optimizations.
+    df_exploded: pd.DataFrame = df_to_explode.explode(
+        column=[column_item, "order"],
+        ignore_index=False,
+    ).dropna(
+        axis="index",
+        how="any",
+        inplace=False,
+    ).rename(
+        columns={
+            column_item: column_new_item
+        }
+    ).astype(
+        dtype={
+            column_new_item: column_dtype,
+        }
+    )
+
+    # In this step, the resulting dataframe has the following structure:
+    # | user: int | items: list[int] | impressions: list[int] | item: int |
+    df = df.merge(
+        right=df_exploded,
+        how="inner",
+        left_index=True,
+        right_index=True,
+        suffixes=("", "")
+    ).reset_index(
+        drop=True
+    )
+
+    # Lastly, we remove the redundant old column of items. The resulting structure is the following:
+    # | user: int | impressions: list[int] | item: int | order: int |
+    del df[column_item]
+
+    return df
 
 
 @timeit
@@ -220,6 +289,14 @@ class MINDSplits(NamedTuple):
     df_validation: pd.DataFrame
     df_train_validation: pd.DataFrame
     df_test: pd.DataFrame
+
+    def to_list(self):
+        return [
+            self.df_train,
+            self.df_validation,
+            self.df_train_validation,
+            self.df_test,
+        ]
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
@@ -690,12 +767,12 @@ class PandasMINDRawData(ParquetDataMixin):
         df_data["num_impressions"] = df_data["impressions"].progress_apply(
             len
         )
-        df_data["position_interactions"] = df_data["str_impressions"].progress_apply(
+        df_data["interaction_indices"] = df_data["str_impressions"].progress_apply(
             extract_item_positions_in_impressions
         )
 
         return df_data[
-            ["timestamp", "user_id", "item_ids", "impressions", "num_interacted_items", "num_impressions", "position_interactions"]
+            ["timestamp", "user_id", "item_ids", "impressions", "num_interacted_items", "num_impressions", "interaction_indices"]
         ]
 
     @timeit
@@ -830,7 +907,7 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
             folder_path=self._folder_dataset,
         )
 
-    @property  # type: ignore
+    @property
     def filtered(self) -> pd.DataFrame:
         return self.load_parquet(
             file_path=self._file_path_filtered_data,
@@ -839,7 +916,7 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
             dtype=self.config.pandas_dtypes,
         )
 
-    @property  # type: ignore
+    @property
     def leave_last_out_splits(
         self
     ) -> MINDSplits:
@@ -902,7 +979,6 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
         After this, we can ensure that the set of indices values are the same across the three datasets and when we
         filter datasets by their indices we are sure that we're doing the filtering correctly.
         """
-
         logger.info(
             f"Filtering data sources (interactions, impressions, metadata)."
         )
@@ -921,46 +997,31 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
                 ignore_index=True,
             )
 
+        df_data = convert_user_item_impressions_dataframe(
+            df=df_data,
+            column_item="item_ids",
+            column_new_item="item_id",
+            column_dtype=pd.StringDtype(),
+        )
+
         df_data = df_data.sort_values(
-            by=["timestamp"],
+            by=["timestamp", "order"],
             ascending=True,
             axis="index",
             inplace=False,
             ignore_index=False,
         )
 
-        df_exploded_interactions = df_data[
-            ["timestamp", "user_id", "item_ids"]
-        ].explode(
-            column="item_ids",
-            ignore_index=False,
-        ).dropna(
-            axis="index",
-            how="any",
-            inplace=False,
-        ).reset_index(
-            drop=False,
-        )
-
-        df_exploded_interactions, _ = remove_duplicates_in_interactions(
-            df=df_exploded_interactions,
-            columns_to_compare=["user_id", "item_ids"],
+        df_data, _ = remove_duplicates_in_interactions(
+            df=df_data,
+            columns_to_compare=["user_id", "item_id"],
             keep=self.config.keep_duplicates,
         )
 
-        df_exploded_interactions, _ = remove_users_without_min_number_of_interactions(
-            df=df_exploded_interactions,
+        df_data, _ = remove_users_without_min_number_of_interactions(
+            df=df_data,
             users_column="user_id",
             min_number_of_interactions=self.config.min_number_of_interactions,
-        )
-
-        df_exploded_interactions = df_exploded_interactions.set_index(
-            "index",
-        )
-
-        df_data, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_data,
-            df_interactions=df_exploded_interactions,
         )
 
         return df_data
@@ -968,21 +1029,8 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
     def _leave_last_out_splits_to_pandas(self) -> list[pd.DataFrame]:
         df_data_filtered = self.filtered
 
-        df_data_exploded_filtered = df_data_filtered[
-            ["timestamp", "user_id", "item_ids"]
-        ].explode(
-            column="item_ids",
-            ignore_index=False,
-        ).dropna(
-            axis="index",
-            how="any",
-            inplace=False,
-        ).reset_index(
-            drop=False,
-        )
-
         df_data_train_validation, df_data_test = split_sequential_train_test_by_num_records_on_test(
-            df=df_data_exploded_filtered,
+            df=df_data_filtered,
             group_by_column="user_id",
             num_records_in_test=1,
         )
@@ -991,36 +1039,6 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
             df=df_data_train_validation,
             group_by_column="user_id",
             num_records_in_test=1,
-        )
-
-        df_data_train = df_data_train.set_index(
-            "index",
-        )
-        df_data_validation = df_data_validation.set_index(
-            "index",
-        )
-        df_data_train_validation = df_data_train_validation.set_index(
-            "index",
-        )
-        df_data_test = df_data_test.set_index(
-            "index",
-        )
-
-        df_data_train, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_data_filtered,
-            df_interactions=df_data_train,
-        )
-        df_data_validation, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_data_filtered,
-            df_interactions=df_data_validation,
-        )
-        df_data_train_validation, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_data_filtered,
-            df_interactions=df_data_train_validation,
-        )
-        df_data_test, _ = filter_impressions_by_interactions_index(
-            df_impressions=df_data_filtered,
-            df_interactions=df_data_test,
         )
 
         return [df_data_train, df_data_validation, df_data_train_validation, df_data_test]
@@ -1041,7 +1059,7 @@ class PandasMINDImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBackupMix
         )
 
         self._folder_leave_last_k_out = os.path.join(
-            self._folder_dataset, "leave-last-k-out", ""
+            self._folder_dataset, "leave-last-out", ""
         )
 
         self._file_name_split_train = "train.parquet"
@@ -1148,21 +1166,26 @@ class PandasMINDImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBackupMix
             feature=feature_key,
         )
 
-        partial_func_user_item_position_to_pandas = functools.partial(
-            self._user_item_feature_to_pandas,
+        df_splits = self._get_splits_by_evaluation_strategy(
             evaluation_strategy=evaluation_strategy,
-            feature_key=feature_key,
         )
 
-        df_train: pd.DataFrame
-        df_validation: pd.DataFrame
-        df_train_validation: pd.DataFrame
-        df_test: pd.DataFrame
+        feature_func = self._feature_funcs[feature_key]
 
-        df_train, df_validation, df_train_validation, df_test = self.load_parquets(
-            file_paths=file_paths,
-            to_pandas_func=partial_func_user_item_position_to_pandas,
-        )
+        partial_functions = [
+            lambda: feature_func(df=df_splits.df_train)[0],
+            lambda: feature_func(df=df_splits.df_validation)[0],
+            lambda: feature_func(df=df_splits.df_train_validation)[0],
+            lambda: feature_func(df=df_splits.df_test)[0],
+        ]
+
+        df_train, df_validation, df_train_validation, df_test = [
+            self.load_parquet(
+                file_path=file_path,
+                to_pandas_func=partial_func,
+            )
+            for file_path, partial_func in zip(file_paths, partial_functions)
+        ]
 
         return MINDSplits(
             df_train=df_train,
@@ -1230,8 +1253,11 @@ class PandasMINDImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBackupMix
         feature_func = self._feature_funcs[feature_key]
 
         df_train_user_item_feature, _ = feature_func(df=splits.df_train)
+
         df_validation_user_item_feature, _ = feature_func(df=splits.df_validation)
+
         df_train_validation_user_item_feature, _ = feature_func(df=splits.df_train_validation)
+
         df_test_user_item_feature, _ = feature_func(df=splits.df_test)
 
         return [
@@ -1259,7 +1285,7 @@ class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin, DatasetConfigBacku
         )
 
         self.users_column = "user_id"
-        self.items_column = "item_ids"
+        self.items_column = "item_id"
         self.impressions_column = "impressions"
 
         self._folder_data = os.path.join(
@@ -1666,9 +1692,9 @@ class MINDReader(DatasetConfigBackupMixin, DataReader):
 
 
 if __name__ == "__main__":
-    config = MINDSmallConfig()
+    mind_small_config = MINDSmallConfig()
 
     data_reader = MINDReader(
-        config=config,
+        config=mind_small_config,
     )
     dataset = data_reader.dataset
