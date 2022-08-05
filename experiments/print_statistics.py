@@ -17,16 +17,15 @@ logger = get_logger(__name__)
 #                                REPRODUCIBILITY VARIABLES                            #
 ####################################################################################################
 ####################################################################################################
-BASE_FOLDER = os.path.join(
-    commons.RESULTS_EXPERIMENTS_DIR,
-    "dataset_statistics_export",
+DIR_RESULTS_DATASETS_STATISTICS = os.path.join(
+    commons.DIR_RESULTS_EXPORT,
+    "datasets_statistics",
     "{benchmark}",
     "{evaluation_strategy}",
     "",
 )
 
-
-commons.FOLDERS.add(BASE_FOLDER)
+commons.FOLDERS.add(DIR_RESULTS_DATASETS_STATISTICS)
 
 
 ####################################################################################################
@@ -295,7 +294,7 @@ def print_datasets_statistics(
             hyper_parameters
         ]
 
-        folder_path_export = BASE_FOLDER.format(
+        folder_path_export = DIR_RESULTS_DATASETS_STATISTICS.format(
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )

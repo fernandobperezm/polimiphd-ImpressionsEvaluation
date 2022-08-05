@@ -19,21 +19,15 @@ logger = get_logger(__name__)
 #                                FOLDERS VARIABLES                            #
 ####################################################################################################
 ####################################################################################################
-BASE_FOLDER = os.path.join(
-    commons.DIR_RESULTS_EXPORT,
-    "heuristics",
+DIR_TRAINED_MODELS_TIME_AWARE = os.path.join(
+    commons.DIR_TRAINED_MODELS,
+    "time_aware",
     "{benchmark}",
     "{evaluation_strategy}",
     "",
 )
-HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
-    BASE_FOLDER,
-    "experiments",
-    ""
-)
 
-commons.FOLDERS.add(BASE_FOLDER)
-commons.FOLDERS.add(HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR)
+commons.FOLDERS.add(DIR_TRAINED_MODELS_TIME_AWARE)
 
 
 ####################################################################################################
@@ -126,7 +120,7 @@ def _run_impressions_heuristics_hyper_parameter_tuning(
         )
     )
 
-    experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    experiments_folder_path = DIR_TRAINED_MODELS_TIME_AWARE.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy.value,
     )

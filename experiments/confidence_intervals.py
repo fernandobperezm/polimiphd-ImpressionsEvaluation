@@ -6,16 +6,16 @@ from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.logging import get_logger
 
 import experiments.commons as commons
-from experiments.baselines import BASE_FOLDER as FOLDER_BASE_BASELINES
+from experiments.baselines import DIR_TRAINED_MODELS_BASELINES as FOLDER_BASE_BASELINES
 from experiments.baselines import HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR as FOLDER_HYPER_PARAMETER_TUNING_BASELINES
-from experiments.heuristics import BASE_FOLDER as FOLDER_BASE_HEURISTICS
-from experiments.heuristics import HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR as \
+from experiments.time_aware import BASE_FOLDER as FOLDER_BASE_HEURISTICS
+from experiments.time_aware import DIR_TRAINED_MODELS_TIME_AWARE as \
     FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_HEURISTICS
 from experiments.re_ranking import BASE_FOLDER as FOLDER_BASE_RE_RANKING
-from experiments.re_ranking import HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR as \
+from experiments.re_ranking import DIR_TRAINED_MODELS_RE_RANKING as \
     FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_RE_RANKING
 from experiments.user_profiles import BASE_FOLDER as FOLDER_BASE_USER_PROFILES
-from experiments.user_profiles import HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR as \
+from experiments.user_profiles import DIR_TRAINED_MODELS_USER_PROFILES as \
     FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_USER_PROFILES
 
 from Recommenders.FactorizationMachines.LightFMRecommender import LightFMCFRecommender

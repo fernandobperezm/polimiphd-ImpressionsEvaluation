@@ -8,12 +8,9 @@ from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.logging import get_logger
 
 import experiments.commons as commons
-from experiments.baselines import HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR as \
-    FOLDER_HYPER_PARAMETER_TUNING_BASELINES
-from experiments.re_ranking import HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR as \
-    FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_RE_RANKING
-from experiments.user_profiles import HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR as \
-    FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_USER_PROFILES
+from experiments.baselines import DIR_TRAINED_MODELS_BASELINES
+from experiments.re_ranking import DIR_TRAINED_MODELS_RE_RANKING
+from experiments.user_profiles import DIR_TRAINED_MODELS_USER_PROFILES
 from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
 
 logger = get_logger(__name__)
@@ -24,7 +21,7 @@ logger = get_logger(__name__)
 ####################################################################################################
 ####################################################################################################
 DIR_STATISTICAL_TESTS = os.path.join(
-    commons.RESULTS_EXPERIMENTS_DIR,
+    commons.DIR_RESULTS_EXPORT,
     "statistical_tests",
     "{benchmark}",
     "{evaluation_strategy}",
@@ -137,19 +134,19 @@ def _compute_statistical_test_on_users(
             )
         )
 
-    folder_path_recommender_baseline = FOLDER_HYPER_PARAMETER_TUNING_BASELINES.format(
+    folder_path_recommender_baseline = DIR_TRAINED_MODELS_BASELINES.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
-    folder_path_recommender_folded = FOLDER_HYPER_PARAMETER_TUNING_BASELINES.format(
+    folder_path_recommender_folded = DIR_TRAINED_MODELS_BASELINES.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
-    folder_path_recommender_impressions_re_ranking = FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_RE_RANKING.format(
+    folder_path_recommender_impressions_re_ranking = DIR_TRAINED_MODELS_RE_RANKING.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
-    folder_path_recommender_impressions_user_profiles = FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_USER_PROFILES.format(
+    folder_path_recommender_impressions_user_profiles = DIR_TRAINED_MODELS_USER_PROFILES.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )

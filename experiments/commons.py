@@ -249,14 +249,22 @@ class ExperimentCasesInterface:
         return list(EvaluationStrategy)
 
 
-RESULTS_EXPERIMENTS_DIR = os.path.join(
+DIR_TRAINED_MODELS = os.path.join(
+    ".",
+    "trained_models",
+    ""
+)
+
+
+DIR_RESULTS_EXPORT = os.path.join(
     ".",
     "result_experiments",
     ""
 )
 
-EVALUATIONS_DIR = os.path.join(
-    RESULTS_EXPERIMENTS_DIR,
+DIR_DATASET_POPULARITY = os.path.join(
+    DIR_RESULTS_EXPORT,
+    "dataset_popularity",
     "{benchmark}",
     "{evaluation_strategy}",
 )
@@ -264,7 +272,9 @@ EVALUATIONS_DIR = os.path.join(
 # Each module calls common.FOLDERS.add(<folder_name>) on this variable so they make aware the folder-creator function
 # that their folders need to be created.
 FOLDERS: set[str] = {
-    RESULTS_EXPERIMENTS_DIR,
+    DIR_TRAINED_MODELS,
+    DIR_RESULTS_EXPORT,
+    DIR_DATASET_POPULARITY,
 }
 
 
@@ -835,7 +845,7 @@ def plot_popularity_of_datasets(
         )
         loaded_dataset = dataset_reader.dataset
 
-        output_folder = EVALUATIONS_DIR.format(
+        output_folder = DIR_DATASET_POPULARITY.format(
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy.value,
         )

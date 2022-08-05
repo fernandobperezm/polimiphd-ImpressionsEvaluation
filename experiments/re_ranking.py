@@ -24,21 +24,15 @@ logger = get_logger(__name__)
 #                                FOLDERS VARIABLES                            #
 ####################################################################################################
 ####################################################################################################
-BASE_FOLDER = os.path.join(
-    commons.RESULTS_EXPERIMENTS_DIR,
+DIR_TRAINED_MODELS_RE_RANKING = os.path.join(
+    commons.DIR_TRAINED_MODELS,
     "re_ranking",
     "{benchmark}",
     "{evaluation_strategy}",
     "",
 )
-HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
-    BASE_FOLDER,
-    "experiments",
-    ""
-)
 
-commons.FOLDERS.add(BASE_FOLDER)
-commons.FOLDERS.add(HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR)
+commons.FOLDERS.add(DIR_TRAINED_MODELS_RE_RANKING)
 
 
 ####################################################################################################
@@ -255,7 +249,7 @@ def _run_signal_analysis_ablation_impressions_re_ranking_hyper_parameter_tuning(
 
     assert baseline_recommender_trained_train.RECOMMENDER_NAME == baseline_recommender_trained_train_validation.RECOMMENDER_NAME
 
-    experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    experiments_folder_path = DIR_TRAINED_MODELS_RE_RANKING.format(
         benchmark=experiment_re_ranking_benchmark.benchmark.value,
         evaluation_strategy=experiment_re_ranking_hyper_parameters.evaluation_strategy.value,
     )
@@ -571,7 +565,7 @@ def _run_ablation_impressions_re_ranking_hyper_parameter_tuning(
 
     assert baseline_recommender_trained_train.RECOMMENDER_NAME == baseline_recommender_trained_train_validation.RECOMMENDER_NAME
 
-    experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    experiments_folder_path = DIR_TRAINED_MODELS_RE_RANKING.format(
         benchmark=experiment_re_ranking_benchmark.benchmark.value,
         evaluation_strategy=experiment_re_ranking_hyper_parameters.evaluation_strategy.value,
     )
@@ -867,7 +861,7 @@ def _run_impressions_re_ranking_hyper_parameter_tuning(
 
         assert baseline_recommender_trained_train.RECOMMENDER_NAME == baseline_recommender_trained_train_validation.RECOMMENDER_NAME
 
-        experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+        experiments_folder_path = DIR_TRAINED_MODELS_RE_RANKING.format(
             benchmark=experiment_re_ranking_benchmark.benchmark.value,
             evaluation_strategy=experiment_re_ranking_hyper_parameters.evaluation_strategy.value,
         )

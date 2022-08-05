@@ -17,7 +17,7 @@ from recsys_framework_extensions.plotting import generate_accuracy_and_beyond_me
 
 import experiments.baselines as baselines
 import experiments.commons as commons
-import experiments.heuristics as heuristics
+import experiments.time_aware as heuristics
 import experiments.re_ranking as re_ranking
 import experiments.user_profiles as user_profiles
 from impression_recommenders.re_ranking.cycling import CyclingRecommender
@@ -34,31 +34,31 @@ logger = get_logger(__name__)
 #                                REPRODUCIBILITY VARIABLES                            #
 ####################################################################################################
 ####################################################################################################
-BASE_FOLDER = os.path.join(
-    commons.RESULTS_EXPERIMENTS_DIR,
-    "results_export",
+DIR_BASE = os.path.join(
+    commons.DIR_RESULTS_EXPORT,
+    "model_evaluation",
     "{benchmark}",
     "{evaluation_strategy}",
     "",
 )
 DIR_CSV_RESULTS = os.path.join(
-    BASE_FOLDER,
+    DIR_BASE,
     "csv",
     "",
 )
 DIR_PARQUET_RESULTS = os.path.join(
-    BASE_FOLDER,
+    DIR_BASE,
     "parquet",
     "",
 )
 DIR_LATEX_RESULTS = os.path.join(
-    BASE_FOLDER,
+    DIR_BASE,
     "latex",
     "",
 )
 DIR_ARTICLE_ACCURACY_METRICS_BASELINES_LATEX = os.path.join(
     DIR_LATEX_RESULTS,
-    "article-accuracy_and_beyond_accuracy",
+    "article_accuracy_and_beyond_accuracy",
     "",
 )
 DIR_ACCURACY_METRICS_BASELINES_LATEX = os.path.join(
@@ -67,7 +67,7 @@ DIR_ACCURACY_METRICS_BASELINES_LATEX = os.path.join(
     "",
 )
 
-commons.FOLDERS.add(BASE_FOLDER)
+commons.FOLDERS.add(DIR_BASE)
 commons.FOLDERS.add(DIR_CSV_RESULTS)
 commons.FOLDERS.add(DIR_PARQUET_RESULTS)
 commons.FOLDERS.add(DIR_ACCURACY_METRICS_BASELINES_LATEX)
@@ -245,7 +245,7 @@ def _print_baselines_metrics(
     knn_similarity_list: list[commons.T_SIMILARITY_TYPE],
     export_experiments_folder_path: str,
 ) -> DataFrameResults:
-    experiments_folder_path = baselines.HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    experiments_folder_path = baselines.DIR_TRAINED_MODELS_BASELINES.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
@@ -312,7 +312,7 @@ def _print_impressions_heuristics_metrics(
     cutoffs_list: list[int],
     export_experiments_folder_path: str,
 ) -> DataFrameResults:
-    experiments_folder_path = heuristics.HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    experiments_folder_path = heuristics.DIR_TRAINED_MODELS_TIME_AWARE.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
@@ -351,12 +351,12 @@ def _print_impressions_re_ranking_metrics(
     knn_similarity_list: list[commons.T_SIMILARITY_TYPE],
     export_experiments_folder_path: str,
 ) -> DataFrameResults:
-    baseline_experiments_folder_path = baselines.HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    baseline_experiments_folder_path = baselines.DIR_TRAINED_MODELS_BASELINES.format(
         benchmark=baseline_experiment_benchmark.benchmark.value,
         evaluation_strategy=baseline_experiment_hyper_parameters.evaluation_strategy.value,
     )
 
-    re_ranking_experiments_folder_path = re_ranking.HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    re_ranking_experiments_folder_path = re_ranking.DIR_TRAINED_MODELS_RE_RANKING.format(
         benchmark=baseline_experiment_benchmark.benchmark.value,
         evaluation_strategy=baseline_experiment_hyper_parameters.evaluation_strategy.value,
     )
@@ -446,12 +446,12 @@ def _print_ablation_impressions_re_ranking_metrics(
     knn_similarity_list: list[commons.T_SIMILARITY_TYPE],
     export_experiments_folder_path: str,
 ) -> DataFrameResults:
-    baseline_experiments_folder_path = baselines.HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    baseline_experiments_folder_path = baselines.DIR_TRAINED_MODELS_BASELINES.format(
         benchmark=baseline_experiment_benchmark.benchmark.value,
         evaluation_strategy=baseline_experiment_hyper_parameters.evaluation_strategy.value,
     )
 
-    re_ranking_experiments_folder_path = re_ranking.HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    re_ranking_experiments_folder_path = re_ranking.DIR_TRAINED_MODELS_RE_RANKING.format(
         benchmark=baseline_experiment_benchmark.benchmark.value,
         evaluation_strategy=baseline_experiment_hyper_parameters.evaluation_strategy.value,
     )
@@ -542,12 +542,12 @@ def _print_impressions_user_profiles_metrics(
     knn_similarity_list: list[commons.T_SIMILARITY_TYPE],
     export_experiments_folder_path: str,
 ) -> DataFrameResults:
-    baseline_experiments_folder_path = baselines.HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    baseline_experiments_folder_path = baselines.DIR_TRAINED_MODELS_BASELINES.format(
         benchmark=baseline_experiment_benchmark.benchmark.value,
         evaluation_strategy=baseline_experiment_hyper_parameters.evaluation_strategy.value,
     )
 
-    user_profiles_experiments_folder_path = user_profiles.HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    user_profiles_experiments_folder_path = user_profiles.DIR_TRAINED_MODELS_USER_PROFILES.format(
         benchmark=baseline_experiment_benchmark.benchmark.value,
         evaluation_strategy=baseline_experiment_hyper_parameters.evaluation_strategy.value,
     )

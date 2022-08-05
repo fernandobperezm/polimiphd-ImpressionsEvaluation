@@ -28,27 +28,15 @@ logger = get_logger(__name__)
 #                                FOLDERS VARIABLES                            #
 ####################################################################################################
 ####################################################################################################
-BASE_FOLDER = os.path.join(
-    commons.RESULTS_EXPERIMENTS_DIR,
-    "evaluation",
+DIR_TRAINED_MODELS_BASELINES = os.path.join(
+    commons.DIR_TRAINED_MODELS,
+    "baselines",
     "{benchmark}",
     "{evaluation_strategy}",
     "",
 )
-HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR = os.path.join(
-    BASE_FOLDER,
-    "experiments",
-    ""
-)
-RESULTS_EXPERIMENTS_DIR = os.path.join(
-    BASE_FOLDER,
-    "results",
-    ""
-)
 
-commons.FOLDERS.add(BASE_FOLDER)
-commons.FOLDERS.add(HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR)
-commons.FOLDERS.add(RESULTS_EXPERIMENTS_DIR)
+commons.FOLDERS.add(DIR_TRAINED_MODELS_BASELINES)
 
 
 ####################################################################################################
@@ -66,7 +54,7 @@ def load_best_hyper_parameters(
     Loads the dictionary of best hyper-parameters for a given recommender. Currently, not used and untested.
     """
 
-    tuned_recommender_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    tuned_recommender_folder_path = DIR_TRAINED_MODELS_BASELINES.format(
         benchmark=benchmark.value,
         evaluation_strategy=hyper_parameter_tuning_parameters.evaluation_strategy.value,
     )
@@ -128,7 +116,7 @@ def load_trained_recommender(
 
         recommender_name = f"{experiment_recommender.recommender.RECOMMENDER_NAME}_{similarity}"
 
-    folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    folder_path = DIR_TRAINED_MODELS_BASELINES.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy.value,
     )
@@ -276,7 +264,7 @@ def _run_baselines_folded_hyper_parameter_tuning(
 
     assert baseline_recommender_trained_train.RECOMMENDER_NAME == baseline_recommender_trained_train_validation.RECOMMENDER_NAME
 
-    experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    experiments_folder_path = DIR_TRAINED_MODELS_BASELINES.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy.value,
     )
@@ -381,7 +369,7 @@ def _run_baselines_folded_hyper_parameter_tuning(
     if loaded_trained_recommender is None:
         return
 
-    results_folder_path = RESULTS_EXPERIMENTS_DIR.format(
+    path_trained_models = DIR_TRAINED_MODELS_BASELINES.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy.value,
     )
@@ -392,7 +380,7 @@ def _run_baselines_folded_hyper_parameter_tuning(
     evaluators.test.compute_recommender_confidence_intervals(
         recommender=loaded_trained_recommender,
         recommender_name=experiment_file_name_root,
-        folder_export_results=results_folder_path,
+        folder_export_results=path_trained_models,
     )
 
 
@@ -427,7 +415,7 @@ def _run_baselines_hyper_parameter_tuning(
     random.seed(experiment_hyper_parameter_tuning_parameters.reproducibility_seed)
     np.random.seed(experiment_hyper_parameter_tuning_parameters.reproducibility_seed)
 
-    experiments_folder_path = HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR.format(
+    experiments_folder_path = DIR_TRAINED_MODELS_BASELINES.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy.value,
     )
