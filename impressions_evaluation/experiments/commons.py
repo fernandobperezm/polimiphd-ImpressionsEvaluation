@@ -6,7 +6,6 @@ from typing import Type, Literal, Optional, cast, Union, TypeVar, Sequence
 import Recommenders.Recommender_import_list as recommenders
 import attrs
 import scipy.sparse as sp
-from Evaluation.Evaluator import EvaluatorHoldout
 from Recommenders.BaseRecommender import BaseRecommender
 from recsys_framework_extensions.data.io import attach_to_extended_json_decoder
 from recsys_framework_extensions.data.mixins import InteractionsDataSplits
@@ -17,19 +16,19 @@ from recsys_framework_extensions.recommenders.base import SearchHyperParametersB
     AbstractExtendedBaseRecommender, load_extended_recommender, load_recsys_framework_recommender
 from typing_extensions import ParamSpec
 
-from readers.ContentWiseImpressionsReader import ContentWiseImpressionsReader, ContentWiseImpressionsConfig
-from readers.FINNNoReader import FINNNoSlateReader, FinnNoSlatesConfig
-from readers.MINDReader import MINDReader, MINDSmallConfig
-from impression_recommenders.heuristics.frequency_and_recency import FrequencyRecencyRecommender, RecencyRecommender, \
+from impressions_evaluation.readers.ContentWiseImpressionsReader import ContentWiseImpressionsReader, ContentWiseImpressionsConfig
+from impressions_evaluation.readers.FINNNoReader import FINNNoSlateReader, FinnNoSlatesConfig
+from impressions_evaluation.readers.MINDReader import MINDReader, MINDSmallConfig
+from impressions_evaluation.impression_recommenders.heuristics.frequency_and_recency import FrequencyRecencyRecommender, RecencyRecommender, \
     SearchHyperParametersFrequencyRecencyRecommender, SearchHyperParametersRecencyRecommender
-from impression_recommenders.heuristics.latest_impressions import LastImpressionsRecommender, \
+from impressions_evaluation.impression_recommenders.heuristics.latest_impressions import LastImpressionsRecommender, \
     SearchHyperParametersLastImpressionsRecommender
-from impression_recommenders.re_ranking.cycling import CyclingRecommender, SearchHyperParametersCyclingRecommender
-from impression_recommenders.re_ranking.impressions_discounting import ImpressionsDiscountingRecommender, \
+from impressions_evaluation.impression_recommenders.re_ranking.cycling import CyclingRecommender, SearchHyperParametersCyclingRecommender
+from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import ImpressionsDiscountingRecommender, \
     SearchHyperParametersImpressionsDiscountingRecommender
-from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender, \
+from impressions_evaluation.impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender, \
     SearchHyperParametersFoldedMatrixFactorizationRecommender
-from impression_recommenders.user_profile.weighted import (
+from impressions_evaluation.impression_recommenders.user_profile.weighted import (
     UserWeightedUserProfileRecommender,
     ItemWeightedUserProfileRecommender,
     SearchHyperParametersWeightedUserProfileRecommender,
@@ -250,14 +249,14 @@ class ExperimentCasesInterface:
 
 
 DIR_TRAINED_MODELS = os.path.join(
-    ".",
+    os.getcwd(),
     "trained_models",
     ""
 )
 
 
 DIR_RESULTS_EXPORT = os.path.join(
-    ".",
+    os.getcwd(),
     "result_experiments",
     ""
 )

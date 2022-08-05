@@ -5,22 +5,21 @@ from typing import Optional
 from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.logging import get_logger
 
-import experiments.commons as commons
-from experiments.baselines import DIR_TRAINED_MODELS_BASELINES as FOLDER_BASE_BASELINES
-from experiments.baselines import HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR as FOLDER_HYPER_PARAMETER_TUNING_BASELINES
-from experiments.time_aware import BASE_FOLDER as FOLDER_BASE_HEURISTICS
-from experiments.time_aware import DIR_TRAINED_MODELS_TIME_AWARE as \
+import impressions_evaluation.experiments.commons as commons
+from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES as FOLDER_BASE_BASELINES
+from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES as \
+    FOLDER_HYPER_PARAMETER_TUNING_BASELINES
+from impressions_evaluation.experiments.time_aware import DIR_TRAINED_MODELS_TIME_AWARE as FOLDER_BASE_HEURISTICS
+from impressions_evaluation.experiments.time_aware import DIR_TRAINED_MODELS_TIME_AWARE as \
     FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_HEURISTICS
-from experiments.re_ranking import BASE_FOLDER as FOLDER_BASE_RE_RANKING
-from experiments.re_ranking import DIR_TRAINED_MODELS_RE_RANKING as \
+from impressions_evaluation.experiments.re_ranking import DIR_TRAINED_MODELS_RE_RANKING as FOLDER_BASE_RE_RANKING
+from impressions_evaluation.experiments.re_ranking import DIR_TRAINED_MODELS_RE_RANKING as \
     FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_RE_RANKING
-from experiments.user_profiles import BASE_FOLDER as FOLDER_BASE_USER_PROFILES
-from experiments.user_profiles import DIR_TRAINED_MODELS_USER_PROFILES as \
+from impressions_evaluation.experiments.user_profiles import DIR_TRAINED_MODELS_USER_PROFILES as FOLDER_BASE_USER_PROFILES
+from impressions_evaluation.experiments.user_profiles import DIR_TRAINED_MODELS_USER_PROFILES as \
     FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_USER_PROFILES
 
-from Recommenders.FactorizationMachines.LightFMRecommender import LightFMCFRecommender
-
-from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
+from impressions_evaluation.impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
 
 
 logger = get_logger(__name__)
@@ -485,7 +484,7 @@ def _compute_confidence_intervals_recommender_trained_impressions(
             )
         )
 
-    from experiments.baselines import HYPER_PARAMETER_TUNING_EXPERIMENTS_DIR as folder_hyper_parameter_tuning_baselines
+    from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES as folder_hyper_parameter_tuning_baselines
 
     folder_path_recommender_baseline = folder_hyper_parameter_tuning_baselines.format(
         benchmark=experiment_baseline_benchmark.benchmark.value,

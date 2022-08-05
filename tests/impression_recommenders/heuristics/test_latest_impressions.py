@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.sparse as sp
 
-from impression_recommenders.heuristics.latest_impressions import LastImpressionsRecommender
+from impressions_evaluation.impression_recommenders.heuristics.latest_impressions import LastImpressionsRecommender
 
 
 class TestLastImpressionsRecommender:

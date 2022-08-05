@@ -9,7 +9,7 @@ from Recommenders.BaseRecommender import BaseRecommender
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender
 from skopt.space import Real
 
-from impression_recommenders.constants import ERankMethod
+from impressions_evaluation.impression_recommenders.constants import ERankMethod
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)

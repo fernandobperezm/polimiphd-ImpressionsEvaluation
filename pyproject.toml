@@ -20,7 +20,7 @@ path_credential_json = "./credentials.json"
 path_token_json = "./token.json"
 
 [dask]
-use_processes = false
+use_processes = true
 dashboard_address = ":8787"
 scheduler_port = 8786
 num_workers = 4
@@ -29,17 +29,20 @@ memory_limit = 0
 
 [logs]
 dir_name = "logs"
-file_name = "impressions_datasets.log"
+file_name = "impressions_evaluation.log"
 formatter = "%(process)d|%(asctime)s|%(levelname)s|%(module)s|%(funcName)s|%(lineno)d|%(message)s"
 
 [tool.poetry]
-name = "impressions_datasets"
+name = "impressions-evaluation"
 version = "1.0.0"
 description = ""
 authors = [
     "Fernando Benjamin PEREZ MAURERA <fernandobenjamin.perez@polimi.it>"
 ]
 readme = "README.md"
+packages = [
+    { include = "impressions_evaluation" },
+]
 
 [tool.poetry.dependencies]
 python = "~3.9"

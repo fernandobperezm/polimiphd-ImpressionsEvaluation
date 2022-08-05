@@ -7,11 +7,11 @@ from Recommenders.BaseSimilarityMatrixRecommender import BaseItemSimilarityMatri
 from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.logging import get_logger
 
-import experiments.commons as commons
-from experiments.baselines import DIR_TRAINED_MODELS_BASELINES
-from experiments.re_ranking import DIR_TRAINED_MODELS_RE_RANKING
-from experiments.user_profiles import DIR_TRAINED_MODELS_USER_PROFILES
-from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
+import impressions_evaluation.experiments.commons as commons
+from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES
+from impressions_evaluation.experiments.re_ranking import DIR_TRAINED_MODELS_RE_RANKING
+from impressions_evaluation.experiments.user_profiles import DIR_TRAINED_MODELS_USER_PROFILES
+from impressions_evaluation.impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
 
 logger = get_logger(__name__)
 

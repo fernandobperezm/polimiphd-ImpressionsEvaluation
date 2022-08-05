@@ -15,15 +15,16 @@ from recsys_framework_extensions.data.mixins import InteractionsDataSplits
 from recsys_framework_extensions.logging import get_logger
 from recsys_framework_extensions.plotting import generate_accuracy_and_beyond_metrics_pandas, DataFrameResults
 
-import experiments.baselines as baselines
-import experiments.commons as commons
-import experiments.time_aware as heuristics
-import experiments.re_ranking as re_ranking
-import experiments.user_profiles as user_profiles
-from impression_recommenders.re_ranking.cycling import CyclingRecommender
-from impression_recommenders.re_ranking.impressions_discounting import ImpressionsDiscountingRecommender
-from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
-from impression_recommenders.user_profile.weighted import BaseWeightedUserProfileRecommender, \
+import impressions_evaluation.experiments.commons as commons
+import impressions_evaluation.experiments.baselines as baselines
+import impressions_evaluation.experiments.re_ranking as re_ranking
+import impressions_evaluation.experiments.time_aware as heuristics
+import impressions_evaluation.experiments.user_profiles as user_profiles
+
+from impressions_evaluation.impression_recommenders.re_ranking.cycling import CyclingRecommender
+from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import ImpressionsDiscountingRecommender
+from impressions_evaluation.impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
+from impressions_evaluation.impression_recommenders.user_profile.weighted import BaseWeightedUserProfileRecommender, \
     ItemWeightedUserProfileRecommender, UserWeightedUserProfileRecommender
 
 logger = get_logger(__name__)

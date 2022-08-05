@@ -1,7 +1,7 @@
 import numpy as np
 import scipy.sparse as sp
 
-from impression_recommenders.heuristics.frequency_and_recency import RecencyRecommender, FrequencyRecencyRecommender, \
+from impressions_evaluation.impression_recommenders.heuristics.frequency_and_recency import RecencyRecommender, FrequencyRecencyRecommender, \
     T_SIGN
 
 

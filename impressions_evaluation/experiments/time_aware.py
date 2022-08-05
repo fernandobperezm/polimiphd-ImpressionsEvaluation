@@ -8,8 +8,8 @@ from HyperparameterTuning.SearchSingleCase import SearchSingleCase
 from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.logging import get_logger
 
-import experiments.commons as commons
-from impression_recommenders.heuristics.frequency_and_recency import FrequencyRecencyRecommender, RecencyRecommender
+import impressions_evaluation.experiments.commons as commons
+from impressions_evaluation.impression_recommenders.heuristics.frequency_and_recency import FrequencyRecencyRecommender, RecencyRecommender
 
 logger = get_logger(__name__)
 

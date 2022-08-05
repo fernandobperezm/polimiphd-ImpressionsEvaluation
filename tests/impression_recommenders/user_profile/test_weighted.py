@@ -4,7 +4,7 @@ import scipy.sparse as sp
 from Recommenders.BaseSimilarityMatrixRecommender import BaseItemSimilarityMatrixRecommender, \
     BaseUserSimilarityMatrixRecommender
 
-from impression_recommenders.user_profile.weighted import ItemWeightedUserProfileRecommender, \
+from impressions_evaluation.impression_recommenders.user_profile.weighted import ItemWeightedUserProfileRecommender, \
     UserWeightedUserProfileRecommender, EWeightedUserProfileType
 
 

@@ -2,7 +2,7 @@ from mock import patch
 import numpy as np
 import scipy.sparse as sp
 
-from impression_recommenders.re_ranking.dithering import DitheringRecommender
+from impressions_evaluation.impression_recommenders.re_ranking.dithering import DitheringRecommender
 from tests.conftest import seed
 from Recommenders.BaseRecommender import BaseRecommender
 

@@ -34,6 +34,7 @@ from recsys_framework_extensions.hashing.mixins import MixinSHA256Hash
 from recsys_framework_extensions.logging import get_logger
 from tqdm import tqdm
 
+
 tqdm.pandas()
 
 

@@ -3,7 +3,7 @@ import scipy.sparse as sp
 from Recommenders.BaseRecommender import BaseRecommender
 from mock import patch
 
-from impression_recommenders.re_ranking.impressions_discounting import (
+from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import (
     ImpressionsDiscountingRecommender,
     EImpressionsDiscountingFunctions,
     _func_exponential,

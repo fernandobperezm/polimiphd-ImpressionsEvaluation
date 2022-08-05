@@ -5,8 +5,8 @@ from recsys_framework_extensions.dask import configure_dask_cluster
 from recsys_framework_extensions.logging import get_logger
 from tap import Tap
 
-from experiments.baselines import run_baselines_experiments, run_baselines_folded
-from experiments.commons import (
+from impressions_evaluation.experiments.baselines import run_baselines_experiments, run_baselines_folded
+from impressions_evaluation.experiments.commons import (
     create_necessary_folders,
     ExperimentCasesInterface,
     Benchmarks,
@@ -14,17 +14,17 @@ from experiments.commons import (
     plot_popularity_of_datasets,
     ensure_datasets_exist, RecommenderImpressions, EHyperParameterTuningParameters, RecommenderBaseline,
 )
-from experiments.confidence_intervals import compute_confidence_intervals
-from experiments.heuristics import run_impressions_heuristics_experiments
-from experiments.print_results import print_results
-from experiments.print_statistics import print_datasets_statistics
-from experiments.re_ranking import (
+from impressions_evaluation.experiments.confidence_intervals import compute_confidence_intervals
+from impressions_evaluation.experiments.time_aware import run_impressions_heuristics_experiments
+from impressions_evaluation.experiments.print_results import print_results
+from impressions_evaluation.experiments.print_statistics import print_datasets_statistics
+from impressions_evaluation.experiments.re_ranking import (
     run_impressions_re_ranking_experiments,
     run_ablation_impressions_re_ranking_experiments,
     run_signal_analysis_ablation_impressions_re_ranking_experiments,
 )
-from experiments.statistical_tests import compute_statistical_tests
-from experiments.user_profiles import run_impressions_user_profiles_experiments
+from impressions_evaluation.experiments.statistical_tests import compute_statistical_tests
+from impressions_evaluation.experiments.user_profiles import run_impressions_user_profiles_experiments
 
 
 class ConsoleArguments(Tap):

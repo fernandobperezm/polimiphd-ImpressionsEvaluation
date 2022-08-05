@@ -7,7 +7,7 @@ import pandas as pd
 import scipy.sparse as sp
 from recsys_framework_extensions.logging import get_logger
 
-import experiments.commons as commons
+import impressions_evaluation.experiments.commons as commons
 
 logger = get_logger(__name__)
 

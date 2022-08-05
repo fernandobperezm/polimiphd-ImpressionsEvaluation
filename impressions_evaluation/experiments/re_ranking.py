@@ -10,11 +10,11 @@ from Recommenders.BaseMatrixFactorizationRecommender import BaseMatrixFactorizat
 from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.logging import get_logger
 
-import experiments.commons as commons
-from experiments.baselines import load_trained_recommender, TrainedRecommenderType
-from impression_recommenders.re_ranking.impressions_discounting import DICT_SEARCH_CONFIGS as \
+import impressions_evaluation.experiments.commons as commons
+from impressions_evaluation.experiments.baselines import load_trained_recommender, TrainedRecommenderType
+from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import DICT_SEARCH_CONFIGS as \
     ImpressionsDiscountingSearchConfigs
-from impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
+from impressions_evaluation.impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
 
 logger = get_logger(__name__)
 
