@@ -20,7 +20,7 @@ logger = get_logger(__name__)
 ####################################################################################################
 ####################################################################################################
 BASE_FOLDER = os.path.join(
-    commons.RESULTS_EXPERIMENTS_DIR,
+    commons.DIR_RESULTS_EXPORT,
     "heuristics",
     "{benchmark}",
     "{evaluation_strategy}",
