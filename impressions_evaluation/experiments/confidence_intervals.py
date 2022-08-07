@@ -3,7 +3,7 @@ import uuid
 from typing import Optional
 
 from recsys_framework_extensions.dask import DaskInterface
-from recsys_framework_extensions.logging import get_logger
+import logging
 
 import impressions_evaluation.experiments.commons as commons
 from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES as FOLDER_BASE_BASELINES
@@ -22,7 +22,7 @@ from impressions_evaluation.experiments.user_profiles import DIR_TRAINED_MODELS_
 from impressions_evaluation.impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
 
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 ####################################################################################################

@@ -39,16 +39,14 @@ from recsys_framework_extensions.decorators import timeit
 from recsys_framework_extensions.evaluation import EvaluationStrategy
 from recsys_framework_extensions.hashing.mixins import MixinSHA256Hash
 from recsys_framework_extensions.http import download_remote_file
-from recsys_framework_extensions.logging import get_logger
+import logging
 
 from tqdm import tqdm
 
 tqdm.pandas()
 
 
-logger = get_logger(
-    logger_name=__file__,
-)
+logger = logging.getLogger(__name__)
 
 
 _MIN_ITEM_ID = 3

@@ -11,12 +11,10 @@ from Recommenders.MatrixFactorization.PureSVDRecommender import compute_W_sparse
 from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
     AbstractExtendedBaseRecommender
-from recsys_framework_extensions.logging import get_logger
+import logging
 
 
-logger = get_logger(
-    logger_name=__file__,
-)
+logger = logging.getLogger(__name__)
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)

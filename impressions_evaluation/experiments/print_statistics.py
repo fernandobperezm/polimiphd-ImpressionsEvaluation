@@ -5,11 +5,11 @@ from typing import Union, Any
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-from recsys_framework_extensions.logging import get_logger
+import logging
 
 import impressions_evaluation.experiments.commons as commons
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 ####################################################################################################

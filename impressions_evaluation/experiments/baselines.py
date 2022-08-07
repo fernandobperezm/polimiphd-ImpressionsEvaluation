@@ -15,12 +15,12 @@ from recsys_framework_extensions.data.mixins import InteractionsDataSplits
 from recsys_framework_extensions.hyper_parameter_search import (
     run_hyper_parameter_search_collaborative,
 )
-from recsys_framework_extensions.logging import get_logger
+import logging
 
 import impressions_evaluation.experiments.commons as commons
 from impressions_evaluation.impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 ####################################################################################################

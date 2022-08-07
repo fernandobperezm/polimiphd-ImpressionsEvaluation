@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from recsys_framework_extensions.dask import configure_dask_cluster
-from recsys_framework_extensions.logging import get_logger
+import logging
 from tap import Tap
 
 from impressions_evaluation.experiments.baselines import run_baselines_experiments, run_baselines_folded
@@ -139,7 +139,7 @@ _TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS = [
 if __name__ == '__main__':
     input_flags = ConsoleArguments().parse_args()
 
-    logger = get_logger(__name__)
+    logger = logging.getLogger(__name__)
 
     dask_interface = configure_dask_cluster()
 

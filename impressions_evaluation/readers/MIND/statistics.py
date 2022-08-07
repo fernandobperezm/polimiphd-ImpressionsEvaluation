@@ -8,31 +8,26 @@ from typing import cast
 import numpy as np
 import pandas as pd
 import sparse
-import impressions_evaluation.readers.ContentWiseImpressions.reader as cw_impressions_reader
-
+import impressions_evaluation.readers.MIND.reader as mind_reader
 from tqdm import tqdm
-import logging
 
+
+import logging
+logger = logging.getLogger(__name__)
+logger.debug(f"new-{__name__=} - {__file__=}")
+
+# logger_old = getLogger(__name__)
+# logger_old.debug(f"old-{__name__=} - {__file__=}")
 
 tqdm.pandas()
 
 
-logger = logging.getLogger(__name__)
-
-
 def _set_unique_items(
     *,
-    df_interactions: pd.DataFrame,
-    df_impressions: pd.DataFrame,
-    df_impressions_non_direct_link: pd.DataFrame,
+    df: pd.DataFrame,
+    df_previous_interactions: pd.DataFrame,
 ) -> set[int]:
-    df_series_interactions = df_interactions["series_id"].dropna(
-        inplace=False,
-        how="any",
-        axis="index",
-    )
-
-    df_series_interactions_impressions = df_interactions["impressions"].explode(
+    df_items_previous = df_previous_interactions["item_ids"].explode(
         ignore_index=True,
     ).dropna(
         inplace=False,
@@ -40,15 +35,7 @@ def _set_unique_items(
         axis="index",
     )
 
-    df_series_impressions = df_impressions["recommended_series_list"].explode(
-        ignore_index=True,
-    ).dropna(
-        inplace=False,
-        how="any",
-        axis="index",
-    )
-
-    df_series_impressions_non_direct_link = df_impressions_non_direct_link["recommended_series_list"].explode(
+    df_items = df["item_ids"].explode(
         ignore_index=True,
     ).dropna(
         inplace=False,
@@ -71,26 +58,20 @@ def _set_unique_items(
 
 def _set_unique_users(
     *,
-    df_interactions: pd.DataFrame,
-    df_impressions_non_direct_link: pd.DataFrame,
+    df: pd.DataFrame,
+    df_previous_interactions: pd.DataFrame,
 ) -> set[int]:
-    df_interactions = df_interactions["user_id"].dropna(
-        inplace=False,
+    df_users = df["user_id"].dropna(
         how="any",
+        inplace=False,
         axis="index",
     )
-
-    df_impressions_non_direct_link = df_impressions_non_direct_link["user_id"].explode(
-        ignore_index=True,
-    ).dropna(
-        inplace=False,
+    df_previous_interactions = df_previous_interactions["user_id"].dropna(
         how="any",
+        inplace=False,
         axis="index",
     )
-
-    unique_users = set(df_interactions).union(df_impressions_non_direct_link)
-
-    return unique_users
+    return set(df_users).union(df_previous_interactions)
 
 
 def convert_dataframe_to_sparse(
@@ -142,25 +123,32 @@ def remove_interactions_from_uim(
     return uim_dok.to_coo()
 
 
-def content_wise_impressions_statistics_full_dataset() -> dict:
-    config = cw_impressions_reader.ContentWiseImpressionsConfig()
+def mind_small_statistics_full_dataset() -> dict:
+    config = mind_reader.MINDSmallConfig()
 
-    raw_data = cw_impressions_reader.ContentWiseImpressionsRawData(
-        config=config,
-    )
-
-    pandas_raw_data = cw_impressions_reader.PandasContentWiseImpressionsRawData(
+    pandas_raw_data = mind_reader.PandasMINDRawData(
         config=config,
     )
 
     df_raw_data = pandas_raw_data.data
-    df_impressions = raw_data.impressions.compute().reset_index(drop=False)
-    df_impressions_non_direct_link = raw_data.impressions_non_direct_link.compute().reset_index(drop=False)
+    df_previous_interactions = pandas_raw_data.previous_interactions
+
+    # df = mind_reader.add_previous_interactions_to_dataframe(
+    #     df=df_raw_data,
+    #     df_previous_interactions=df_previous_interactions,
+    # )
+    #
+    # df = mind_reader.convert_user_item_impressions_dataframe(
+    #     df=df,
+    #     column_item="item_ids",
+    #     column_new_item="item_id",
+    #     column_dtype=pd.StringDtype(),
+    # )
 
     logger.debug("Computing set unique users")
     unique_users = _set_unique_users(
-        df_interactions=df_raw_data,
-        df_impressions_non_direct_link=df_impressions_non_direct_link,
+        df=df_raw_data,
+        df_previous_interactions=df_previous_interactions,
     )
 
     logger.debug("Computing set unique items")

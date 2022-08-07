@@ -9,13 +9,11 @@ from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO, attach_to_extended_json_decoder
 from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
     AbstractExtendedBaseRecommender
-from recsys_framework_extensions.logging import get_logger
+import logging
 from skopt.space import Real, Categorical
 
 
-logger = get_logger(
-    logger_name=__file__,
-)
+logger = logging.getLogger(__name__)
 
 
 @attach_to_extended_json_decoder

@@ -28,9 +28,8 @@ threads_per_worker = 1
 memory_limit = 0
 
 [logs]
-dir_name = "logs"
-file_name = "impressions_evaluation.log"
-formatter = "%(process)d|%(asctime)s|%(levelname)s|%(module)s|%(funcName)s|%(lineno)d|%(message)s"
+dir_logs = "logs"
+filename_logs = "impressions_evaluation.log"
 
 [tool.poetry]
 name = "impressions-evaluation"
@@ -49,6 +48,7 @@ python = "~3.9"
 typed-argument-parser = "^1.7.2"
 recsys-framework-public = { path = "../RecSysFramework_public/", develop = true }  # Use this when publishing the repo.
 recsys-framework-extensions = { path = "../recsys-framework-extensions/", develop = true, extras = ["email-gmail"] }  # Use this when publishing the repo.
+sparse = "^0.13.0"
 
 [tool.poetry.dev-dependencies]
 mypy = "^0.971"
@@ -60,6 +60,7 @@ pylint = "^2.14.5"
 Faker = "^13.15.0"
 mock = "^4.0.3"
 types-mock = "^4.0.15"
+jupyterlab = "^3.4.4"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

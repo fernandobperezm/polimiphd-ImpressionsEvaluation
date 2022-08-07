@@ -1,3 +1,4 @@
+
 """ MINDSmallReader.py
 This module reads the small or the large version of the Microsoft News ExperimentCase (MIND).
 
@@ -149,6 +150,21 @@ def convert_user_item_impressions_dataframe(
     del df[column_item]
 
     return df
+
+
+def add_previous_interactions_to_dataframe(
+    df: pd.DataFrame,
+    df_previous_interactions: pd.DataFrame,
+) -> pd.DataFrame:
+    return pd.concat(
+        objs=[
+            df_previous_interactions,
+            df,
+        ],
+        axis="index",
+        sort=False,
+        ignore_index=True,
+    )
 
 
 @timeit
@@ -985,14 +1001,9 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
 
         if self.config.use_historical_interactions:
             df_previous_interactions = self.pandas_raw_data.previous_interactions
-            df_data = pd.concat(
-                objs=[
-                    df_previous_interactions,
-                    df_data,
-                ],
-                axis="index",
-                sort=False,
-                ignore_index=True,
+            df_data = add_previous_interactions_to_dataframe(
+                df=df_data,
+                df_previous_interactions=df_previous_interactions,
             )
 
         df_data = convert_user_item_impressions_dataframe(
