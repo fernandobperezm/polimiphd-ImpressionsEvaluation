@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-from recsys_framework_extensions.dask import configure_dask_cluster
 import logging
 from tap import Tap
 
@@ -25,6 +24,7 @@ from impressions_evaluation.experiments.re_ranking import (
 )
 from impressions_evaluation.experiments.statistical_tests import compute_statistical_tests
 from impressions_evaluation.experiments.user_profiles import run_impressions_user_profiles_experiments
+from recsys_framework_extensions.dask import configure_dask_cluster
 
 
 class ConsoleArguments(Tap):

@@ -14,7 +14,7 @@ then
 fi
 
 cd $WORKING_FOLDER || exit
-poetry run python main.py \
+poetry run python scripts/main.py \
   --create_datasets \
   --include_baselines \
   --include_folded \
