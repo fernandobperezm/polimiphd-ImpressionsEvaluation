@@ -138,6 +138,36 @@ DICT_SEARCH_CONFIGS = {
         func_uim_position=Categorical(categories=_only_linear_enum_values),
         func_uim_last_seen=Categorical(categories=_only_linear_enum_values),
     ),
+    "SIGNAL_ANALYSIS_NEGATIVE_ABLATION_ONLY_UIM_FREQUENCY": SearchHyperParametersImpressionsDiscountingRecommender(
+        sign_uim_frequency=Categorical(categories=[-1]),
+
+        sign_user_frequency=Categorical(categories=[1]),
+        sign_uim_position=Categorical(categories=[1]),
+        sign_uim_last_seen=Categorical(categories=[1]),
+
+        reg_user_frequency=Categorical(categories=[0.]),
+        reg_uim_position=Categorical(categories=[0.]),
+        reg_uim_last_seen=Categorical(categories=[0.]),
+
+        func_user_frequency=Categorical(categories=_only_linear_enum_values),
+        func_uim_position=Categorical(categories=_only_linear_enum_values),
+        func_uim_last_seen=Categorical(categories=_only_linear_enum_values),
+    ),
+    "SIGNAL_ANALYSIS_POSITIVE_ABLATION_ONLY_UIM_FREQUENCY": SearchHyperParametersImpressionsDiscountingRecommender(
+        sign_uim_frequency=Categorical(categories=[1]),
+
+        sign_user_frequency=Categorical(categories=[1]),
+        sign_uim_position=Categorical(categories=[1]),
+        sign_uim_last_seen=Categorical(categories=[1]),
+
+        reg_user_frequency=Categorical(categories=[0.]),
+        reg_uim_position=Categorical(categories=[0.]),
+        reg_uim_last_seen=Categorical(categories=[0.]),
+
+        func_user_frequency=Categorical(categories=_only_linear_enum_values),
+        func_uim_position=Categorical(categories=_only_linear_enum_values),
+        func_uim_last_seen=Categorical(categories=_only_linear_enum_values),
+    ),
 }
 
 
