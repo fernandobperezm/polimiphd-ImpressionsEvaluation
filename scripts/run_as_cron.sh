@@ -14,12 +14,15 @@ then
 fi
 
 cd $WORKING_FOLDER || exit
-poetry run python scripts/main.py \
+poetry run python main.py \
   --create_datasets \
   --include_baselines \
   --include_folded \
   --include_impressions_reranking \
   --include_impressions_profile \
   --include_ablation_impressions_reranking \
+  --compute_statistical_tests \
+  --compute_confidence_intervals \
+  --print_evaluation_results \
   --send_email \
   &> "$OUT_FILE"
