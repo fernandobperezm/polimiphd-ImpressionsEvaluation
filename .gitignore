@@ -6,6 +6,7 @@ __pycache__/
 # LOG
 Log/
 logs/
+.logs/
 
 # IDEA
 .idea/*
