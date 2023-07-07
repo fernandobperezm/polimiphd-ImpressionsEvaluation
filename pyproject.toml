@@ -24,7 +24,7 @@ use_processes = true
 dashboard_address = ":8787"
 scheduler_port = 8786
 num_workers = 1
-threads_per_worker = 1
+threads_per_worker = 4
 memory_limit = 0
 
 [logs]
@@ -51,7 +51,7 @@ recsys-framework-extensions = { path = "../recsys-framework-extensions/", develo
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.4.1"
-black = "^23.3.0"
+black = {extras = ["d"], version = "^23.3.0"}
 pytest = "^7.4.0"
 memory-profiler = "^0.61.0"
 types-toml = "^0.10.8.6"
