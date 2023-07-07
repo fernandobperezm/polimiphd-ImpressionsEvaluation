@@ -22,8 +22,12 @@ from recsys_framework_extensions.data.features import (
     extract_timestamp_user_item,
     extract_position_user_item,
 )
-from recsys_framework_extensions.data.mixins import ParquetDataMixin, SparseDataMixin, NumpyDataMixin, \
-    DatasetConfigBackupMixin
+from recsys_framework_extensions.data.mixins import (
+    ParquetDataMixin,
+    SparseDataMixin,
+    NumpyDataMixin,
+    DatasetConfigBackupMixin,
+)
 from recsys_framework_extensions.data.reader import DataReader
 from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe
 from recsys_framework_extensions.data.splitter import (
@@ -33,7 +37,8 @@ from recsys_framework_extensions.data.splitter import (
     remove_duplicates_in_interactions,
     E_KEEP,
     remove_records_by_threshold,
-    apply_custom_function, randomly_sample_by_column_values,
+    apply_custom_function,
+    randomly_sample_by_column_values,
 )
 from recsys_framework_extensions.decorators import timeit
 from recsys_framework_extensions.evaluation import EvaluationStrategy
@@ -47,6 +52,11 @@ tqdm.pandas()
 
 
 logger = logging.getLogger(__name__)
+
+
+ITEM_ID_FILL_VALUE = 0
+ITEM_ID_NON_INTERACTED = 1
+ITEM_ID_DELETED_AT_DATA_COLLECTION = 2
 
 
 _MIN_ITEM_ID = 3
@@ -75,17 +85,19 @@ def compute_impressions_positions_based_on_impressions_values(
     return np.array(positions_arr, dtype=np.int32)
 
 
-list(map(
-    compute_impressions_positions_based_on_impressions_values,
-    [
-        np.array([0, 1, 2, 0, 0], dtype=np.int32),
-        np.array([0, 0, 0, 0, 0], dtype=np.int32),
-        np.array([0, 1, 2, 3, 4], dtype=np.int32),
-        np.array([0, 1, 2, 3, 4], dtype=np.int32),
-        np.arange(start=100, stop=125, dtype=np.int32),
-        np.arange(start=2, stop=27, dtype=np.int32),
-    ],
-))
+list(
+    map(
+        compute_impressions_positions_based_on_impressions_values,
+        [
+            np.array([0, 1, 2, 0, 0], dtype=np.int32),
+            np.array([0, 0, 0, 0, 0], dtype=np.int32),
+            np.array([0, 1, 2, 3, 4], dtype=np.int32),
+            np.array([0, 1, 2, 3, 4], dtype=np.int32),
+            np.arange(start=100, stop=125, dtype=np.int32),
+            np.arange(start=2, stop=27, dtype=np.int32),
+        ],
+    )
+)
 
 
 @jit(nopython=True, parallel=False)
@@ -156,7 +168,9 @@ def is_item_in_impression(
 # to avoid time in compiling.
 is_item_in_impression(impressions=np.array([range(25)]), item_ids=np.array([1]))
 is_item_in_impression(impressions=np.array([range(25)]), item_ids=np.array([27]))
-is_item_in_impression(impressions=np.array([range(25), range(25)]), item_ids=np.array([1, 27]))
+is_item_in_impression(
+    impressions=np.array([range(25), range(25)]), item_ids=np.array([1, 27])
+)
 
 
 class FinnNoSlatesSplits(NamedTuple):
@@ -174,7 +188,10 @@ class FinnNoSlatesConfig(MixinSHA256Hash):
     """
 
     data_folder = os.path.join(
-        os.getcwd(), "data", "FINN-NO-SLATE", "",
+        os.getcwd(),
+        "data",
+        "FINN-NO-SLATE",
+        "",
     )
 
     try_low_memory_usage = True
@@ -194,13 +211,12 @@ class FinnNoSlatesConfig(MixinSHA256Hash):
         "is_item_in_impression": pd.BooleanDtype(),
     }
 
-    # The dataset treats 0s, 1s, and 2s, as error, no-clicks, and non-identifiable items, respectively.
     reproducibility_seed = attrs.field(
         default=1234567890,
         validator=[
             attrs.validators.instance_of(int),
             attrs.validators.gt(0),
-        ]
+        ],
     )
     frac_users_to_keep = attrs.field(
         default=1.0,
@@ -208,48 +224,56 @@ class FinnNoSlatesConfig(MixinSHA256Hash):
             attrs.validators.instance_of(float),
             attrs.validators.ge(0.0),
             attrs.validators.le(1.0),
-        ]
+        ],
     )
+    # The dataset treats 0s, 1s, and 2s, as error, no-clicks, and non-identifiable items, respectively.
     item_ids_to_exclude = attrs.field(
-        default=[0, 1, 2],
+        default=[
+            ITEM_ID_FILL_VALUE,
+            ITEM_ID_NON_INTERACTED,
+            ITEM_ID_DELETED_AT_DATA_COLLECTION,
+        ],
         validator=[
             attrs.validators.instance_of(list),
-        ]
+        ],
     )
     min_number_of_interactions = attrs.field(
         default=3,
         validator=[
             attrs.validators.gt(0),
-        ]
+        ],
     )
     binarize_impressions = attrs.field(
         default=True,
         validator=[
             attrs.validators.instance_of(bool),
-        ]
+        ],
     )
     binarize_interactions = attrs.field(
         default=True,
         validator=[
             attrs.validators.instance_of(bool),
-        ]
+        ],
     )
     keep_duplicates: E_KEEP = attrs.field(
         default=E_KEEP.FIRST,
         validator=[
             attrs.validators.in_(E_KEEP),  # type: ignore
-        ]
+        ],
     )
 
     def __attrs_post_init__(self):
         # We need to use object.__setattr__ because the benchmark_config is an immutable class, this is the attrs way to
         # circumvent assignment in immutable classes.
-        object.__setattr__(self, "num_data_points", self.num_raw_data_points * self.num_time_steps)
+        object.__setattr__(
+            self, "num_data_points", self.num_raw_data_points * self.num_time_steps
+        )
         assert 45_552_900 == self.num_data_points
 
 
 class FINNNoImpressionOrigin(Enum):
     """Enum indicating the types of impressions present in the FINN.No dataset"""
+
     UNDEFINED = 0
     SEARCH = 1
     RECOMMENDATION = 2
@@ -269,18 +293,22 @@ class FINNNoSlateRawData:
         self.config = config
 
         self._original_dataset_folder = os.path.join(
-            self.config.data_folder, "original",
+            self.config.data_folder,
+            "original",
         )
         self._original_dataset_data_file = os.path.join(
-            self._original_dataset_folder, "data.npz",
+            self._original_dataset_folder,
+            "data.npz",
         )
 
-        self._remote_url_dataset = "https://github.com/finn-no/recsys_slates_dataset/raw/v1.0.0/data/data.npz"
+        self._remote_url_dataset = (
+            "https://github.com/finn-no/recsys_slates_dataset/raw/v1.0.0/data/data.npz"
+        )
 
     @property  # type: ignore
-    def raw_data(self) -> tuple[
-        np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray
-    ]:
+    def raw_data(
+        self,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         self._download_dataset()
 
         with cast(
@@ -294,12 +322,27 @@ class FINNNoSlateRawData:
             impressions_length_list = cast(np.ndarray, interactions["slate_lengths"])
 
             assert (self.config.num_raw_data_points,) == user_ids.shape
-            assert (self.config.num_raw_data_points, self.config.num_time_steps) == item_ids.shape
-            assert (self.config.num_raw_data_points, self.config.num_time_steps) == click_indices_in_impressions.shape
-            assert (self.config.num_raw_data_points, self.config.num_time_steps) == impression_origins.shape
-            assert (self.config.num_raw_data_points, self.config.num_time_steps) == impressions_length_list.shape
-            assert (self.config.num_raw_data_points, self.config.num_time_steps,
-                    self.config.num_items_in_each_impression) == impressions.shape
+            assert (
+                self.config.num_raw_data_points,
+                self.config.num_time_steps,
+            ) == item_ids.shape
+            assert (
+                self.config.num_raw_data_points,
+                self.config.num_time_steps,
+            ) == click_indices_in_impressions.shape
+            assert (
+                self.config.num_raw_data_points,
+                self.config.num_time_steps,
+            ) == impression_origins.shape
+            assert (
+                self.config.num_raw_data_points,
+                self.config.num_time_steps,
+            ) == impressions_length_list.shape
+            assert (
+                self.config.num_raw_data_points,
+                self.config.num_time_steps,
+                self.config.num_items_in_each_impression,
+            ) == impressions.shape
 
             logger.debug(
                 f"Loaded raw data (user_ids, item_ids, click_indices_in_impressions, impressions, impression_origins, "
@@ -330,21 +373,19 @@ class FINNNoSlateRawData:
 class PandasFinnNoSlateRawData(ParquetDataMixin, NumpyDataMixin):
     """A class that reads the FINN.No data using Pandas Dataframes."""
 
-    def __init__(
-        self,
-        config: FinnNoSlatesConfig
-    ):
+    def __init__(self, config: FinnNoSlatesConfig):
         self.config = config
         self.raw_data_loader = FINNNoSlateRawData(
             config=config,
         )
 
         self._folder_dataset = os.path.join(
-            self.config.data_folder, "pandas", "original", "",
+            self.config.data_folder,
+            "pandas",
+            "original",
+            "",
         )
-        self._file_path_data = os.path.join(
-            self._folder_dataset, "data.parquet"
-        )
+        self._file_path_data = os.path.join(self._folder_dataset, "data.parquet")
         self._file_name_impressions_arr = "impressions.npz"
 
         os.makedirs(
@@ -362,7 +403,9 @@ class PandasFinnNoSlateRawData(ParquetDataMixin, NumpyDataMixin):
         )
 
         impressions = self.load_from_numpy(
-            file_path=os.path.join(self._folder_dataset, self._file_name_impressions_arr),
+            file_path=os.path.join(
+                self._folder_dataset, self._file_name_impressions_arr
+            ),
             to_numpy_func=self._data_impressions_to_np_arr,
         )
 
@@ -389,15 +432,13 @@ class PandasFinnNoSlateRawData(ParquetDataMixin, NumpyDataMixin):
         user_id_arr = user_ids.repeat(
             repeats=self.config.num_time_steps,
         )
-        item_id_arr = item_ids.reshape(
-            (self.config.num_data_points,)
-        )
-        time_step_arr = np.array(
-            [range(self.config.num_time_steps)] * user_ids.shape[0]
-        ).reshape(
-            (self.config.num_data_points,)
-        ).astype(
-            dtype=np.int32,
+        item_id_arr = item_ids.reshape((self.config.num_data_points,))
+        time_step_arr = (
+            np.array([range(self.config.num_time_steps)] * user_ids.shape[0])
+            .reshape((self.config.num_data_points,))
+            .astype(
+                dtype=np.int32,
+            )
         )
         impression_origin_arr = impression_origins.reshape(
             (self.config.num_data_points,)
@@ -423,7 +464,10 @@ class PandasFinnNoSlateRawData(ParquetDataMixin, NumpyDataMixin):
         assert (self.config.num_data_points,) == impression_origin_arr.shape
         assert (self.config.num_data_points,) == num_impressions_arr.shape
         assert (self.config.num_data_points,) == is_item_in_impression_arr.shape
-        assert (self.config.num_data_points, self.config.num_items_in_each_impression) == impressions_arr.shape
+        assert (
+            self.config.num_data_points,
+            self.config.num_items_in_each_impression,
+        ) == impressions_arr.shape
 
         df_data = pd.DataFrame(
             data={
@@ -457,7 +501,10 @@ class PandasFinnNoSlateRawData(ParquetDataMixin, NumpyDataMixin):
             (self.config.num_data_points, self.config.num_items_in_each_impression)
         )
 
-        assert (self.config.num_data_points, self.config.num_items_in_each_impression) == impressions_arr.shape
+        assert (
+            self.config.num_data_points,
+            self.config.num_items_in_each_impression,
+        ) == impressions_arr.shape
 
         return impressions_arr
 
@@ -481,18 +528,18 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
             self._folder_dataset, "leave-last-k-out", ""
         )
 
-        self._folder_timestamp = os.path.join(
-            self._folder_dataset, "timestamp", ""
-        )
+        self._folder_timestamp = os.path.join(self._folder_dataset, "timestamp", "")
 
         self._file_path_filter_data = os.path.join(
             self._folder_dataset, "filter_data.parquet"
         )
         self._file_path_sampled_data = os.path.join(
-            self._folder_dataset, "sampled_data.parquet",
+            self._folder_dataset,
+            "sampled_data.parquet",
         )
         self._file_path_sampled_out_data = os.path.join(
-            self._folder_dataset, "sampled_out_data.parquet",
+            self._folder_dataset,
+            "sampled_out_data.parquet",
         )
 
         self._filename_train = "train.parquet"
@@ -546,9 +593,7 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
         return df_data_filtered
 
     @property
-    def timestamp_splits(
-        self
-    ) -> FinnNoSlatesSplits:
+    def timestamp_splits(self) -> FinnNoSlatesSplits:
         file_paths = [
             os.path.join(self._folder_timestamp, self._filename_train),
             os.path.join(self._folder_timestamp, self._filename_validation),
@@ -563,7 +608,9 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
 
         df_train = df_train.astype(dtype=self.config.pandas_dtypes)
         df_validation = df_validation.astype(dtype=self.config.pandas_dtypes)
-        df_train_validation = df_train_validation.astype(dtype=self.config.pandas_dtypes)
+        df_train_validation = df_train_validation.astype(
+            dtype=self.config.pandas_dtypes
+        )
         df_test = df_test.astype(dtype=self.config.pandas_dtypes)
 
         logger.debug(
@@ -578,13 +625,13 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
         )
 
     @property
-    def leave_last_k_out_splits(
-        self
-    ) -> FinnNoSlatesSplits:
+    def leave_last_k_out_splits(self) -> FinnNoSlatesSplits:
         file_paths = [
             os.path.join(self._folder_leave_last_k_out, self._filename_train),
             os.path.join(self._folder_leave_last_k_out, self._filename_validation),
-            os.path.join(self._folder_leave_last_k_out, self._filename_train_validation),
+            os.path.join(
+                self._folder_leave_last_k_out, self._filename_train_validation
+            ),
             os.path.join(self._folder_leave_last_k_out, self._filename_test),
         ]
 
@@ -595,7 +642,9 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
 
         df_train = df_train.astype(dtype=self.config.pandas_dtypes)
         df_validation = df_validation.astype(dtype=self.config.pandas_dtypes)
-        df_train_validation = df_train_validation.astype(dtype=self.config.pandas_dtypes)
+        df_train_validation = df_train_validation.astype(
+            dtype=self.config.pandas_dtypes
+        )
         df_test = df_test.astype(dtype=self.config.pandas_dtypes)
 
         logger.debug(
@@ -614,12 +663,10 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
     def dataframes(self) -> dict[str, pd.DataFrame]:
         return {
             BaseDataset.NAME_DF_FILTERED: self.filtered,
-
             BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TRAIN: self.leave_last_k_out_splits.df_train,
             BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_VALIDATION: self.leave_last_k_out_splits.df_validation,
             BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TRAIN_VALIDATION: self.leave_last_k_out_splits.df_train_validation,
             BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TEST: self.leave_last_k_out_splits.df_test,
-
             BaseDataset.NAME_DF_TIMESTAMP_TRAIN: self.timestamp_splits.df_train,
             BaseDataset.NAME_DF_TIMESTAMP_VALIDATION: self.timestamp_splits.df_validation,
             BaseDataset.NAME_DF_TIMESTAMP_TRAIN_VALIDATION: self.timestamp_splits.df_train_validation,
@@ -666,9 +713,7 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
         filter datasets by their indices we are sure that we're doing the filtering correctly.
         """
 
-        logger.info(
-            f"Filtering data sources (interactions, impressions, metadata)."
-        )
+        logger.info(f"Filtering data sources (interactions, impressions, metadata).")
 
         df_data = self._sampled
 
@@ -709,9 +754,10 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
         df_data, _ = apply_custom_function(
             df=df_data,
             column="impressions",
+            axis="columns",
             func=remove_non_clicks_on_impressions,
             func_name=remove_non_clicks_on_impressions.__name__,
-            axis="columns",
+            min_item_id=_MIN_ITEM_ID,
         )
 
         # Given that we removed the 0s and 1s in the impressions, then we must subtract 1 to the columns
@@ -754,7 +800,10 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
     def _leave_last_k_out_splits_to_pandas(self) -> list[pd.DataFrame]:
         df_data_filtered = self.filtered
 
-        df_train_validation, df_test = split_sequential_train_test_by_num_records_on_test(
+        (
+            df_train_validation,
+            df_test,
+        ) = split_sequential_train_test_by_num_records_on_test(
             df=df_data_filtered,
             group_by_column="user_id",
             num_records_in_test=1,
@@ -769,7 +818,9 @@ class PandasFinnNoSlateProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
         return [df_train, df_validation, df_train_validation, df_test]
 
 
-class PandasFinnNoSlateImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBackupMixin):
+class PandasFinnNoSlateImpressionsFeaturesData(
+    ParquetDataMixin, DatasetConfigBackupMixin
+):
     def __init__(
         self,
         config: FinnNoSlatesConfig,
@@ -780,23 +831,26 @@ class PandasFinnNoSlateImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBa
         )
 
         self._folder_dataset = os.path.join(
-            self.config.data_folder, "data-features-impressions", self.config.sha256_hash, ""
+            self.config.data_folder,
+            "data-features-impressions",
+            self.config.sha256_hash,
+            "",
         )
 
         self._folder_leave_last_k_out = os.path.join(
             self._folder_dataset, "leave-last-k-out", ""
         )
 
-        self._folder_timestamp = os.path.join(
-            self._folder_dataset, "timestamp", ""
-        )
+        self._folder_timestamp = os.path.join(self._folder_dataset, "timestamp", "")
 
         self._file_name_split_train = "train.parquet"
         self._file_name_split_validation = "validation.parquet"
         self._file_name_split_train_validation = "train_validation.parquet"
         self._file_name_split_test = "test.parquet"
 
-        self._feature_funcs: dict[str, Callable[..., tuple[pd.DataFrame, pd.DataFrame]]] = {
+        self._feature_funcs: dict[
+            str, Callable[..., tuple[pd.DataFrame, pd.DataFrame]]
+        ] = {
             "user_item_frequency": functools.partial(
                 extract_frequency_user_item,
                 users_column="user_id",
@@ -821,7 +875,7 @@ class PandasFinnNoSlateImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBa
                 items_column="impressions",
                 timestamp_column="time_step",
                 to_keep="last",
-            )
+            ),
         }
 
         os.makedirs(
@@ -866,14 +920,15 @@ class PandasFinnNoSlateImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBa
         for evaluation_strategy in EvaluationStrategy:
             for feature_key, feature_columns in self.features.items():
                 splits = self.user_item_feature(
-                    evaluation_strategy=evaluation_strategy,
-                    feature_key=feature_key
+                    evaluation_strategy=evaluation_strategy, feature_key=feature_key
                 )
 
                 feature_name = f"{evaluation_strategy.value}-{feature_key}"
                 impression_features[f"{feature_name}-train"] = splits.df_train
                 impression_features[f"{feature_name}-validation"] = splits.df_validation
-                impression_features[f"{feature_name}-train_validation"] = splits.df_train_validation
+                impression_features[
+                    f"{feature_name}-train_validation"
+                ] = splits.df_train_validation
                 impression_features[f"{feature_name}-test"] = splits.df_test
 
         return impression_features
@@ -928,16 +983,24 @@ class PandasFinnNoSlateImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBa
 
         return [
             os.path.join(
-                folder_to_look_up, feature, self._file_name_split_train,
+                folder_to_look_up,
+                feature,
+                self._file_name_split_train,
             ),
             os.path.join(
-                folder_to_look_up, feature, self._file_name_split_validation,
+                folder_to_look_up,
+                feature,
+                self._file_name_split_validation,
             ),
             os.path.join(
-                folder_to_look_up, feature, self._file_name_split_train_validation,
+                folder_to_look_up,
+                feature,
+                self._file_name_split_train_validation,
             ),
             os.path.join(
-                folder_to_look_up, feature, self._file_name_split_test,
+                folder_to_look_up,
+                feature,
+                self._file_name_split_test,
             ),
         ]
 
@@ -951,9 +1014,7 @@ class PandasFinnNoSlateImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBa
             return self.loader_processed_data.timestamp_splits
 
     def _user_item_feature_to_pandas(
-        self,
-        evaluation_strategy: EvaluationStrategy,
-        feature_key: str
+        self, evaluation_strategy: EvaluationStrategy, feature_key: str
     ) -> list[pd.DataFrame]:
         assert feature_key in self._feature_funcs
 
@@ -970,7 +1031,9 @@ class PandasFinnNoSlateImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBa
 
         df_train_user_item_feature, _ = feature_func(df=splits.df_train)
         df_validation_user_item_feature, _ = feature_func(df=splits.df_validation)
-        df_train_validation_user_item_feature, _ = feature_func(df=splits.df_train_validation)
+        df_train_validation_user_item_feature, _ = feature_func(
+            df=splits.df_train_validation
+        )
         df_test_user_item_feature, _ = feature_func(df=splits.df_test)
 
         return [
@@ -981,7 +1044,9 @@ class PandasFinnNoSlateImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBa
         ]
 
 
-class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBackupMixin):
+class SparseFinnNoSlateData(
+    SparseDataMixin, ParquetDataMixin, DatasetConfigBackupMixin
+):
     def __init__(
         self,
         config: FinnNoSlatesConfig,
@@ -1002,17 +1067,28 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
         self.impressions_column = "impressions"
 
         self._folder_data = os.path.join(
-            self.config.data_folder, "data-sparse", self.config.sha256_hash, "",
+            self.config.data_folder,
+            "data-sparse",
+            self.config.sha256_hash,
+            "",
         )
         self._folder_leave_last_out_data = os.path.join(
-            self._folder_data, EvaluationStrategy.LEAVE_LAST_K_OUT.value, "",
+            self._folder_data,
+            EvaluationStrategy.LEAVE_LAST_K_OUT.value,
+            "",
         )
         self._folder_timestamp_data = os.path.join(
-            self._folder_data, EvaluationStrategy.TIMESTAMP.value, "",
+            self._folder_data,
+            EvaluationStrategy.TIMESTAMP.value,
+            "",
         )
 
-        self._file_path_item_mapper = os.path.join(self._folder_data, "item_mapper.parquet")
-        self._file_path_user_mapper = os.path.join(self._folder_data, "user_mapper.parquet")
+        self._file_path_item_mapper = os.path.join(
+            self._folder_data, "item_mapper.parquet"
+        )
+        self._file_path_user_mapper = os.path.join(
+            self._folder_data, "user_mapper.parquet"
+        )
 
         self._file_path_urm_all = os.path.join(self._folder_data, "urm_all.npz")
         self._file_paths_leave_last_out_urms = [
@@ -1105,12 +1181,10 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
 
         return {
             BaseDataset.NAME_URM_ALL: sp_urm_all,
-
             BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TRAIN: sp_llo_urm_train,
             BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_VALIDATION: sp_llo_urm_validation,
             BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TRAIN_VALIDATION: sp_llo_urm_train_validation,
             BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TEST: sp_llo_urm_test,
-
             BaseDataset.NAME_URM_TIMESTAMP_TRAIN: sp_timestamp_urm_train,
             BaseDataset.NAME_URM_TIMESTAMP_VALIDATION: sp_timestamp_urm_validation,
             BaseDataset.NAME_URM_TIMESTAMP_TRAIN_VALIDATION: sp_timestamp_urm_train_validation,
@@ -1146,12 +1220,10 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
 
         return {
             BaseDataset.NAME_UIM_ALL: sp_uim_all,
-
             BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TRAIN: sp_llo_uim_train,
             BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_VALIDATION: sp_llo_uim_validation,
             BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TRAIN_VALIDATION: sp_llo_uim_train_validation,
             BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TEST: sp_llo_uim_test,
-
             BaseDataset.NAME_UIM_TIMESTAMP_TRAIN: sp_timestamp_uim_train,
             BaseDataset.NAME_UIM_TIMESTAMP_VALIDATION: sp_timestamp_uim_validation,
             BaseDataset.NAME_UIM_TIMESTAMP_TRAIN_VALIDATION: sp_timestamp_uim_train_validation,
@@ -1163,21 +1235,28 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
         impression_features: dict[str, sp.csr_matrix] = {}
 
         for evaluation_strategy in EvaluationStrategy:
-            for feature_key, feature_columns in self.data_loader_impression_features.features.items():
+            for (
+                feature_key,
+                feature_columns,
+            ) in self.data_loader_impression_features.features.items():
                 for feature_column in feature_columns:
                     folder = os.path.join(self._folder_data, evaluation_strategy.value)
                     file_paths = [
                         os.path.join(
-                            folder, f"impressions_features_{feature_key}_{feature_column}_train.npz"
+                            folder,
+                            f"impressions_features_{feature_key}_{feature_column}_train.npz",
                         ),
                         os.path.join(
-                            folder, f"impressions_features_{feature_key}_{feature_column}_validation.npz"
+                            folder,
+                            f"impressions_features_{feature_key}_{feature_column}_validation.npz",
                         ),
                         os.path.join(
-                            folder, f"impressions_features_{feature_key}_{feature_column}_train_validation.npz"
+                            folder,
+                            f"impressions_features_{feature_key}_{feature_column}_train_validation.npz",
                         ),
                         os.path.join(
-                            folder, f"impressions_features_{feature_key}_{feature_column}_test.npz"
+                            folder,
+                            f"impressions_features_{feature_key}_{feature_column}_test.npz",
                         ),
                     ]
 
@@ -1185,7 +1264,7 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
                         self._impression_features_to_sparse,
                         evaluation_strategy=evaluation_strategy,
                         feature_key=feature_key,
-                        feature_column=feature_column
+                        feature_column=feature_column,
                     )
 
                     (
@@ -1198,11 +1277,21 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
                         to_sparse_matrices_func=partial_func,
                     )
 
-                    feature_name = f"{evaluation_strategy.value}-{feature_key}-{feature_column}"
-                    impression_features[f"{feature_name}-train"] = sp_impressions_feature_train
-                    impression_features[f"{feature_name}-validation"] = sp_impressions_feature_validation
-                    impression_features[f"{feature_name}-train_validation"] = sp_impressions_feature_train_validation
-                    impression_features[f"{feature_name}-test"] = sp_impressions_feature_test
+                    feature_name = (
+                        f"{evaluation_strategy.value}-{feature_key}-{feature_column}"
+                    )
+                    impression_features[
+                        f"{feature_name}-train"
+                    ] = sp_impressions_feature_train
+                    impression_features[
+                        f"{feature_name}-validation"
+                    ] = sp_impressions_feature_validation
+                    impression_features[
+                        f"{feature_name}-train_validation"
+                    ] = sp_impressions_feature_train_validation
+                    impression_features[
+                        f"{feature_name}-test"
+                    ] = sp_impressions_feature_test
 
         return impression_features
 
@@ -1215,10 +1304,14 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
             inplace=False,
         )
 
-        non_na_exploded_impressions = df_data_filtered[self.impressions_column].explode(
-            ignore_index=True,
-        ).dropna(
-            inplace=False,
+        non_na_exploded_impressions = (
+            df_data_filtered[self.impressions_column]
+            .explode(
+                ignore_index=True,
+            )
+            .dropna(
+                inplace=False,
+            )
         )
 
         unique_items = set(non_na_items).union(non_na_exploded_impressions)
@@ -1228,7 +1321,7 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
                 (int(mapped_value), int(orig_value))
                 for mapped_value, orig_value in enumerate(unique_items)
             ],
-            columns=["mapped_value", "orig_value"]
+            columns=["mapped_value", "orig_value"],
         )
 
     def _user_mapper_to_pandas(self) -> pd.DataFrame:
@@ -1245,7 +1338,7 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
                 (int(mapped_value), int(orig_value))
                 for mapped_value, orig_value in enumerate(unique_users)
             ],
-            columns=["mapped_value", "orig_value"]
+            columns=["mapped_value", "orig_value"],
         )
 
     def _urm_all_to_sparse(self) -> sp.csr_matrix:
@@ -1265,7 +1358,12 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
         return urm_all
 
     def _urms_leave_last_out_to_sparse(self) -> list[sp.csr_matrix]:
-        df_train, df_validation, df_train_validation, df_test = self.data_loader_processed.leave_last_k_out_splits
+        (
+            df_train,
+            df_validation,
+            df_train_validation,
+            df_test,
+        ) = self.data_loader_processed.leave_last_k_out_splits
 
         sparse_matrices = []
         for df_split in [
@@ -1288,7 +1386,12 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
         return sparse_matrices
 
     def _urms_timestamp_to_sparse(self) -> list[sp.csr_matrix]:
-        df_train, df_validation, df_train_validation, df_test = self.data_loader_processed.timestamp_splits
+        (
+            df_train,
+            df_validation,
+            df_train_validation,
+            df_test,
+        ) = self.data_loader_processed.timestamp_splits
 
         sparse_matrices = []
         for df_split in [
@@ -1322,7 +1425,12 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
         return uim_all
 
     def _uims_leave_last_out_to_sparse(self) -> list[sp.csr_matrix]:
-        df_train, df_validation, df_train_validation, df_test = self.data_loader_processed.leave_last_k_out_splits
+        (
+            df_train,
+            df_validation,
+            df_train_validation,
+            df_test,
+        ) = self.data_loader_processed.leave_last_k_out_splits
 
         sparse_matrices = []
         for df_split in [
@@ -1345,7 +1453,12 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
         return sparse_matrices
 
     def _uims_timestamp_to_sparse(self) -> list[sp.csr_matrix]:
-        df_train, df_validation, df_train_validation, df_test = self.data_loader_processed.timestamp_splits
+        (
+            df_train,
+            df_validation,
+            df_train_validation,
+            df_test,
+        ) = self.data_loader_processed.timestamp_splits
 
         sparse_matrices = []
         for df_split in [
@@ -1368,9 +1481,11 @@ class SparseFinnNoSlateData(SparseDataMixin, ParquetDataMixin, DatasetConfigBack
         return sparse_matrices
 
     def _impression_features_to_sparse(
-        self, evaluation_strategy: EvaluationStrategy, feature_key: str, feature_column: str
+        self,
+        evaluation_strategy: EvaluationStrategy,
+        feature_key: str,
+        feature_column: str,
     ) -> list[sp.csr_matrix]:
-
         sparse_matrices = []
 
         splits = self.data_loader_impression_features.user_item_feature(
@@ -1417,15 +1532,20 @@ class FINNNoSlateReader(DatasetConfigBackupMixin, DataReader):
         self.data_loader_processed = PandasFinnNoSlateProcessData(
             config=config,
         )
-        self.data_loader_impressions_features = PandasFinnNoSlateImpressionsFeaturesData(
-            config=config,
+        self.data_loader_impressions_features = (
+            PandasFinnNoSlateImpressionsFeaturesData(
+                config=config,
+            )
         )
         self.data_loader_sparse = SparseFinnNoSlateData(
             config=config,
         )
 
         self.DATA_FOLDER = os.path.join(
-            self.config.data_folder, "data_reader", self.config.sha256_hash, "",
+            self.config.data_folder,
+            "data_reader",
+            self.config.sha256_hash,
+            "",
         )
 
         self._DATA_READER_NAME = "FINNNoSlateReader"
@@ -1433,10 +1553,7 @@ class FINNNoSlateReader(DatasetConfigBackupMixin, DataReader):
         self.IS_IMPLICIT = self.config.binarize_interactions
         self.ORIGINAL_SPLIT_FOLDER = self.DATA_FOLDER
 
-        os.makedirs(
-            self.DATA_FOLDER,
-            exist_ok=True
-        )
+        os.makedirs(self.DATA_FOLDER, exist_ok=True)
 
     def backup_config(self) -> None:
         self.save_config(
@@ -1461,8 +1578,12 @@ class FINNNoSlateReader(DatasetConfigBackupMixin, DataReader):
         mapper_item_id_to_index = self.data_loader_sparse.mapper_item_id_to_index
         mapper_user_id_to_index = self.data_loader_sparse.mapper_user_id_to_index
 
-        impressions_features_dataframes = self.data_loader_impressions_features.impressions_features
-        impressions_features_sparse_matrices = self.data_loader_sparse.impressions_features
+        impressions_features_dataframes = (
+            self.data_loader_impressions_features.impressions_features
+        )
+        impressions_features_sparse_matrices = (
+            self.data_loader_sparse.impressions_features
+        )
 
         # backup all configs that created this dataset.
         self.data_loader_processed.backup_config()

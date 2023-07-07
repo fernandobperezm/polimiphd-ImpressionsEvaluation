@@ -9,7 +9,7 @@ from typing import cast, Union
 import numpy as np
 import pandas as pd
 import sparse
-import impressions_evaluation.readers.MIND.reader as mind_reader
+import impressions_evaluation.readers.MINDReader as mind_reader
 from tqdm import tqdm
 
 
@@ -23,36 +23,44 @@ def _set_unique_items(
     df: pd.DataFrame,
     df_previous_interactions: pd.DataFrame,
 ) -> set[int]:
-    df_items_previous_interactions = df_previous_interactions["item_ids"].explode(
-        ignore_index=True,
-    ).dropna(
-        inplace=False,
-        how="any",
-        axis="index",
+    df_items_previous_interactions = (
+        df_previous_interactions["item_ids"]
+        .explode(
+            ignore_index=True,
+        )
+        .dropna(
+            inplace=False,
+            how="any",
+            axis="index",
+        )
     )
 
-    df_items = df["item_ids"].explode(
-        ignore_index=True,
-    ).dropna(
-        inplace=False,
-        how="any",
-        axis="index",
+    df_items = (
+        df["item_ids"]
+        .explode(
+            ignore_index=True,
+        )
+        .dropna(
+            inplace=False,
+            how="any",
+            axis="index",
+        )
     )
 
-    df_items_impressions = df["impressions"].explode(
-        ignore_index=True,
-    ).dropna(
-        inplace=False,
-        how="any",
-        axis="index",
+    df_items_impressions = (
+        df["impressions"]
+        .explode(
+            ignore_index=True,
+        )
+        .dropna(
+            inplace=False,
+            how="any",
+            axis="index",
+        )
     )
 
-    unique_items = set(
-        df_items_previous_interactions
-    ).union(
-        df_items
-    ).union(
-        df_items_impressions
+    unique_items = (
+        set(df_items_previous_interactions).union(df_items).union(df_items_impressions)
     )
 
     return unique_items
@@ -79,10 +87,7 @@ def _set_unique_users(
 def _create_mapper_id_to_indices(
     set_ids: set,
 ) -> dict[str, int]:
-    return {
-        data_id: assigned_idx
-        for assigned_idx, data_id in enumerate(set_ids)
-    }
+    return {data_id: assigned_idx for assigned_idx, data_id in enumerate(set_ids)}
 
 
 def convert_dataframe_to_sparse(
@@ -97,26 +102,28 @@ def convert_dataframe_to_sparse(
     df = df[[users_column, items_column]]
 
     if df[items_column].dtype == "object":
-        df = cast(pd.DataFrame, df).explode(
-            column=items_column,
-            ignore_index=True,
-        ).dropna(
-            how="any",
-            axis="index",
-            inplace=False,
+        df = (
+            cast(pd.DataFrame, df)
+            .explode(
+                column=items_column,
+                ignore_index=True,
+            )
+            .dropna(
+                how="any",
+                axis="index",
+                inplace=False,
+            )
         )
 
     rows_str = df[users_column].to_numpy(dtype="object")
     cols_str = df[items_column].to_numpy(dtype="object")
 
-    rows = np.array([
-        mapper_user_id_to_idx[user_id]
-        for user_id in rows_str
-    ], dtype=np.int32)
-    cols = np.array([
-        mapper_item_id_to_idx[item_id]
-        for item_id in cols_str
-    ], dtype=np.int32)
+    rows = np.array(
+        [mapper_user_id_to_idx[user_id] for user_id in rows_str], dtype=np.int32
+    )
+    cols = np.array(
+        [mapper_item_id_to_idx[item_id] for item_id in cols_str], dtype=np.int32
+    )
     data = np.ones_like(rows_str, dtype=np.int32)
 
     urm = sparse.COO(
@@ -143,6 +150,7 @@ def remove_interactions_from_uim(
         uim_dok[row_idx, col_idx] = 0
 
     return uim_dok.to_coo()
+
 
 def _compute_mind_statistics_from_config(
     config: Union[mind_reader.MINDSmallConfig, mind_reader.MINDLargeConfig],

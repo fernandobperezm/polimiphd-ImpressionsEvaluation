@@ -235,7 +235,7 @@ class ContentWiseImpressionsRawData(DaskParquetDataMixin):
 
     @property  # type: ignore
     @typed_cache
-    def impressions_non_direct_link(self) -> pd.DataFrame:
+    def impressions_non_direct_link(self) -> dd.DataFrame:
         return self.load_parquet(
             folder_path=self._original_dataset_impressions_non_direct_link_folder,
             to_dask_func=None,  # type: ignore

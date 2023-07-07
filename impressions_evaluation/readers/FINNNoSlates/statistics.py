@@ -4,9 +4,12 @@ from typing import cast
 import numpy as np
 import pandas as pd
 import sparse
-from recsys_framework_extensions.data.splitter import remove_records_by_threshold, apply_custom_function
+from recsys_framework_extensions.data.splitter import (
+    remove_records_by_threshold,
+    apply_custom_function,
+)
 
-import impressions_evaluation.readers.FINNNoSlates.reader as finn_reader
+import impressions_evaluation.readers.FINNNoSlates as finn_reader
 from tqdm import tqdm
 
 
@@ -19,27 +22,31 @@ def _set_unique_items(
     *,
     df: pd.DataFrame,
 ) -> set[int]:
-    df_items = df["item_id"].explode(
-        ignore_index=True,
-    ).dropna(
-        inplace=False,
-        how="any",
-        axis="index",
+    df_items = (
+        df["item_id"]
+        .explode(
+            ignore_index=True,
+        )
+        .dropna(
+            inplace=False,
+            how="any",
+            axis="index",
+        )
     )
 
-    df_items_impressions = df["impressions"].explode(
-        ignore_index=True,
-    ).dropna(
-        inplace=False,
-        how="any",
-        axis="index",
+    df_items_impressions = (
+        df["impressions"]
+        .explode(
+            ignore_index=True,
+        )
+        .dropna(
+            inplace=False,
+            how="any",
+            axis="index",
+        )
     )
 
-    unique_items = set(
-        df_items
-    ).union(
-        df_items_impressions
-    )
+    unique_items = set(df_items).union(df_items_impressions)
 
     unique_items.discard(finn_reader.ITEM_ID_FILL_VALUE)
     unique_items.discard(finn_reader.ITEM_ID_NON_INTERACTED)
@@ -64,10 +71,7 @@ def _create_mapper_id_to_indices(
     *,
     set_ids: set,
 ) -> dict[int, int]:
-    return {
-        data_id: assigned_idx
-        for assigned_idx, data_id in enumerate(set_ids)
-    }
+    return {data_id: assigned_idx for assigned_idx, data_id in enumerate(set_ids)}
 
 
 def convert_dataframe_to_sparse(
@@ -82,13 +86,17 @@ def convert_dataframe_to_sparse(
     df = df[[users_column, items_column]]
 
     if df[items_column].dtype == "object":
-        df = cast(pd.DataFrame, df).explode(
-            column=items_column,
-            ignore_index=True,
-        ).dropna(
-            how="any",
-            axis="index",
-            inplace=False,
+        df = (
+            cast(pd.DataFrame, df)
+            .explode(
+                column=items_column,
+                ignore_index=True,
+            )
+            .dropna(
+                how="any",
+                axis="index",
+                inplace=False,
+            )
         )
 
     rows = df[users_column].to_numpy(dtype=np.int32)
@@ -99,14 +107,12 @@ def convert_dataframe_to_sparse(
     rows = rows[mask_array]
     cols = cols[mask_array]
 
-    rows = np.array([
-        mapper_user_id_to_idx[user_id]
-        for user_id in rows
-    ], dtype=np.int32)
-    cols = np.array([
-        mapper_item_id_to_idx[item_id]
-        for item_id in cols
-    ], dtype=np.int32)
+    rows = np.array(
+        [mapper_user_id_to_idx[user_id] for user_id in rows], dtype=np.int32
+    )
+    cols = np.array(
+        [mapper_item_id_to_idx[item_id] for item_id in cols], dtype=np.int32
+    )
     data = np.ones_like(rows, dtype=np.int32)
 
     urm = sparse.COO(

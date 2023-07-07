@@ -8,7 +8,7 @@ from typing import cast
 import numpy as np
 import pandas as pd
 import sparse
-import impressions_evaluation.readers.ContentWiseImpressions.reader as cw_impressions_reader
+import impressions_evaluation.readers.ContentWiseImpressionsReader as cw_impressions_reader
 
 from tqdm import tqdm
 import logging
@@ -32,38 +32,47 @@ def _set_unique_items(
         axis="index",
     )
 
-    df_series_interactions_impressions = df_interactions["impressions"].explode(
-        ignore_index=True,
-    ).dropna(
-        inplace=False,
-        how="any",
-        axis="index",
+    df_series_interactions_impressions = (
+        df_interactions["impressions"]
+        .explode(
+            ignore_index=True,
+        )
+        .dropna(
+            inplace=False,
+            how="any",
+            axis="index",
+        )
     )
 
-    df_series_impressions = df_impressions["recommended_series_list"].explode(
-        ignore_index=True,
-    ).dropna(
-        inplace=False,
-        how="any",
-        axis="index",
+    df_series_impressions = (
+        df_impressions["recommended_series_list"]
+        .explode(
+            ignore_index=True,
+        )
+        .dropna(
+            inplace=False,
+            how="any",
+            axis="index",
+        )
     )
 
-    df_series_impressions_non_direct_link = df_impressions_non_direct_link["recommended_series_list"].explode(
-        ignore_index=True,
-    ).dropna(
-        inplace=False,
-        how="any",
-        axis="index",
+    df_series_impressions_non_direct_link = (
+        df_impressions_non_direct_link["recommended_series_list"]
+        .explode(
+            ignore_index=True,
+        )
+        .dropna(
+            inplace=False,
+            how="any",
+            axis="index",
+        )
     )
 
-    unique_items = set(
-        df_series_interactions
-    ).union(
-        df_series_interactions_impressions
-    ).union(
-        df_series_impressions
-    ).union(
-        df_series_impressions_non_direct_link
+    unique_items = (
+        set(df_series_interactions)
+        .union(df_series_interactions_impressions)
+        .union(df_series_impressions)
+        .union(df_series_impressions_non_direct_link)
     )
 
     return unique_items
@@ -80,12 +89,16 @@ def _set_unique_users(
         axis="index",
     )
 
-    df_impressions_non_direct_link = df_impressions_non_direct_link["user_id"].explode(
-        ignore_index=True,
-    ).dropna(
-        inplace=False,
-        how="any",
-        axis="index",
+    df_impressions_non_direct_link = (
+        df_impressions_non_direct_link["user_id"]
+        .explode(
+            ignore_index=True,
+        )
+        .dropna(
+            inplace=False,
+            how="any",
+            axis="index",
+        )
     )
 
     unique_users = set(df_interactions).union(df_impressions_non_direct_link)
@@ -103,13 +116,17 @@ def convert_dataframe_to_sparse(
     df = df[[users_column, items_column]]
 
     if df[items_column].dtype == "object":
-        df = cast(pd.DataFrame, df).explode(
-            column=items_column,
-            ignore_index=True,
-        ).dropna(
-            how="any",
-            axis="index",
-            inplace=False,
+        df = (
+            cast(pd.DataFrame, df)
+            .explode(
+                column=items_column,
+                ignore_index=True,
+            )
+            .dropna(
+                how="any",
+                axis="index",
+                inplace=False,
+            )
         )
 
     rows = df[users_column].to_numpy(dtype=np.int32)
@@ -155,7 +172,9 @@ def content_wise_impressions_statistics_full_dataset() -> dict:
 
     df_raw_data = pandas_raw_data.data
     df_impressions = raw_data.impressions.compute().reset_index(drop=False)
-    df_impressions_non_direct_link = raw_data.impressions_non_direct_link.compute().reset_index(drop=False)
+    df_impressions_non_direct_link = (
+        raw_data.impressions_non_direct_link.compute().reset_index(drop=False)
+    )
 
     logger.debug("Computing set unique users")
     unique_users = _set_unique_users(
