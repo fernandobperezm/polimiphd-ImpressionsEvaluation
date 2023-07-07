@@ -16,17 +16,26 @@ import pandas as pd
 import scipy.sparse as sp
 from numba import jit
 from recsys_framework_extensions.data.dataset import BaseDataset
-from recsys_framework_extensions.data.features import extract_frequency_user_item, extract_last_seen_user_item, \
-    extract_position_user_item, extract_timestamp_user_item
-from recsys_framework_extensions.data.mixins import ParquetDataMixin, DaskParquetDataMixin, SparseDataMixin, \
-    DatasetConfigBackupMixin
+from recsys_framework_extensions.data.features import (
+    extract_frequency_user_item,
+    extract_last_seen_user_item,
+    extract_position_user_item,
+    extract_timestamp_user_item,
+)
+from recsys_framework_extensions.data.mixins import (
+    ParquetDataMixin,
+    DaskParquetDataMixin,
+    SparseDataMixin,
+    DatasetConfigBackupMixin,
+)
 from recsys_framework_extensions.data.reader import DataReader
 from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe
 from recsys_framework_extensions.data.splitter import (
     remove_duplicates_in_interactions,
     remove_users_without_min_number_of_interactions,
     split_sequential_train_test_by_column_threshold,
-    split_sequential_train_test_by_num_records_on_test, E_KEEP
+    split_sequential_train_test_by_num_records_on_test,
+    E_KEEP,
 )
 from recsys_framework_extensions.decorators import typed_cache, timeit
 from recsys_framework_extensions.evaluation import EvaluationStrategy
@@ -92,7 +101,10 @@ class ContentWiseImpressionsConfig(MixinSHA256Hash):
     """
 
     data_folder = os.path.join(
-        os.getcwd(), "data", "ContentWiseImpressions", "",
+        os.getcwd(),
+        "data",
+        "ContentWiseImpressions",
+        "",
     )
 
     num_interaction_records = 10_457_810
@@ -118,31 +130,31 @@ class ContentWiseImpressionsConfig(MixinSHA256Hash):
         default=3,
         validator=[
             attrs.validators.gt(0),
-        ]
+        ],
     )
     binarize_impressions = attrs.field(
         default=True,
         validator=[
             attrs.validators.instance_of(bool),
-        ]
+        ],
     )
     binarize_interactions = attrs.field(
         default=True,
         validator=[
             attrs.validators.instance_of(bool),
-        ]
+        ],
     )
     keep_duplicates: E_KEEP = attrs.field(
         default=E_KEEP.FIRST,
         validator=[
             attrs.validators.in_(E_KEEP),  # type: ignore
-        ]
+        ],
     )
     variant: ContentWiseImpressionsVariant = attrs.field(
         default=ContentWiseImpressionsVariant.SERIES,
         validator=[
             attrs.validators.in_(ContentWiseImpressionsVariant),  # type: ignore
-        ]
+        ],
     )
     interactions_item_column: str = attrs.field(
         init=False,
@@ -163,8 +175,7 @@ class ContentWiseImpressionsConfig(MixinSHA256Hash):
 
 
 class ContentWiseImpressionsRawData(DaskParquetDataMixin):
-    """Class that reads the 'raw' ContentWiseImpressionsContentWiseImpressions data from disk.
-    """
+    """Class that reads the 'raw' ContentWiseImpressionsContentWiseImpressions data from disk."""
 
     def __init__(
         self,
@@ -173,23 +184,29 @@ class ContentWiseImpressionsRawData(DaskParquetDataMixin):
         self._config = config
 
         self._original_dataset_root_folder = os.path.join(
-            self._config.data_folder, "original", "CW10M",
+            self._config.data_folder,
+            "original",
+            "CW10M",
         )
 
         self._original_dataset_interactions_folder = os.path.join(
-            self._original_dataset_root_folder, "interactions",
+            self._original_dataset_root_folder,
+            "interactions",
         )
 
         self._original_dataset_impressions_direct_link_folder = os.path.join(
-            self._original_dataset_root_folder, "impressions-direct-link",
+            self._original_dataset_root_folder,
+            "impressions-direct-link",
         )
 
         self._original_dataset_impressions_non_direct_link_folder = os.path.join(
-            self._original_dataset_root_folder, "impressions-non-direct-link",
+            self._original_dataset_root_folder,
+            "impressions-non-direct-link",
         )
 
         self._original_dataset_metadata_file = os.path.join(
-            self._original_dataset_root_folder, "metadata.json",
+            self._original_dataset_root_folder,
+            "metadata.json",
         )
 
     @property  # type: ignore
@@ -238,11 +255,11 @@ class PandasContentWiseImpressionsRawData(ParquetDataMixin):
         )
 
         self._dataset_folder = os.path.join(
-            self.config.data_folder, "pandas", "original",
+            self.config.data_folder,
+            "pandas",
+            "original",
         )
-        self.file_data = os.path.join(
-            self._dataset_folder, "data.parquet"
-        )
+        self.file_data = os.path.join(self._dataset_folder, "data.parquet")
 
         os.makedirs(
             name=self._dataset_folder,
@@ -264,14 +281,8 @@ class PandasContentWiseImpressionsRawData(ParquetDataMixin):
         df_data = self.raw_data_loader.interactions
         df_impressions = self.raw_data_loader.impressions
 
-        df_data = cast(
-            pd.DataFrame,
-            df_data.compute()
-        )
-        df_impressions = cast(
-            pd.DataFrame,
-            df_impressions.compute()
-        )
+        df_data = cast(pd.DataFrame, df_data.compute())
+        df_impressions = cast(pd.DataFrame, df_impressions.compute())
 
         assert df_data.shape[0] == self.config.num_interaction_records
         assert df_impressions.shape[0] == self.config.num_impression_records
@@ -344,10 +355,13 @@ class PandasContentWiseImpressionsRawData(ParquetDataMixin):
         return df_data
 
 
-class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBackupMixin):
+class PandasContentWiseImpressionsProcessData(
+    ParquetDataMixin, DatasetConfigBackupMixin
+):
     """
     Class that processes the data and creates the splits
     """
+
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -366,9 +380,7 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
             self._dataset_folder, "leave-last-k-out", ""
         )
 
-        self.file_timestamp_folder = os.path.join(
-            self._dataset_folder, "timestamp", ""
-        )
+        self.file_timestamp_folder = os.path.join(self._dataset_folder, "timestamp", "")
 
         self.file_filter_data_path = os.path.join(
             self._dataset_folder, "filter_data.parquet"
@@ -410,9 +422,7 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
 
     @property  # type: ignore
     @typed_cache
-    def timestamp_splits(
-        self
-    ) -> ContentWiseImpressionsSplits:
+    def timestamp_splits(self) -> ContentWiseImpressionsSplits:
         file_paths = [
             os.path.join(self.file_timestamp_folder, self.train_filename),
             os.path.join(self.file_timestamp_folder, self.validation_filename),
@@ -426,8 +436,12 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
         )
 
         df_train = df_train.astype(dtype={"user_id": np.int32, "item_id": np.int32})
-        df_validation = df_validation.astype(dtype={"user_id": np.int32, "item_id": np.int32})
-        df_train_validation = df_train_validation.astype(dtype={"user_id": np.int32, "item_id": np.int32})
+        df_validation = df_validation.astype(
+            dtype={"user_id": np.int32, "item_id": np.int32}
+        )
+        df_train_validation = df_train_validation.astype(
+            dtype={"user_id": np.int32, "item_id": np.int32}
+        )
         df_test = df_test.astype(dtype={"user_id": np.int32, "item_id": np.int32})
 
         assert df_train.shape[0] > 0
@@ -444,13 +458,13 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
 
     @property  # type: ignore
     @typed_cache
-    def leave_last_k_out_splits(
-        self
-    ) -> ContentWiseImpressionsSplits:
+    def leave_last_k_out_splits(self) -> ContentWiseImpressionsSplits:
         file_paths = [
             os.path.join(self.file_leave_last_k_out_folder, self.train_filename),
             os.path.join(self.file_leave_last_k_out_folder, self.validation_filename),
-            os.path.join(self.file_leave_last_k_out_folder, self.train_validation_filename),
+            os.path.join(
+                self.file_leave_last_k_out_folder, self.train_validation_filename
+            ),
             os.path.join(self.file_leave_last_k_out_folder, self.test_filename),
         ]
 
@@ -460,8 +474,12 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
         )
 
         df_train = df_train.astype(dtype={"user_id": np.int32, "item_id": np.int32})
-        df_validation = df_validation.astype(dtype={"user_id": np.int32, "item_id": np.int32})
-        df_train_validation = df_train_validation.astype(dtype={"user_id": np.int32, "item_id": np.int32})
+        df_validation = df_validation.astype(
+            dtype={"user_id": np.int32, "item_id": np.int32}
+        )
+        df_train_validation = df_train_validation.astype(
+            dtype={"user_id": np.int32, "item_id": np.int32}
+        )
         df_test = df_test.astype(dtype={"user_id": np.int32, "item_id": np.int32})
 
         assert df_train.shape[0] > 0
@@ -480,12 +498,10 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
     def dataframes(self) -> dict[str, pd.DataFrame]:
         return {
             BaseDataset.NAME_DF_FILTERED: self.filtered,
-
             BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TRAIN: self.leave_last_k_out_splits.df_train,
             BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_VALIDATION: self.leave_last_k_out_splits.df_validation,
             BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TRAIN_VALIDATION: self.leave_last_k_out_splits.df_train_validation,
             BaseDataset.NAME_DF_LEAVE_LAST_K_OUT_TEST: self.leave_last_k_out_splits.df_test,
-
             BaseDataset.NAME_DF_TIMESTAMP_TRAIN: self.timestamp_splits.df_train,
             BaseDataset.NAME_DF_TIMESTAMP_VALIDATION: self.timestamp_splits.df_validation,
             BaseDataset.NAME_DF_TIMESTAMP_TRAIN_VALIDATION: self.timestamp_splits.df_train_validation,
@@ -493,9 +509,7 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
         }
 
     def _filtered_to_pandas(self) -> pd.DataFrame:
-        logger.info(
-            f"Filtering data sources (interactions, impressions, metadata)."
-        )
+        logger.info(f"Filtering data sources (interactions, impressions, metadata).")
 
         df_data = self.pandas_raw_data.data
 
@@ -528,49 +542,72 @@ class PandasContentWiseImpressionsProcessData(ParquetDataMixin, DatasetConfigBac
         # we must use the condensed version to compute the 80% and the 90% of timestamps in the dataset. Using
         # `df_interactions` may shift the value of the timestamp, specially if there are several popular users.
         described = df_data_filtered["timestamp"].describe(
-            datetime_is_numeric=True,
+            # datetime_is_numeric=True,  # Removed in pandas 2.0 as now datetime is always numeric.
             percentiles=[0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
         )
 
         validation_threshold = described["80%"]
         test_threshold = described["90%"]
 
-        df_data_train_validation, df_data_test = split_sequential_train_test_by_column_threshold(
-            df=df_data_filtered,
-            column="timestamp",
-            threshold=test_threshold
+        (
+            df_data_train_validation,
+            df_data_test,
+        ) = split_sequential_train_test_by_column_threshold(
+            df=df_data_filtered, column="timestamp", threshold=test_threshold
         )
 
-        df_data_train, df_data_validation = split_sequential_train_test_by_column_threshold(
+        (
+            df_data_train,
+            df_data_validation,
+        ) = split_sequential_train_test_by_column_threshold(
             df=df_data_train_validation,
             column="timestamp",
-            threshold=validation_threshold
+            threshold=validation_threshold,
         )
 
-        return [df_data_train, df_data_validation, df_data_train_validation, df_data_test]
+        return [
+            df_data_train,
+            df_data_validation,
+            df_data_train_validation,
+            df_data_test,
+        ]
 
     def _leave_last_k_out_splits_to_pandas(self) -> list[pd.DataFrame]:
         df_data_filtered = self.filtered
 
-        df_data_train_validation, df_data_test = split_sequential_train_test_by_num_records_on_test(
+        (
+            df_data_train_validation,
+            df_data_test,
+        ) = split_sequential_train_test_by_num_records_on_test(
             df=df_data_filtered,
             group_by_column="user_id",
             num_records_in_test=1,
         )
 
-        df_data_train, df_data_validation = split_sequential_train_test_by_num_records_on_test(
+        (
+            df_data_train,
+            df_data_validation,
+        ) = split_sequential_train_test_by_num_records_on_test(
             df=df_data_train_validation,
             group_by_column="user_id",
             num_records_in_test=1,
         )
 
-        return [df_data_train, df_data_validation, df_data_train_validation, df_data_test]
+        return [
+            df_data_train,
+            df_data_validation,
+            df_data_train_validation,
+            df_data_test,
+        ]
 
 
-class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, DatasetConfigBackupMixin):
+class PandasContentWiseImpressionsImpressionsFeaturesData(
+    ParquetDataMixin, DatasetConfigBackupMixin
+):
     """
     Class that computes the impressions features on the splits created by previous data readers.
     """
+
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -581,23 +618,26 @@ class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, Data
         )
 
         self._folder_dataset = os.path.join(
-            self.config.data_folder, "data-features-impressions", self.config.sha256_hash, ""
+            self.config.data_folder,
+            "data-features-impressions",
+            self.config.sha256_hash,
+            "",
         )
 
         self._folder_leave_last_k_out = os.path.join(
             self._folder_dataset, "leave-last-k-out", ""
         )
 
-        self._folder_timestamp = os.path.join(
-            self._folder_dataset, "timestamp", ""
-        )
+        self._folder_timestamp = os.path.join(self._folder_dataset, "timestamp", "")
 
         self._file_name_split_train = "train.parquet"
         self._file_name_split_validation = "validation.parquet"
         self._file_name_split_train_validation = "train_validation.parquet"
         self._file_name_split_test = "test.parquet"
 
-        self._feature_funcs: dict[str, Callable[..., tuple[pd.DataFrame, pd.DataFrame]]] = {
+        self._feature_funcs: dict[
+            str, Callable[..., tuple[pd.DataFrame, pd.DataFrame]]
+        ] = {
             "user_item_frequency": functools.partial(
                 extract_frequency_user_item,
                 users_column="user_id",
@@ -622,7 +662,7 @@ class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, Data
                 items_column="impressions",
                 timestamp_column="timestamp",
                 to_keep="last",
-            )
+            ),
         }
 
         os.makedirs(
@@ -673,14 +713,15 @@ class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, Data
         for evaluation_strategy in EvaluationStrategy:
             for feature_key, feature_columns in self.features.items():
                 splits = self.user_item_feature(
-                    evaluation_strategy=evaluation_strategy,
-                    feature_key=feature_key
+                    evaluation_strategy=evaluation_strategy, feature_key=feature_key
                 )
 
                 feature_name = f"{evaluation_strategy.value}-{feature_key}"
                 impression_features[f"{feature_name}-train"] = splits.df_train
                 impression_features[f"{feature_name}-validation"] = splits.df_validation
-                impression_features[f"{feature_name}-train_validation"] = splits.df_train_validation
+                impression_features[
+                    f"{feature_name}-train_validation"
+                ] = splits.df_train_validation
                 impression_features[f"{feature_name}-test"] = splits.df_test
 
         return impression_features
@@ -735,16 +776,24 @@ class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, Data
 
         return [
             os.path.join(
-                folder_to_look_up, feature, self._file_name_split_train,
+                folder_to_look_up,
+                feature,
+                self._file_name_split_train,
             ),
             os.path.join(
-                folder_to_look_up, feature, self._file_name_split_validation,
+                folder_to_look_up,
+                feature,
+                self._file_name_split_validation,
             ),
             os.path.join(
-                folder_to_look_up, feature, self._file_name_split_train_validation,
+                folder_to_look_up,
+                feature,
+                self._file_name_split_train_validation,
             ),
             os.path.join(
-                folder_to_look_up, feature, self._file_name_split_test,
+                folder_to_look_up,
+                feature,
+                self._file_name_split_test,
             ),
         ]
 
@@ -758,9 +807,7 @@ class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, Data
             return self.loader_processed_data.timestamp_splits
 
     def _user_item_feature_to_pandas(
-        self,
-        evaluation_strategy: EvaluationStrategy,
-        feature_key: str
+        self, evaluation_strategy: EvaluationStrategy, feature_key: str
     ) -> list[pd.DataFrame]:
         assert feature_key in self._feature_funcs
 
@@ -777,7 +824,9 @@ class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, Data
 
         df_train_user_item_feature, _ = feature_func(df=splits.df_train)
         df_validation_user_item_feature, _ = feature_func(df=splits.df_validation)
-        df_train_validation_user_item_feature, _ = feature_func(df=splits.df_train_validation)
+        df_train_validation_user_item_feature, _ = feature_func(
+            df=splits.df_train_validation
+        )
         df_test_user_item_feature, _ = feature_func(df=splits.df_test)
 
         return [
@@ -788,10 +837,13 @@ class PandasContentWiseImpressionsImpressionsFeaturesData(ParquetDataMixin, Data
         ]
 
 
-class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, DatasetConfigBackupMixin):
+class SparseContentWiseImpressionData(
+    SparseDataMixin, ParquetDataMixin, DatasetConfigBackupMixin
+):
     """
     Class that computes the impressions features on the splits created by previous data readers.
     """
+
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -803,8 +855,10 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
         self.data_loader_processed = PandasContentWiseImpressionsProcessData(
             config=config,
         )
-        self.data_loader_impression_features = PandasContentWiseImpressionsImpressionsFeaturesData(
-            config=config,
+        self.data_loader_impression_features = (
+            PandasContentWiseImpressionsImpressionsFeaturesData(
+                config=config,
+            )
         )
 
         self.users_column = "user_id"
@@ -813,17 +867,29 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
         self.impressions_id_column = "impression_id"
 
         self._folder_data = os.path.join(
-            self.config.data_folder, "data-sparse", self.config.variant.value, self.config.sha256_hash, "",
+            self.config.data_folder,
+            "data-sparse",
+            self.config.variant.value,
+            self.config.sha256_hash,
+            "",
         )
         self._folder_leave_last_out_data = os.path.join(
-            self._folder_data, EvaluationStrategy.LEAVE_LAST_K_OUT.value, "",
+            self._folder_data,
+            EvaluationStrategy.LEAVE_LAST_K_OUT.value,
+            "",
         )
         self._folder_timestamp_data = os.path.join(
-            self._folder_data, EvaluationStrategy.TIMESTAMP.value, "",
+            self._folder_data,
+            EvaluationStrategy.TIMESTAMP.value,
+            "",
         )
 
-        self._file_path_item_mapper = os.path.join(self._folder_data, "item_mapper.parquet")
-        self._file_path_user_mapper = os.path.join(self._folder_data, "user_mapper.parquet")
+        self._file_path_item_mapper = os.path.join(
+            self._folder_data, "item_mapper.parquet"
+        )
+        self._file_path_user_mapper = os.path.join(
+            self._folder_data, "user_mapper.parquet"
+        )
 
         self._file_path_urm_all = os.path.join(self._folder_data, "urm_all.npz")
         self._file_paths_leave_last_out_urms = [
@@ -916,12 +982,10 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
 
         return {
             BaseDataset.NAME_URM_ALL: sp_urm_all,
-
             BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TRAIN: sp_llo_urm_train,
             BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_VALIDATION: sp_llo_urm_validation,
             BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TRAIN_VALIDATION: sp_llo_urm_train_validation,
             BaseDataset.NAME_URM_LEAVE_LAST_K_OUT_TEST: sp_llo_urm_test,
-
             BaseDataset.NAME_URM_TIMESTAMP_TRAIN: sp_timestamp_urm_train,
             BaseDataset.NAME_URM_TIMESTAMP_VALIDATION: sp_timestamp_urm_validation,
             BaseDataset.NAME_URM_TIMESTAMP_TRAIN_VALIDATION: sp_timestamp_urm_train_validation,
@@ -957,12 +1021,10 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
 
         return {
             BaseDataset.NAME_UIM_ALL: sp_uim_all,
-
             BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TRAIN: sp_llo_uim_train,
             BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_VALIDATION: sp_llo_uim_validation,
             BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TRAIN_VALIDATION: sp_llo_uim_train_validation,
             BaseDataset.NAME_UIM_LEAVE_LAST_K_OUT_TEST: sp_llo_uim_test,
-
             BaseDataset.NAME_UIM_TIMESTAMP_TRAIN: sp_timestamp_uim_train,
             BaseDataset.NAME_UIM_TIMESTAMP_VALIDATION: sp_timestamp_uim_validation,
             BaseDataset.NAME_UIM_TIMESTAMP_TRAIN_VALIDATION: sp_timestamp_uim_train_validation,
@@ -974,21 +1036,28 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
         impression_features: dict[str, sp.csr_matrix] = {}
 
         for evaluation_strategy in EvaluationStrategy:
-            for feature_key, feature_columns in self.data_loader_impression_features.features.items():
+            for (
+                feature_key,
+                feature_columns,
+            ) in self.data_loader_impression_features.features.items():
                 for feature_column in feature_columns:
                     folder = os.path.join(self._folder_data, evaluation_strategy.value)
                     file_paths = [
                         os.path.join(
-                            folder, f"impressions_features_{feature_key}_{feature_column}_train.npz"
+                            folder,
+                            f"impressions_features_{feature_key}_{feature_column}_train.npz",
                         ),
                         os.path.join(
-                            folder, f"impressions_features_{feature_key}_{feature_column}_validation.npz"
+                            folder,
+                            f"impressions_features_{feature_key}_{feature_column}_validation.npz",
                         ),
                         os.path.join(
-                            folder, f"impressions_features_{feature_key}_{feature_column}_train_validation.npz"
+                            folder,
+                            f"impressions_features_{feature_key}_{feature_column}_train_validation.npz",
                         ),
                         os.path.join(
-                            folder, f"impressions_features_{feature_key}_{feature_column}_test.npz"
+                            folder,
+                            f"impressions_features_{feature_key}_{feature_column}_test.npz",
                         ),
                     ]
 
@@ -996,7 +1065,7 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
                         self._impression_features_to_sparse,
                         evaluation_strategy=evaluation_strategy,
                         feature_key=feature_key,
-                        feature_column=feature_column
+                        feature_column=feature_column,
                     )
 
                     (
@@ -1009,11 +1078,21 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
                         to_sparse_matrices_func=partial_func,
                     )
 
-                    feature_name = f"{evaluation_strategy.value}-{feature_key}-{feature_column}"
-                    impression_features[f"{feature_name}-train"] = sp_impressions_feature_train
-                    impression_features[f"{feature_name}-validation"] = sp_impressions_feature_validation
-                    impression_features[f"{feature_name}-train_validation"] = sp_impressions_feature_train_validation
-                    impression_features[f"{feature_name}-test"] = sp_impressions_feature_test
+                    feature_name = (
+                        f"{evaluation_strategy.value}-{feature_key}-{feature_column}"
+                    )
+                    impression_features[
+                        f"{feature_name}-train"
+                    ] = sp_impressions_feature_train
+                    impression_features[
+                        f"{feature_name}-validation"
+                    ] = sp_impressions_feature_validation
+                    impression_features[
+                        f"{feature_name}-train_validation"
+                    ] = sp_impressions_feature_train_validation
+                    impression_features[
+                        f"{feature_name}-test"
+                    ] = sp_impressions_feature_test
 
         return impression_features
 
@@ -1026,10 +1105,14 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
             inplace=False,
         )
 
-        non_na_exploded_impressions = df_data_filtered[self.impressions_column].explode(
-            ignore_index=True,
-        ).dropna(
-            inplace=False,
+        non_na_exploded_impressions = (
+            df_data_filtered[self.impressions_column]
+            .explode(
+                ignore_index=True,
+            )
+            .dropna(
+                inplace=False,
+            )
         )
 
         unique_items = set(non_na_items).union(non_na_exploded_impressions)
@@ -1039,7 +1122,7 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
                 (int(mapped_value), int(orig_value))
                 for mapped_value, orig_value in enumerate(unique_items)
             ],
-            columns=["mapped_value", "orig_value"]
+            columns=["mapped_value", "orig_value"],
         )
 
     def _user_mapper_to_pandas(self) -> pd.DataFrame:
@@ -1056,7 +1139,7 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
                 (int(mapped_value), int(orig_value))
                 for mapped_value, orig_value in enumerate(unique_users)
             ],
-            columns=["mapped_value", "orig_value"]
+            columns=["mapped_value", "orig_value"],
         )
 
     def _urm_all_to_sparse(self) -> sp.csr_matrix:
@@ -1076,7 +1159,12 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
         return urm_all
 
     def _urms_leave_last_out_to_sparse(self) -> list[sp.csr_matrix]:
-        df_train, df_validation, df_train_validation, df_test = self.data_loader_processed.leave_last_k_out_splits
+        (
+            df_train,
+            df_validation,
+            df_train_validation,
+            df_test,
+        ) = self.data_loader_processed.leave_last_k_out_splits
 
         sparse_matrices = []
         for df_split in [
@@ -1099,7 +1187,12 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
         return sparse_matrices
 
     def _urms_timestamp_to_sparse(self) -> list[sp.csr_matrix]:
-        df_train, df_validation, df_train_validation, df_test = self.data_loader_processed.timestamp_splits
+        (
+            df_train,
+            df_validation,
+            df_train_validation,
+            df_test,
+        ) = self.data_loader_processed.timestamp_splits
 
         sparse_matrices = []
         for df_split in [
@@ -1133,7 +1226,12 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
         return uim_all
 
     def _uims_leave_last_out_to_sparse(self) -> list[sp.csr_matrix]:
-        df_train, df_validation, df_train_validation, df_test = self.data_loader_processed.leave_last_k_out_splits
+        (
+            df_train,
+            df_validation,
+            df_train_validation,
+            df_test,
+        ) = self.data_loader_processed.leave_last_k_out_splits
 
         sparse_matrices = []
         for df_split in [
@@ -1156,7 +1254,12 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
         return sparse_matrices
 
     def _uims_timestamp_to_sparse(self) -> list[sp.csr_matrix]:
-        df_train, df_validation, df_train_validation, df_test = self.data_loader_processed.timestamp_splits
+        (
+            df_train,
+            df_validation,
+            df_train_validation,
+            df_test,
+        ) = self.data_loader_processed.timestamp_splits
 
         sparse_matrices = []
         for df_split in [
@@ -1179,9 +1282,11 @@ class SparseContentWiseImpressionData(SparseDataMixin, ParquetDataMixin, Dataset
         return sparse_matrices
 
     def _impression_features_to_sparse(
-        self, evaluation_strategy: EvaluationStrategy, feature_key: str, feature_column: str
+        self,
+        evaluation_strategy: EvaluationStrategy,
+        feature_key: str,
+        feature_column: str,
     ) -> list[sp.csr_matrix]:
-
         sparse_matrices = []
 
         splits = self.data_loader_impression_features.user_item_feature(
@@ -1221,6 +1326,7 @@ class ContentWiseImpressionsReader(DatasetConfigBackupMixin, DataReader):
     Class that collects all dataframes and sparse matrices created by the other classes and converts them into a
     dataset by saving these artifacts to disk.
     """
+
     def __init__(
         self,
         config: ContentWiseImpressionsConfig,
@@ -1231,15 +1337,21 @@ class ContentWiseImpressionsReader(DatasetConfigBackupMixin, DataReader):
         self.data_loader_processed = PandasContentWiseImpressionsProcessData(
             config=config,
         )
-        self.data_loader_impression_features = PandasContentWiseImpressionsImpressionsFeaturesData(
-            config=config,
+        self.data_loader_impression_features = (
+            PandasContentWiseImpressionsImpressionsFeaturesData(
+                config=config,
+            )
         )
         self.data_loader_sparse_data = SparseContentWiseImpressionData(
             config=config,
         )
 
         self.DATA_FOLDER = os.path.join(
-            self.config.data_folder, "data_reader", self.config.variant.value, self.config.sha256_hash, "",
+            self.config.data_folder,
+            "data_reader",
+            self.config.variant.value,
+            self.config.sha256_hash,
+            "",
         )
 
         self.ORIGINAL_SPLIT_FOLDER = self.DATA_FOLDER
@@ -1267,13 +1379,21 @@ class ContentWiseImpressionsReader(DatasetConfigBackupMixin, DataReader):
         # IMPORTANT: calculate first the impressions, so we have all mappers created.
         dataframes = self.data_loader_processed.dataframes
 
-        mapper_user_original_id_to_index = self.data_loader_sparse_data.mapper_user_id_to_index
-        mapper_item_original_id_to_index = self.data_loader_sparse_data.mapper_item_id_to_index
+        mapper_user_original_id_to_index = (
+            self.data_loader_sparse_data.mapper_user_id_to_index
+        )
+        mapper_item_original_id_to_index = (
+            self.data_loader_sparse_data.mapper_item_id_to_index
+        )
 
         interactions = self.data_loader_sparse_data.interactions
         impressions = self.data_loader_sparse_data.impressions
-        impressions_features_sparse_matrices = self.data_loader_sparse_data.impressions_features
-        impressions_features_dataframes = self.data_loader_impression_features.impressions_features
+        impressions_features_sparse_matrices = (
+            self.data_loader_sparse_data.impressions_features
+        )
+        impressions_features_dataframes = (
+            self.data_loader_impression_features.impressions_features
+        )
 
         # backup all configs that created this dataset.
         self.data_loader_processed.backup_config()
