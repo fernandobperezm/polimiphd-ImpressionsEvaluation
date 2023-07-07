@@ -128,13 +128,14 @@ dask-worker-space/
 credentials.json
 token.json
 
-# Project/Package/Experiments data files
+# Project/Package/Experiments/Models data files
 Data_manager_split_datasets/**
 Data_manager_offline_datasets/**
 result_experiments/
 result_experiments*/
 data/
 __*/
+trained_models/
 
 # Poetry
 poetry.lock
