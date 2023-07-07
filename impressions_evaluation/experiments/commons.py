@@ -1,7 +1,7 @@
 import itertools
 import os
 from enum import Enum
-from typing import Type, Literal, Optional, cast, Union, TypeVar, Sequence
+from typing import Type, Literal, Optional, cast, Union, TypeVar, Sequence, Callable
 
 import Recommenders.Recommender_import_list as recommenders
 import attrs
@@ -10,24 +10,50 @@ from Recommenders.BaseRecommender import BaseRecommender
 from recsys_framework_extensions.data.io import attach_to_extended_json_decoder
 from recsys_framework_extensions.data.mixins import InteractionsDataSplits
 from recsys_framework_extensions.data.reader import DataReader
-from recsys_framework_extensions.evaluation import EvaluationStrategy, exclude_from_evaluation
+from recsys_framework_extensions.evaluation import (
+    EvaluationStrategy,
+    exclude_from_evaluation,
+)
 from recsys_framework_extensions.evaluation.Evaluator import ExtendedEvaluatorHoldout
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
-    AbstractExtendedBaseRecommender, load_extended_recommender, load_recsys_framework_recommender
+from recsys_framework_extensions.recommenders.base import (
+    SearchHyperParametersBaseRecommender,
+    AbstractExtendedBaseRecommender,
+    load_extended_recommender,
+    load_recsys_framework_recommender,
+)
 from typing_extensions import ParamSpec
 
-from impressions_evaluation.readers.ContentWiseImpressionsReader import ContentWiseImpressionsReader, ContentWiseImpressionsConfig
-from impressions_evaluation.readers.FINNNoReader import FINNNoSlateReader, FinnNoSlatesConfig
+from impressions_evaluation.readers.ContentWiseImpressionsReader import (
+    ContentWiseImpressionsReader,
+    ContentWiseImpressionsConfig,
+)
+from impressions_evaluation.readers.FINNNoReader import (
+    FINNNoSlateReader,
+    FinnNoSlatesConfig,
+)
 from impressions_evaluation.readers.MINDReader import MINDReader, MINDSmallConfig
-from impressions_evaluation.impression_recommenders.heuristics.frequency_and_recency import FrequencyRecencyRecommender, RecencyRecommender, \
-    SearchHyperParametersFrequencyRecencyRecommender, SearchHyperParametersRecencyRecommender
-from impressions_evaluation.impression_recommenders.heuristics.latest_impressions import LastImpressionsRecommender, \
-    SearchHyperParametersLastImpressionsRecommender
-from impressions_evaluation.impression_recommenders.re_ranking.cycling import CyclingRecommender, SearchHyperParametersCyclingRecommender
-from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import ImpressionsDiscountingRecommender, \
-    SearchHyperParametersImpressionsDiscountingRecommender
-from impressions_evaluation.impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender, \
-    SearchHyperParametersFoldedMatrixFactorizationRecommender
+from impressions_evaluation.impression_recommenders.heuristics.frequency_and_recency import (
+    FrequencyRecencyRecommender,
+    RecencyRecommender,
+    SearchHyperParametersFrequencyRecencyRecommender,
+    SearchHyperParametersRecencyRecommender,
+)
+from impressions_evaluation.impression_recommenders.heuristics.latest_impressions import (
+    LastImpressionsRecommender,
+    SearchHyperParametersLastImpressionsRecommender,
+)
+from impressions_evaluation.impression_recommenders.re_ranking.cycling import (
+    CyclingRecommender,
+    SearchHyperParametersCyclingRecommender,
+)
+from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import (
+    ImpressionsDiscountingRecommender,
+    SearchHyperParametersImpressionsDiscountingRecommender,
+)
+from impressions_evaluation.impression_recommenders.user_profile.folding import (
+    FoldedMatrixFactorizationRecommender,
+    SearchHyperParametersFoldedMatrixFactorizationRecommender,
+)
 from impressions_evaluation.impression_recommenders.user_profile.weighted import (
     UserWeightedUserProfileRecommender,
     ItemWeightedUserProfileRecommender,
@@ -88,7 +114,7 @@ class RecommenderBaseline(Enum):
     USER_KNN = "USER_KNN"
     ITEM_KNN = "ITEM_KNN"
     ASYMMETRIC_SVD = "ASYMMETRIC_SVD"
-    FUNK_SVD = "FUNK_SVD"
+    SVDpp = "SVDpp"
     PURE_SVD = "PURE_SVD"
     NMF = "NMF"
     IALS = "IALS"
@@ -141,20 +167,29 @@ class HyperParameterTuningParameters:
     """
     Class that contains all the configuration to run the hyper-parameter tuning of any recommender.
     """
-    evaluation_strategy: EvaluationStrategy = attrs.field(default=EvaluationStrategy.LEAVE_LAST_K_OUT)
+
+    evaluation_strategy: EvaluationStrategy = attrs.field(
+        default=EvaluationStrategy.LEAVE_LAST_K_OUT
+    )
     reproducibility_seed: int = attrs.field(default=1234567890)
     max_total_time: int = attrs.field(default=60 * 60 * 24 * 14)
     metric_to_optimize: T_METRIC = attrs.field(default="NDCG")
     cutoff_to_optimize: int = attrs.field(default=10)
-    num_cases: int = attrs.field(default=50, validator=[attrs.validators.instance_of(int)])
-    num_random_starts: int = attrs.field(default=16, validator=[attrs.validators.instance_of(int)])
-    knn_similarity_types: list[T_SIMILARITY_TYPE] = attrs.field(default=[
-        "cosine",
-        "dice",
-        "jaccard",
-        "asymmetric",
-        "tversky",
-    ])
+    num_cases: int = attrs.field(
+        default=50, validator=[attrs.validators.instance_of(int)]
+    )
+    num_random_starts: int = attrs.field(
+        default=16, validator=[attrs.validators.instance_of(int)]
+    )
+    knn_similarity_types: list[T_SIMILARITY_TYPE] = attrs.field(
+        default=[
+            "cosine",
+            "dice",
+            "jaccard",
+            "asymmetric",
+            "tversky",
+        ]
+    )
     resume_from_saved: bool = attrs.field(default=True)
     evaluate_on_test: T_EVALUATE_ON_TEST = attrs.field(default="last")
     evaluation_cutoffs: list[int] = attrs.field(default=[5, 10, 20, 30, 40, 50, 100])
@@ -162,23 +197,31 @@ class HyperParameterTuningParameters:
     evaluation_exclude_seen: bool = attrs.field(default=True)
     evaluation_percentage_ignore_users: Optional[float] = attrs.field(
         default=None,
-        validator=attrs.validators.optional([
-            attrs.validators.instance_of(float),
-            attrs.validators.ge(0.0),
-            attrs.validators.le(1.0)
-        ]),
+        validator=attrs.validators.optional(
+            [
+                attrs.validators.instance_of(float),
+                attrs.validators.ge(0.0),
+                attrs.validators.le(1.0),
+            ]
+        ),
     )
     evaluation_percentage_ignore_items: Optional[float] = attrs.field(
         default=None,
-        validator=attrs.validators.optional([
-            attrs.validators.instance_of(float),
-            attrs.validators.ge(0.0),
-            attrs.validators.le(1.0)
-        ]),
+        validator=attrs.validators.optional(
+            [
+                attrs.validators.instance_of(float),
+                attrs.validators.ge(0.0),
+                attrs.validators.le(1.0),
+            ]
+        ),
     )
-    save_metadata: bool = attrs.field(default=True, validator=[attrs.validators.instance_of(bool)])
+    save_metadata: bool = attrs.field(
+        default=True, validator=[attrs.validators.instance_of(bool)]
+    )
     save_model: T_SAVE_MODEL = attrs.field(default="best")
-    terminate_on_memory_error: bool = attrs.field(default=True, validator=[attrs.validators.instance_of(bool)])
+    terminate_on_memory_error: bool = attrs.field(
+        default=True, validator=[attrs.validators.instance_of(bool)]
+    )
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -189,12 +232,16 @@ class ExperimentBenchmark:
     reader_class: Type[DataReader] = attrs.field(init=False)
 
     def __attrs_post_init__(self):
-        object.__setattr__(self, "reader_class", MAPPER_AVAILABLE_DATA_READERS_CLASSES[self.benchmark])
+        object.__setattr__(
+            self, "reader_class", MAPPER_AVAILABLE_DATA_READERS_CLASSES[self.benchmark]
+        )
 
 
 @attrs.define(frozen=True, kw_only=True)
 class ExperimentRecommender:
-    recommender: Type[Union[BaseRecommender, AbstractExtendedBaseRecommender]] = attrs.field()
+    recommender: Type[
+        Union[BaseRecommender, AbstractExtendedBaseRecommender]
+    ] = attrs.field()
     search_hyper_parameters: Type[SearchHyperParametersBaseRecommender] = attrs.field()
     priority: int = attrs.field()
 
@@ -206,7 +253,9 @@ class Experiment:
     recommenders: list[ExperimentRecommender] = attrs.field()
 
 
-T_RECOMMENDER = TypeVar("T_RECOMMENDER", RecommenderBaseline, RecommenderImpressions, RecommenderFolded)
+T_RECOMMENDER = TypeVar(
+    "T_RECOMMENDER", RecommenderBaseline, RecommenderImpressions, RecommenderFolded
+)
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -214,13 +263,17 @@ class ExperimentCase:
     benchmark: Benchmarks = attrs.field()
     hyper_parameter_tuning_parameters: EHyperParameterTuningParameters = attrs.field()
     recommender: T_RECOMMENDER = attrs.field()  # type: ignore
+    training_function: Callable = attrs.field()
 
 
 @attrs.define(frozen=True, kw_only=True)
 class ExperimentCasesInterface:
     to_use_benchmarks: list[Benchmarks] = attrs.field()
-    to_use_hyper_parameter_tuning_parameters: list[EHyperParameterTuningParameters] = attrs.field()
+    to_use_hyper_parameter_tuning_parameters: list[
+        EHyperParameterTuningParameters
+    ] = attrs.field()
     to_use_recommenders: list[T_RECOMMENDER] = attrs.field()  # type: ignore
+    to_use_training_functions: list[Callable] = attrs.field(default=[])
 
     @property
     def experiment_cases(self) -> list[ExperimentCase]:
@@ -228,6 +281,7 @@ class ExperimentCasesInterface:
             self.to_use_benchmarks,
             self.to_use_hyper_parameter_tuning_parameters,
             self.to_use_recommenders,
+            self.to_use_training_functions,
         )
 
         return [
@@ -235,8 +289,9 @@ class ExperimentCasesInterface:
                 benchmark=benchmark,
                 hyper_parameter_tuning_parameters=hyper_parameter_tuning_parameters,
                 recommender=recommender,
+                training_function=training_function,
             )
-            for benchmark, hyper_parameter_tuning_parameters, recommender in list_cases
+            for benchmark, hyper_parameter_tuning_parameters, recommender, training_function in list_cases
         ]
 
     @property
@@ -251,14 +306,14 @@ class ExperimentCasesInterface:
 DIR_TRAINED_MODELS = os.path.join(
     os.getcwd(),
     "trained_models",
-    ""
+    "",
 )
 
 
 DIR_RESULTS_EXPORT = os.path.join(
     os.getcwd(),
     "result_experiments",
-    ""
+    "",
 )
 
 DIR_DATASET_POPULARITY = os.path.join(
@@ -282,7 +337,9 @@ FOLDERS: set[str] = {
 #             MAPPERS FROM ENUMS TO INSTANCE OF EXPERIMENTS.
 ####################################################################################################
 ####################################################################################################
-MAPPER_AVAILABLE_IMPRESSION_FEATURES: dict[Benchmarks, dict[ImpressionsFeatures, list]] = {
+MAPPER_AVAILABLE_IMPRESSION_FEATURES: dict[
+    Benchmarks, dict[ImpressionsFeatures, list]
+] = {
     Benchmarks.ContentWiseImpressions: {
         ImpressionsFeatures.USER_ITEM_FREQUENCY: [
             ImpressionsFeatureColumnsFrequency.FREQUENCY
@@ -332,7 +389,7 @@ MAPPER_AVAILABLE_IMPRESSION_FEATURES: dict[Benchmarks, dict[ImpressionsFeatures,
         ImpressionsFeatures.USER_ITEM_TIMESTAMP: [
             ImpressionsFeatureColumnsTimestamp.TIMESTAMP
         ],
-    }
+    },
 }
 
 MAPPER_AVAILABLE_DATA_READERS_CLASSES = {
@@ -390,8 +447,8 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=20,
     ),
-    RecommenderBaseline.FUNK_SVD: ExperimentRecommender(
-        recommender=recommenders.MatrixFactorization_FunkSVD_Cython,
+    RecommenderBaseline.SVDpp: ExperimentRecommender(
+        recommender=recommenders.MatrixFactorization_SVDpp_Cython,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=20,
     ),
@@ -425,7 +482,6 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=10,
     ),
-
     RecommenderBaseline.SLIM_ELASTIC_NET: ExperimentRecommender(
         recommender=recommenders.SLIMElasticNetRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
@@ -451,14 +507,12 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=1,
     ),
-
     # IMPRESSIONS_FOLDING
     RecommenderFolded.FOLDED: ExperimentRecommender(
         recommender=FoldedMatrixFactorizationRecommender,
         search_hyper_parameters=SearchHyperParametersFoldedMatrixFactorizationRecommender,
         priority=40,
     ),
-
     # IMPRESSIONS APPROACHES: HEURISTIC
     RecommenderImpressions.LAST_IMPRESSIONS: ExperimentRecommender(
         recommender=LastImpressionsRecommender,
@@ -475,7 +529,6 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
         search_hyper_parameters=SearchHyperParametersRecencyRecommender,
         priority=50,
     ),
-
     # IMPRESSIONS APPROACHES: RE RANKING
     RecommenderImpressions.CYCLING: ExperimentRecommender(
         recommender=CyclingRecommender,
@@ -487,7 +540,6 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
         search_hyper_parameters=SearchHyperParametersImpressionsDiscountingRecommender,
         priority=70,
     ),
-
     # IMPRESSIONS APPROACHES: USER PROFILES
     RecommenderImpressions.USER_WEIGHTED_USER_PROFILE: ExperimentRecommender(
         recommender=UserWeightedUserProfileRecommender,
@@ -535,7 +587,9 @@ MAPPER_FILE_NAME_POSTFIX = {
 _RecommenderInstance = TypeVar("_RecommenderInstance", bound=BaseRecommender)
 
 _RecommenderExtendedParams = ParamSpec("_RecommenderExtendedParams")
-_RecommenderExtendedInstance = TypeVar("_RecommenderExtendedInstance", bound=AbstractExtendedBaseRecommender)
+_RecommenderExtendedInstance = TypeVar(
+    "_RecommenderExtendedInstance", bound=AbstractExtendedBaseRecommender
+)
 
 
 def load_recommender_trained_baseline(
@@ -586,7 +640,9 @@ def load_recommender_trained_impressions(
     uim_position: sp.csr_matrix,
     uim_last_seen: sp.csr_matrix,
     uim_timestamp: sp.csr_matrix,
-    recommender_baseline: Union[BaseRecommender, FoldedMatrixFactorizationRecommender, None],
+    recommender_baseline: Union[
+        BaseRecommender, FoldedMatrixFactorizationRecommender, None
+    ],
 ) -> Optional[AbstractExtendedBaseRecommender]:
     if recommender_class_impressions == ItemWeightedUserProfileRecommender:
         recommender_impressions = load_extended_recommender(
@@ -671,14 +727,15 @@ def load_recommender_trained_impressions(
 ####################################################################################################
 ####################################################################################################
 def create_necessary_folders(
-    benchmarks: list[Benchmarks],
-    evaluation_strategies: list[EvaluationStrategy]
+    benchmarks: list[Benchmarks], evaluation_strategies: list[EvaluationStrategy]
 ):
     """
     Public method to create the results' folder structure needed by the framework.
     """
     for folder in FOLDERS:
-        for benchmark, evaluation_strategy in itertools.product(benchmarks, evaluation_strategies):
+        for benchmark, evaluation_strategy in itertools.product(
+            benchmarks, evaluation_strategies
+        ):
             formatted = folder.format(
                 benchmark=benchmark.value,
                 evaluation_strategy=evaluation_strategy.value,
@@ -742,7 +799,10 @@ def get_evaluators(
     Encapsulates the configures of `Evaluators` object so the different methods that do hyper-parameter
     tuning do not have to do it.
     """
-    if experiment_hyper_parameter_tuning_parameters.evaluation_percentage_ignore_users is None:
+    if (
+        experiment_hyper_parameter_tuning_parameters.evaluation_percentage_ignore_users
+        is None
+    ):
         users_to_exclude_validation = None
     else:
         users_to_exclude_validation = exclude_from_evaluation(
@@ -752,7 +812,10 @@ def get_evaluators(
             seed=experiment_hyper_parameter_tuning_parameters.reproducibility_seed,
         )
 
-    if experiment_hyper_parameter_tuning_parameters.evaluation_percentage_ignore_items is None:
+    if (
+        experiment_hyper_parameter_tuning_parameters.evaluation_percentage_ignore_items
+        is None
+    ):
         items_to_exclude_validation = None
     else:
         items_to_exclude_validation = exclude_from_evaluation(
@@ -834,9 +897,11 @@ def plot_popularity_of_datasets(
 
     for experiment_case in experiments_interface.experiment_cases:
         experiment_benchmark = MAPPER_AVAILABLE_BENCHMARKS[experiment_case.benchmark]
-        experiment_hyper_parameter_tuning_parameters = MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-            experiment_case.hyper_parameter_tuning_parameters
-        ]
+        experiment_hyper_parameter_tuning_parameters = (
+            MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+                experiment_case.hyper_parameter_tuning_parameters
+            ]
+        )
 
         dataset_reader = get_reader_from_benchmark(
             benchmark_config=experiment_benchmark.config,
@@ -857,12 +922,10 @@ def plot_popularity_of_datasets(
             URM_object_list=[
                 urm_splits.sp_urm_train,
                 urm_splits.sp_urm_validation,
-                urm_splits.sp_urm_test
+                urm_splits.sp_urm_test,
             ],
             URM_name_list=["Train", "Validation", "Test"],
-            output_img_path=os.path.join(
-                output_folder, "interactions"
-            ),
+            output_img_path=os.path.join(output_folder, "interactions"),
             sort_on_all=False,
         )
 
@@ -870,12 +933,10 @@ def plot_popularity_of_datasets(
             URM_object_list=[
                 urm_splits.sp_urm_train,
                 urm_splits.sp_urm_validation,
-                urm_splits.sp_urm_test
+                urm_splits.sp_urm_test,
             ],
             URM_name_list=["Train", "Validation", "Test"],
-            output_img_path=os.path.join(
-                output_folder, "interactions_sorted"
-            ),
+            output_img_path=os.path.join(output_folder, "interactions_sorted"),
             sort_on_all=True,
         )
 
@@ -887,12 +948,10 @@ def plot_popularity_of_datasets(
             URM_object_list=[
                 uim_splits.sp_uim_train,
                 uim_splits.sp_uim_validation,
-                uim_splits.sp_uim_test
+                uim_splits.sp_uim_test,
             ],
             URM_name_list=["Train", "Validation", "Test"],
-            output_img_path=os.path.join(
-                output_folder, "impressions"
-            ),
+            output_img_path=os.path.join(output_folder, "impressions"),
             sort_on_all=False,
         )
 
@@ -900,12 +959,10 @@ def plot_popularity_of_datasets(
             URM_object_list=[
                 uim_splits.sp_uim_train,
                 uim_splits.sp_uim_validation,
-                uim_splits.sp_uim_test
+                uim_splits.sp_uim_test,
             ],
             URM_name_list=["Train", "Validation", "Test"],
-            output_img_path=os.path.join(
-                output_folder, "impressions_sorted"
-            ),
+            output_img_path=os.path.join(output_folder, "impressions_sorted"),
             sort_on_all=True,
         )
 
@@ -929,7 +986,8 @@ def get_feature_key_by_benchmark(
     valid_enum = (
         benchmark in MAPPER_AVAILABLE_IMPRESSION_FEATURES
         and impressions_feature in MAPPER_AVAILABLE_IMPRESSION_FEATURES[benchmark]
-        and impressions_feature_column in MAPPER_AVAILABLE_IMPRESSION_FEATURES[benchmark][impressions_feature]
+        and impressions_feature_column
+        in MAPPER_AVAILABLE_IMPRESSION_FEATURES[benchmark][impressions_feature]
     )
 
     if not valid_enum:
@@ -964,7 +1022,8 @@ def get_similarities_by_recommender_class(
     knn_similarities: Sequence[T_SIMILARITY_TYPE],
 ) -> Sequence[Optional[T_SIMILARITY_TYPE]]:
     if recommender_class in [
-        recommenders.ItemKNNCFRecommender, recommenders.UserKNNCFRecommender
+        recommenders.ItemKNNCFRecommender,
+        recommenders.UserKNNCFRecommender,
     ]:
         return knn_similarities
 
