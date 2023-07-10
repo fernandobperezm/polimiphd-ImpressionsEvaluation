@@ -5,6 +5,11 @@ from recsys_framework_extensions.recommenders.graph_based.light_gcn import (
     create_normalized_adjacency_matrix_from_urm,
 )
 
+__all__ = [
+    "ImpressionsProfileLightGCNRecommender",
+    "ImpressionsDirectedLightGCNRecommender",
+]
+
 
 def create_normalized_directed_adjacency_matrix_interactions_and_impressions(
     urm: sp.csr_matrix,
