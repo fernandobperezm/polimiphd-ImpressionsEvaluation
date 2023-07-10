@@ -3,6 +3,10 @@ import uuid
 
 import attrs
 from HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
+from recsys_framework_extensions.recommenders.graph_based.light_gcn import (
+    SearchHyperParametersLightGCNRecommender,
+    ExtendedLightGCNRecommender,
+)
 from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.hyper_parameter_search import (
     SearchBayesianSkopt,
@@ -20,8 +24,6 @@ from impressions_evaluation.experiments.impression_aware import (
     DIR_TRAINED_MODELS_IMPRESSION_AWARE,
 )
 from impressions_evaluation.impression_recommenders.graph_based.lightgcn import (
-    ExtendedLightGCNRecommender,
-    SearchHyperParametersLightGCNRecommender,
     ImpressionsProfileLightGCNRecommender,
     ImpressionsDirectedLightGCNRecommender,
 )
