@@ -147,6 +147,7 @@ class RecommenderImpressions(Enum):
     LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS = (
         "LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS"
     )
+    SOFT_FREQUENCY_CAPPING = "SOFT_FREQUENCY_CAPPING"
 
 
 @attach_to_extended_json_decoder
