@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+
 from tap import Tap
 
 from impressions_evaluation.experiments.commons import (
@@ -9,29 +10,14 @@ from impressions_evaluation.experiments.commons import (
     ExperimentCasesInterface,
     Benchmarks,
     HyperParameterTuningParameters,
-    plot_popularity_of_datasets,
     ensure_datasets_exist,
     EHyperParameterTuningParameters,
-    RecommenderBaseline,
     RecommenderImpressions,
 )
 from impressions_evaluation.experiments.graph_based import (
-    _run_collaborative_filtering_hyper_parameter_tuning,
-    _run_pure_impressions_hyper_parameter_tuning,
-    run_experiments,
     _run_frequency_impressions_hyper_parameter_tuning,
+    run_experiments_sequentially,
 )
-from impressions_evaluation.experiments.confidence_intervals import (
-    compute_confidence_intervals,
-)
-from impressions_evaluation.experiments.print_results import print_results
-from impressions_evaluation.experiments.print_statistics import (
-    print_datasets_statistics,
-)
-from impressions_evaluation.experiments.statistical_tests import (
-    compute_statistical_tests,
-)
-from recsys_framework_extensions.dask import configure_dask_cluster
 
 
 class ConsoleArguments(Tap):
@@ -95,8 +81,6 @@ if __name__ == "__main__":
 
     logger = logging.getLogger(__name__)
 
-    dask_interface = configure_dask_cluster()
-
     common_hyper_parameter_tuning_parameters = HyperParameterTuningParameters()
 
     experiments_impressions_interface = ExperimentCasesInterface(
@@ -117,11 +101,6 @@ if __name__ == "__main__":
         )
 
     if input_flags.include_impressions:
-        run_experiments(
-            dask_interface=dask_interface,
+        run_experiments_sequentially(
             experiment_cases_interface=experiments_impressions_interface,
         )
-
-    dask_interface.wait_for_jobs()
-
-    dask_interface.close()

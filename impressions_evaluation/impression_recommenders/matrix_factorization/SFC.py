@@ -1,4 +1,5 @@
 import copy
+import logging
 from typing import Optional, Literal
 
 import attrs
@@ -19,6 +20,9 @@ from recsys_framework_extensions.recommenders.base import (
 )
 from skopt.space import Integer, Categorical, Real
 from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
@@ -401,7 +405,7 @@ class SoftFrequencyCappingRecommender(
         urm_train: sp.csr_matrix,
         uim_train: sp.csr_matrix,
         uim_frequency: sp.csr_matrix,
-        use_gpu: bool = False,
+        use_gpu: bool = True,
         verbose: bool = True,
     ):
         super().__init__(
@@ -451,11 +455,13 @@ class SoftFrequencyCappingRecommender(
         self.scheduler_beta: Optional[float] = None
 
         if use_gpu:
+            logger.debug("Requested GPU")
             assert torch.cuda.is_available(), "GPU is requested but not available"
             self.device = torch.device("cuda:0")
             torch.cuda.empty_cache()
         else:
-            self.device = torch.device("cpu:0")
+            logger.debug("Requested CPU")
+            self.device = torch.device("cpu")
 
     def _compute_item_score(
         self,
@@ -557,18 +563,21 @@ class SoftFrequencyCappingRecommender(
         self.scheduler_alpha = scheduler_alpha
         self.scheduler_beta = scheduler_beta
 
+        logger.debug("Creating DICT BINNED FREQUENCY")
         self.dict_binned_frequency = _create_dict_binned_frequency(
             uim_frequency_coo_row=self.uim_frequency_coo.row,
             uim_frequency_coo_col=self.uim_frequency_coo.col,
             uim_frequency_coo_data=self.uim_frequency_coo.data,
             num_bins=self.frequency_num_bins,
         )
+        logger.debug("Creating SFCDataset")
         self.dataset = SFCDataset(
             urm_train=self.urm_train,
             uim_train=self.uim_train,
             dict_binned_frequency=self.dict_binned_frequency,
             frequency_mode=self.frequency_mode,
         )
+        logger.debug("Creating dataloader")
         self.dataloader = torch.utils.data.DataLoader(
             dataset=self.dataset,
             batch_size=self.batch_size,
@@ -674,7 +683,7 @@ class SoftFrequencyCappingRecommender(
             torch.Tensor,
             torch.Tensor,
         ]
-        for batch in self.dataloader:
+        for batch in tqdm(self.dataloader):
             self.optimizer.zero_grad()
             (
                 user_batch,

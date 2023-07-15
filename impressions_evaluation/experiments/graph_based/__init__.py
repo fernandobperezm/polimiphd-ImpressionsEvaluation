@@ -3,15 +3,18 @@ import uuid
 
 import attrs
 from HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
-from recsys_framework_extensions.recommenders.graph_based.light_gcn import (
-    SearchHyperParametersLightGCNRecommender,
-    ExtendedLightGCNRecommender,
-)
 from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.hyper_parameter_search import (
     SearchBayesianSkopt,
 )
-
+from recsys_framework_extensions.recommenders.graph_based.light_gcn import (
+    SearchHyperParametersLightGCNRecommender,
+    ExtendedLightGCNRecommender,
+)
+from recsys_framework_extensions.recommenders.graph_based.p3_alpha import (
+    ExtendedP3AlphaRecommender,
+    SearchHyperParametersP3AlphaRecommender,
+)
 
 from impressions_evaluation.experiments import commons
 from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES
@@ -27,6 +30,10 @@ from impressions_evaluation.impression_recommenders.graph_based.lightgcn import 
     ImpressionsProfileLightGCNRecommender,
     ImpressionsDirectedLightGCNRecommender,
 )
+from impressions_evaluation.impression_recommenders.graph_based.p3_alpha import (
+    ImpressionsProfileP3AlphaRecommender,
+    ImpressionsDirectedP3AlphaRecommender,
+)
 from impressions_evaluation.impression_recommenders.matrix_factorization.SFC import (
     SoftFrequencyCappingRecommender,
     SearchHyperParametersSFCRecommender,
@@ -36,28 +43,57 @@ logger = logging.getLogger(__name__)
 
 
 _MAPPER_COLLABORATIVE_RECOMMENDERS = {
+    RecommenderBaseline.P3_ALPHA: ExperimentRecommender(
+        recommender=ExtendedP3AlphaRecommender,
+        search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
+        priority=40,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
     RecommenderBaseline.LIGHT_GCN: ExperimentRecommender(
         recommender=ExtendedLightGCNRecommender,
         search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
         priority=30,
+        use_gpu=True,
+        do_early_stopping=True,
     ),
 }
 
 _MAPPER_IMPRESSIONS_RECOMMENDERS = {
+    RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS: ExperimentRecommender(
+        recommender=ImpressionsProfileP3AlphaRecommender,
+        search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS: ExperimentRecommender(
+        recommender=ImpressionsDirectedP3AlphaRecommender,
+        search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
     RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS: ExperimentRecommender(
         recommender=ImpressionsProfileLightGCNRecommender,
         search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
-        priority=30,
+        priority=40,
+        use_gpu=True,
+        do_early_stopping=True,
     ),
     RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS: ExperimentRecommender(
         recommender=ImpressionsDirectedLightGCNRecommender,
         search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
-        priority=30,
+        priority=40,
+        use_gpu=True,
+        do_early_stopping=True,
     ),
     RecommenderImpressions.SOFT_FREQUENCY_CAPPING: ExperimentRecommender(
         recommender=SoftFrequencyCappingRecommender,
         search_hyper_parameters=SearchHyperParametersSFCRecommender,
         priority=50,
+        use_gpu=False,  # Does not benefit from GPU, at least not with CW Impressions
+        do_early_stopping=True,
     ),
 }
 
@@ -113,20 +149,33 @@ def _run_collaborative_filtering_hyper_parameter_tuning(
         experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameter_tuning_parameters,
     )
 
+    early_stopping_kwargs = (
+        attrs.asdict(
+            commons.get_early_stopping_configuration(
+                evaluators=evaluators,
+                hyper_parameter_tuning_parameters=experiment_hyper_parameter_tuning_parameters,
+            )
+        )
+        if experiment_recommender.do_early_stopping
+        else {}
+    )
+
     recommender_init_validation_args_kwargs = SearchInputRecommenderArgs(
         CONSTRUCTOR_POSITIONAL_ARGS=[],
         CONSTRUCTOR_KEYWORD_ARGS={
             "urm_train": interactions_data_splits.sp_urm_train,
+            "use_gpu": experiment_recommender.use_gpu,
         },
         FIT_POSITIONAL_ARGS=[],
         FIT_KEYWORD_ARGS={},
-        EARLYSTOPPING_KEYWORD_ARGS={},
+        EARLYSTOPPING_KEYWORD_ARGS=early_stopping_kwargs,
     )
 
     recommender_init_test_args_kwargs = SearchInputRecommenderArgs(
         CONSTRUCTOR_POSITIONAL_ARGS=[],
         CONSTRUCTOR_KEYWORD_ARGS={
             "urm_train": interactions_data_splits.sp_urm_train_validation,
+            "use_gpu": experiment_recommender.use_gpu,
         },
         FIT_POSITIONAL_ARGS=[],
         FIT_KEYWORD_ARGS={},
@@ -227,15 +276,27 @@ def _run_pure_impressions_hyper_parameter_tuning(
         experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameter_tuning_parameters,
     )
 
+    early_stopping_kwargs = (
+        attrs.asdict(
+            commons.get_early_stopping_configuration(
+                evaluators=evaluators,
+                hyper_parameter_tuning_parameters=experiment_hyper_parameter_tuning_parameters,
+            )
+        )
+        if experiment_recommender.do_early_stopping
+        else {}
+    )
+
     recommender_init_validation_args_kwargs = SearchInputRecommenderArgs(
         CONSTRUCTOR_POSITIONAL_ARGS=[],
         CONSTRUCTOR_KEYWORD_ARGS={
             "urm_train": interactions_data_splits.sp_urm_train,
             "uim_train": impressions_data_splits.sp_uim_train,
+            "use_gpu": experiment_recommender.use_gpu,
         },
         FIT_POSITIONAL_ARGS=[],
         FIT_KEYWORD_ARGS={},
-        EARLYSTOPPING_KEYWORD_ARGS={},
+        EARLYSTOPPING_KEYWORD_ARGS=early_stopping_kwargs,
     )
 
     recommender_init_test_args_kwargs = SearchInputRecommenderArgs(
@@ -243,6 +304,7 @@ def _run_pure_impressions_hyper_parameter_tuning(
         CONSTRUCTOR_KEYWORD_ARGS={
             "urm_train": interactions_data_splits.sp_urm_train_validation,
             "uim_train": impressions_data_splits.sp_uim_train_validation,
+            "use_gpu": experiment_recommender.use_gpu,
         },
         FIT_POSITIONAL_ARGS=[],
         FIT_KEYWORD_ARGS={},
@@ -361,16 +423,28 @@ def _run_frequency_impressions_hyper_parameter_tuning(
         experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameter_tuning_parameters,
     )
 
+    early_stopping_kwargs = (
+        attrs.asdict(
+            commons.get_early_stopping_configuration(
+                evaluators=evaluators,
+                hyper_parameter_tuning_parameters=experiment_hyper_parameter_tuning_parameters,
+            )
+        )
+        if experiment_recommender.do_early_stopping
+        else {}
+    )
+
     recommender_init_validation_args_kwargs = SearchInputRecommenderArgs(
         CONSTRUCTOR_POSITIONAL_ARGS=[],
         CONSTRUCTOR_KEYWORD_ARGS={
             "urm_train": interactions_data_splits.sp_urm_train,
             "uim_train": impressions_data_splits.sp_uim_train,
             "uim_frequency": impressions_feature_frequency_train,
+            "use_gpu": experiment_recommender.use_gpu,
         },
         FIT_POSITIONAL_ARGS=[],
         FIT_KEYWORD_ARGS={},
-        EARLYSTOPPING_KEYWORD_ARGS={},
+        EARLYSTOPPING_KEYWORD_ARGS=early_stopping_kwargs,
     )
 
     recommender_init_test_args_kwargs = SearchInputRecommenderArgs(
@@ -379,6 +453,7 @@ def _run_frequency_impressions_hyper_parameter_tuning(
             "urm_train": interactions_data_splits.sp_urm_train_validation,
             "uim_train": impressions_data_splits.sp_uim_train_validation,
             "uim_frequency": impressions_feature_frequency_train_validation,
+            "use_gpu": experiment_recommender.use_gpu,
         },
         FIT_POSITIONAL_ARGS=[],
         FIT_KEYWORD_ARGS={},
@@ -399,6 +474,7 @@ def _run_frequency_impressions_hyper_parameter_tuning(
         "hyper_parameter_tuning_parameters": repr(
             experiment_hyper_parameter_tuning_parameters
         ),
+        "early_stopping_kwargs": early_stopping_kwargs,
         "hyper_parameter_search_space": hyper_parameter_search_space,
     }
 
@@ -466,4 +542,21 @@ def run_experiments(
             method_kwargs={
                 "experiment_case": experiment_case,
             },
+        )
+
+
+def run_experiments_sequentially(
+    experiment_cases_interface: commons.ExperimentCasesInterface,
+) -> None:
+    """ """
+    experiment_cases = sorted(
+        experiment_cases_interface.experiment_cases,
+        key=lambda ex: commons.MAPPER_AVAILABLE_BENCHMARKS[ex.benchmark].priority
+        * MAPPER_AVAILABLE_RECOMMENDERS[ex.recommender].priority,
+        reverse=True,
+    )
+
+    for experiment_case in experiment_cases:
+        experiment_case.training_function(
+            experiment_case=experiment_case,
         )

@@ -1,7 +1,17 @@
 import itertools
 import os
 from enum import Enum
-from typing import Type, Literal, Optional, cast, Union, TypeVar, Sequence, Callable
+from typing import (
+    Type,
+    Literal,
+    Optional,
+    cast,
+    Union,
+    TypeVar,
+    Sequence,
+    Callable,
+    Any,
+)
 
 import Recommenders.Recommender_import_list as recommenders
 import attrs
@@ -147,6 +157,10 @@ class RecommenderImpressions(Enum):
     LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS = (
         "LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS"
     )
+    P3_ALPHA_ONLY_IMPRESSIONS = "P3_ALPHA_ONLY_IMPRESSIONS"
+    P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS = (
+        "P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS"
+    )
     SOFT_FREQUENCY_CAPPING = "SOFT_FREQUENCY_CAPPING"
 
 
@@ -231,6 +245,21 @@ class HyperParameterTuningParameters:
 
 
 @attrs.define(frozen=True, kw_only=True)
+class EarlyStoppingConfiguration:
+    evaluator_object: object = attrs.field()
+    validation_metric: T_METRIC = attrs.field()
+    validation_every_n: int = attrs.field(
+        default=5,
+    )
+    stop_on_validation: bool = attrs.field(
+        default=True,
+    )
+    lower_validations_allowed: int = attrs.field(
+        default=5,
+    )
+
+
+@attrs.define(frozen=True, kw_only=True)
 class ExperimentBenchmark:
     benchmark: Benchmarks = attrs.field()
     config: object = attrs.field()
@@ -250,6 +279,8 @@ class ExperimentRecommender:
     ] = attrs.field()
     search_hyper_parameters: Type[SearchHyperParametersBaseRecommender] = attrs.field()
     priority: int = attrs.field()
+    use_gpu: bool = attrs.field(default=False)
+    do_early_stopping: bool = attrs.field(default=False)
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -1034,3 +1065,22 @@ def get_similarities_by_recommender_class(
         return knn_similarities
 
     return [None]
+
+
+def get_early_stopping_configuration(
+    evaluators: Evaluators,
+    hyper_parameter_tuning_parameters: HyperParameterTuningParameters,
+    # validation_every_n: Optional[int],
+    # stop_on_validation: Optional[bool],
+    # lower_validations_allowed: Optional[int],
+) -> EarlyStoppingConfiguration:
+    assert evaluators.validation_early_stopping is not None
+    assert hyper_parameter_tuning_parameters.metric_to_optimize is not None
+
+    return EarlyStoppingConfiguration(
+        evaluator_object=evaluators.validation_early_stopping,
+        validation_metric=hyper_parameter_tuning_parameters.metric_to_optimize,
+        # validation_every_n=validation_every_n,
+        # stop_on_validation=stop_on_validation,
+        # lower_validations_allowed=lower_validations_allowed,
+    )
