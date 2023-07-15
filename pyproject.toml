@@ -1,5 +1,5 @@
 [tool.mypy]
-python_version = 3.11
+python_version = 3.10
 allow_redefinition = false
 check_untyped_defs = true
 ignore_errors = false
@@ -24,8 +24,8 @@ use_processes = true
 dashboard_address = ":8787"
 scheduler_port = 8786
 num_workers = 1
-threads_per_worker = 4
-memory_limit = 0
+threads_per_worker = 12
+memory_limit = 1e10 #0
 
 [logs]
 dir_logs = ".logs"
@@ -44,7 +44,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "~3.11"
+python = "~3.10"
 typed-argument-parser = "^1.8.1"
 recsys-framework-public = { path = "../RecSysFramework_public/", develop = true }  # Use this when publishing the repo.
 recsys-framework-extensions = { path = "../recsys-framework-extensions/", develop = true, extras = ["email-gmail"] }  # Use this when publishing the repo.
@@ -60,6 +60,7 @@ Faker = "^18.11.2"
 mock = "^5.0.2"
 types-mock = "^5.0.0.7"
 jupyterlab = "^4.0.2"
+gpustat = "^1.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
