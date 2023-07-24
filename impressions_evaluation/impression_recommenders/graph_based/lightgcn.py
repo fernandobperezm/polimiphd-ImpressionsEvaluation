@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.sparse as sp
+from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.recommenders.graph_based.light_gcn import (
     ExtendedLightGCNRecommender,
     create_normalized_adjacency_matrix_from_urm,
@@ -81,7 +82,9 @@ class ImpressionsProfileLightGCNRecommender(ExtendedLightGCNRecommender):
             verbose=verbose,
         )
 
-        self.uim_train = uim_train
+        self.uim_train = check_matrix(uim_train.copy(), "csr", dtype=np.float32)
+        self.uim_train.eliminate_zeros()
+
         self.adjacency_matrix = create_normalized_adjacency_matrix_from_urm(
             urm=uim_train,
             add_self_connection=False,
@@ -108,10 +111,12 @@ class ImpressionsDirectedLightGCNRecommender(ExtendedLightGCNRecommender):
             verbose=verbose,
         )
 
-        self.uim_train = uim_train
+        self.uim_train = check_matrix(uim_train.copy(), "csr", dtype=np.float32)
+        self.uim_train.eliminate_zeros()
+
         self.adjacency_matrix = (
             create_normalized_directed_adjacency_matrix_interactions_and_impressions(
-                urm=urm_train,
+                urm=self.URM_train,
                 uim=uim_train,
                 add_self_connection=False,
             )
