@@ -48,6 +48,14 @@ python = "~3.10"
 typed-argument-parser = "^1.8.1"
 recsys-framework-public = { path = "../RecSysFramework_public/", develop = true }  # Use this when publishing the repo.
 recsys-framework-extensions = { path = "../recsys-framework-extensions/", develop = true, extras = ["email-gmail"] }  # Use this when publishing the repo.
+numpy = "1.23.2"
+cython = "0.29.36"
+jax = [
+    {platform = 'darwin', extras = ["cpu"], version = "^0.4.13"},
+    {platform = 'linux', extras = ["cpu"], version = "^0.4.13"},
+]
+optax = "^0.1.5"
+python-dotenv = "^1.0.0"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.4.1"
@@ -62,6 +70,14 @@ types-mock = "^5.0.0.7"
 jupyterlab = "^4.0.2"
 gpustat = "^1.1"
 
+# How to include a script to build the package can be seen here: https://github.com/python-poetry/poetry/issues/11#issuecomment-379484540
+# example pyproject.toml: https://github.com/sdispater/pendulum/blob/master/pyproject.toml
+# example build.py (aka our build.py): https://github.com/sdispater/pendulum/blob/master/build.py
+[tool.poetry.build]
+generate-setup-file = false
+script = "build.py"
+
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+# IMPORTANT: numpy and Cython versions in the `build-system` MUST match the ones used in the `dependencies` section.
+requires = ["setuptools", "numpy==1.23.2", "Cython==0.29.36", "poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
