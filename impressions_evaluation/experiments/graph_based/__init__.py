@@ -15,6 +15,10 @@ from recsys_framework_extensions.recommenders.graph_based.p3_alpha import (
     ExtendedP3AlphaRecommender,
     SearchHyperParametersP3AlphaRecommender,
 )
+from recsys_framework_extensions.recommenders.graph_based.rp3_beta import (
+    ExtendedRP3BetaRecommender,
+    SearchHyperParametersRP3BetaRecommender,
+)
 
 from impressions_evaluation.experiments import commons
 from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES
@@ -34,7 +38,11 @@ from impressions_evaluation.impression_recommenders.graph_based.p3_alpha import 
     ImpressionsProfileP3AlphaRecommender,
     ImpressionsDirectedP3AlphaRecommender,
 )
-from impressions_evaluation.impression_recommenders.matrix_factorization.SFC import (
+from impressions_evaluation.impression_recommenders.graph_based.rp3_beta import (
+    ImpressionsProfileRP3BetaRecommender,
+    ImpressionsDirectedRP3BetaRecommender,
+)
+from impressions_evaluation.impression_recommenders.matrix_factorization.sfc_jax import (
     SoftFrequencyCappingRecommender,
     SearchHyperParametersSFCRecommender,
 )
@@ -46,6 +54,13 @@ _MAPPER_COLLABORATIVE_RECOMMENDERS = {
     RecommenderBaseline.P3_ALPHA: ExperimentRecommender(
         recommender=ExtendedP3AlphaRecommender,
         search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
+        priority=40,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderBaseline.RP3_BETA: ExperimentRecommender(
+        recommender=ExtendedRP3BetaRecommender,
+        search_hyper_parameters=SearchHyperParametersRP3BetaRecommender,
         priority=40,
         use_gpu=False,
         do_early_stopping=False,
@@ -74,6 +89,20 @@ _MAPPER_IMPRESSIONS_RECOMMENDERS = {
         use_gpu=False,
         do_early_stopping=False,
     ),
+    RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS: ExperimentRecommender(
+        recommender=ImpressionsProfileRP3BetaRecommender,
+        search_hyper_parameters=SearchHyperParametersRP3BetaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS: ExperimentRecommender(
+        recommender=ImpressionsDirectedRP3BetaRecommender,
+        search_hyper_parameters=SearchHyperParametersRP3BetaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
     RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS: ExperimentRecommender(
         recommender=ImpressionsProfileLightGCNRecommender,
         search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
@@ -92,7 +121,7 @@ _MAPPER_IMPRESSIONS_RECOMMENDERS = {
         recommender=SoftFrequencyCappingRecommender,
         search_hyper_parameters=SearchHyperParametersSFCRecommender,
         priority=50,
-        use_gpu=False,  # Does not benefit from GPU, at least not with CW Impressions
+        use_gpu=True,
         do_early_stopping=True,
     ),
 }
@@ -188,6 +217,7 @@ def _run_collaborative_filtering_hyper_parameter_tuning(
 
     logger_info = {
         "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
+        "use_gpu": experiment_recommender.use_gpu,
         "dataset": experiment_benchmark.benchmark.value,
         "urm_test_shape": interactions_data_splits.sp_urm_test.shape,
         "urm_train_shape": interactions_data_splits.sp_urm_train.shape,
@@ -317,6 +347,7 @@ def _run_pure_impressions_hyper_parameter_tuning(
 
     logger_info = {
         "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
+        "use_gpu": experiment_recommender.use_gpu,
         "dataset": experiment_benchmark.benchmark.value,
         "urm_test_shape": interactions_data_splits.sp_urm_test.shape,
         "urm_train_shape": interactions_data_splits.sp_urm_train.shape,
@@ -466,6 +497,7 @@ def _run_frequency_impressions_hyper_parameter_tuning(
 
     logger_info = {
         "recommender": experiment_recommender.recommender.RECOMMENDER_NAME,
+        "use_gpu": experiment_recommender.use_gpu,
         "dataset": experiment_benchmark.benchmark.value,
         "urm_test_shape": interactions_data_splits.sp_urm_test.shape,
         "urm_train_shape": interactions_data_splits.sp_urm_train.shape,
@@ -505,7 +537,7 @@ def _run_frequency_impressions_hyper_parameter_tuning(
     )
 
 
-def run_experiments(
+def run_experiments_dask(
     dask_interface: DaskInterface,
     experiment_cases_interface: commons.ExperimentCasesInterface,
 ) -> None:

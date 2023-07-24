@@ -2,14 +2,14 @@ import numpy as np
 import scipy.sparse as sp
 from Recommenders.Recommender_utils import check_matrix
 
-from recsys_framework_extensions.recommenders.graph_based.p3_alpha import (
-    ExtendedP3AlphaRecommender,
+from recsys_framework_extensions.recommenders.graph_based.rp3_beta import (
+    ExtendedRP3BetaRecommender,
 )
 from sklearn.preprocessing import normalize
 
 
-class ImpressionsProfileP3AlphaRecommender(ExtendedP3AlphaRecommender):
-    RECOMMENDER_NAME = "ImpressionsProfileP3AlphaRecommender"
+class ImpressionsProfileRP3BetaRecommender(ExtendedRP3BetaRecommender):
+    RECOMMENDER_NAME = "ImpressionsProfileRP3BetaRecommender"
 
     def __init__(
         self,
@@ -18,8 +18,6 @@ class ImpressionsProfileP3AlphaRecommender(ExtendedP3AlphaRecommender):
         verbose: bool = False,
         **kwargs,
     ):
-        assert urm_train.shape == uim_train.shape
-
         super().__init__(
             urm_train=urm_train,
             verbose=verbose,
@@ -29,12 +27,40 @@ class ImpressionsProfileP3AlphaRecommender(ExtendedP3AlphaRecommender):
 
     def __str__(self) -> str:
         return (
-            f"ImpressionsProfileP3Alpha("
+            f"ImpressionsProfileRP3Beta("
             f"alpha={self.alpha}, "
+            f"beta={self.beta}, "
             f"top_k={self.top_k}, "
             f"normalize_similarity={self.normalize_similarity}"
             f")"
         )
+
+    def create_degree_array(
+        self,
+    ):
+        _, num_items = self.uim_train.shape
+
+        X_bool = self.uim_train.transpose(
+            copy=True,
+        )
+        X_bool.data = np.ones(
+            shape=X_bool.data.size,
+            dtype=np.float32,
+        )
+        # Taking the degree of each item to penalize top popular
+        # Some rows might be zero, make sure their degree remains zero
+        X_bool_sum = np.array(X_bool.sum(axis=1)).ravel()
+        non_zero_mask = X_bool_sum != 0.0
+        arr_degree = np.zeros(
+            shape=num_items,
+            dtype=np.float32,
+        )
+        arr_degree[non_zero_mask] = np.power(
+            X_bool_sum[non_zero_mask],
+            -self.beta,
+        )
+
+        self.arr_degree = arr_degree
 
     def create_pui_and_piu(
         self,
@@ -70,8 +96,8 @@ class ImpressionsProfileP3AlphaRecommender(ExtendedP3AlphaRecommender):
         self.p_iu = Piu
 
 
-class ImpressionsDirectedP3AlphaRecommender(ExtendedP3AlphaRecommender):
-    RECOMMENDER_NAME = "ImpressionsDirectedP3AlphaRecommender"
+class ImpressionsDirectedRP3BetaRecommender(ExtendedRP3BetaRecommender):
+    RECOMMENDER_NAME = "ImpressionsDirectedRP3BetaRecommender"
 
     def __init__(
         self,
@@ -80,8 +106,6 @@ class ImpressionsDirectedP3AlphaRecommender(ExtendedP3AlphaRecommender):
         verbose: bool = False,
         **kwargs,
     ):
-        assert urm_train.shape == uim_train.shape
-
         super().__init__(
             urm_train=urm_train,
             verbose=verbose,
@@ -91,12 +115,40 @@ class ImpressionsDirectedP3AlphaRecommender(ExtendedP3AlphaRecommender):
 
     def __str__(self) -> str:
         return (
-            f"ImpressionsDirectedP3Alpha("
+            f"ImpressionsDirectedRP3Beta("
             f"alpha={self.alpha}, "
+            f"beta={self.beta}, "
             f"top_k={self.top_k}, "
             f"normalize_similarity={self.normalize_similarity}"
             f")"
         )
+
+    def create_degree_array(
+        self,
+    ):
+        _, num_items = self.uim_train.shape
+
+        X_bool = self.uim_train.transpose(
+            copy=True,
+        )
+        X_bool.data = np.ones(
+            shape=X_bool.data.size,
+            dtype=np.float32,
+        )
+        # Taking the degree of each item to penalize top popular
+        # Some rows might be zero, make sure their degree remains zero
+        X_bool_sum = np.array(X_bool.sum(axis=1)).ravel()
+        non_zero_mask = X_bool_sum != 0.0
+        arr_degree = np.zeros(
+            shape=num_items,
+            dtype=np.float32,
+        )
+        arr_degree[non_zero_mask] = np.power(
+            X_bool_sum[non_zero_mask],
+            -self.beta,
+        )
+
+        self.arr_degree = arr_degree
 
     def create_pui_and_piu(
         self,

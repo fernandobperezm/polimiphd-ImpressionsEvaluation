@@ -161,6 +161,10 @@ class RecommenderImpressions(Enum):
     P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS = (
         "P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS"
     )
+    RP3_BETA_ONLY_IMPRESSIONS = "RP3_BETA_ONLY_IMPRESSIONS"
+    RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS = (
+        "RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS"
+    )
     SOFT_FREQUENCY_CAPPING = "SOFT_FREQUENCY_CAPPING"
 
 
@@ -439,12 +443,12 @@ MAPPER_AVAILABLE_BENCHMARKS = {
     Benchmarks.ContentWiseImpressions: ExperimentBenchmark(
         benchmark=Benchmarks.ContentWiseImpressions,
         config=ContentWiseImpressionsConfig(),
-        priority=10,
+        priority=30,
     ),
     Benchmarks.MINDSmall: ExperimentBenchmark(
         benchmark=Benchmarks.MINDSmall,
         config=MINDSmallConfig(),
-        priority=10,
+        priority=20,
     ),
     Benchmarks.FINNNoSlates: ExperimentBenchmark(
         benchmark=Benchmarks.FINNNoSlates,
