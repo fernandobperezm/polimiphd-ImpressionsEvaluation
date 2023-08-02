@@ -1,5 +1,6 @@
 import copy
 import logging
+
 from typing import Optional, Literal
 
 import attrs
@@ -24,6 +25,8 @@ from impressions_evaluation.impression_recommenders.matrix_factorization.jax.mod
     SFCModel,
     create_dict_binned_frequency,
 )
+from recsys_framework_extensions.decorators import timeit
+
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +55,8 @@ class SearchHyperParametersSFCRecommender(SearchHyperParametersBaseRecommender):
     batch_size: Integer = attrs.field(
         default=Integer(  # The paper does not specify ranges.
             low=2**7,  # 128
-            high=2**14,  # 16384
+            high=2**10,  # 1024
+            # high=2**14,  # 16384
             prior="uniform",
         ),
     )
@@ -149,6 +153,7 @@ def _get_frequency_num_embeddings(
     return 1  # type: ignore
 
 
+@timeit
 @nb.njit
 def _compute_array_frequencies(
     arr_user_ids: np.ndarray,
@@ -186,6 +191,7 @@ def _compute_array_frequencies(
     return arr_frequencies
 
 
+@timeit
 @nb.njit
 def _compute_soft_frequency_capping_score(
     arr_item_scores: np.ndarray,
@@ -198,13 +204,130 @@ def _compute_soft_frequency_capping_score(
 ) -> np.ndarray:
     assert arr_global_bias.shape == (1,)
     assert arr_user_factors.shape[1] == arr_item_factors.shape[1]
-    assert arr_frequency_factors.shape == arr_item_scores.shape
+    assert arr_item_scores.shape == arr_frequency_factors.shape
 
     arr_item_scores[:, arr_item_ids] = (
         arr_global_bias[0]
         + np.dot(arr_user_factors[arr_user_ids, :], arr_item_factors.T)
         + arr_frequency_factors
     )[:, arr_item_ids]
+
+    return arr_item_scores
+
+
+@timeit
+@nb.njit
+def _compute_soft_frequency_capping_score_2(
+    arr_item_scores: np.ndarray,
+    arr_user_ids: np.ndarray,
+    arr_item_ids: np.ndarray,
+    arr_global_bias: np.ndarray,
+    arr_user_factors: np.ndarray,
+    arr_item_factors: np.ndarray,
+) -> np.ndarray:
+    assert arr_global_bias.shape == (1,)
+    assert arr_user_factors.shape[1] == arr_item_factors.shape[1]
+
+    arr_item_scores[:, arr_item_ids] = (
+        arr_global_bias[0]
+        + np.dot(arr_user_factors[arr_user_ids, :], arr_item_factors.T)
+    )[:, arr_item_ids]
+
+    return arr_item_scores
+
+
+@nb.njit
+def _get_frequency(
+    dict_frequency: dict[tuple[int, int], int],
+    arr_users: np.ndarray,
+    arr_items: np.ndarray,
+) -> np.ndarray:
+    assert arr_users.shape == arr_items.shape
+
+    arr_frequency = np.zeros_like(
+        arr_users,
+        dtype=np.int32,
+    )
+
+    for idx, key in enumerate(zip(arr_users, arr_items)):
+        if key in dict_frequency:
+            arr_frequency[idx] = dict_frequency[key]
+    return arr_frequency
+
+
+@nb.njit
+def _get_idx_frequency(
+    frequency_mode: FREQUENCY_MODE,
+    arr_users: np.ndarray,
+    arr_items: np.ndarray,
+) -> np.ndarray:
+    if frequency_mode == "global":
+        return np.zeros_like(arr_users, dtype=np.int32)
+    elif frequency_mode == "user":
+        return arr_users
+    elif frequency_mode == "item":
+        return arr_items
+
+    # return value needed for numba
+    return np.zeros_like(arr_users, dtype=np.int32)  # type: ignore
+
+
+@timeit
+@nb.njit
+def _add_frequency_factor_to_item_scores(
+    arr_item_scores: np.ndarray,
+    arr_user_ids: np.ndarray,
+    arr_item_ids: np.ndarray,
+    arr_frequency_factors: np.ndarray,
+    dict_frequency: dict[tuple[int, int], int],
+    frequency_mode: FREQUENCY_MODE,
+) -> np.ndarray:
+    num_users = arr_user_ids.size
+    num_items = arr_item_ids.size
+
+    arr_repeat_user_id = np.repeat(
+        arr_user_ids,
+        repeats=num_items,
+    ).astype(np.int32)
+
+    arr_repeat_idx = np.repeat(
+        np.arange(start=0, stop=num_users),
+        repeats=num_items,
+    ).astype(np.int32)
+
+    arr_repeat_item_id = (
+        np.broadcast_to(
+            arr_item_ids,
+            (num_users, num_items),
+        )
+        .ravel()
+        .astype(np.int32)
+    )
+
+    arr_idx_freq = _get_idx_frequency(
+        frequency_mode=frequency_mode,
+        arr_users=arr_repeat_user_id,
+        arr_items=arr_repeat_item_id,
+    ).astype(np.int32)
+
+    arr_frequencies = _get_frequency(
+        dict_frequency=dict_frequency,
+        arr_users=arr_repeat_user_id,
+        arr_items=arr_repeat_item_id,
+    ).astype(np.int32)
+
+    assert arr_repeat_user_id.shape == arr_repeat_idx.shape
+    assert arr_repeat_user_id.shape == arr_repeat_item_id.shape
+    assert arr_repeat_user_id.shape == arr_idx_freq.shape
+    assert arr_repeat_user_id.shape == arr_frequencies.shape
+
+    for idx_user, item_id, idx_freq, freq in zip(
+        arr_repeat_idx,
+        arr_repeat_item_id,
+        arr_idx_freq,
+        arr_frequencies,
+    ):
+        arr_item_scores[idx_user, item_id] += arr_frequency_factors[idx_freq, freq]
 
     return arr_item_scores
 
@@ -304,7 +427,7 @@ class SoftFrequencyCappingRecommender(
 
         arr_item_scores = (
             np.ones(
-                (len(user_id_array), self.n_items),
+                shape=(len(user_id_array), self.n_items),
                 dtype=np.float32,
             )
             * np.NINF
@@ -317,23 +440,41 @@ class SoftFrequencyCappingRecommender(
             else np.arange(start=0, stop=self.n_items, dtype=np.int32)
         )
 
-        arr_frequency_factors = _compute_array_frequencies(
-            arr_user_ids=arr_user_ids,
-            arr_item_ids=arr_item_ids,
-            arr_frequency_factors=self.FREQUENCY_factors,
-            dict_frequency=self.dict_binned_frequency,
-            num_items=self.n_items,
-            frequency_mode=self.frequency_mode,
-        )
+        # arr_frequency_factors = _compute_array_frequencies(
+        #     arr_user_ids=arr_user_ids,
+        #     arr_item_ids=arr_item_ids,
+        #     arr_frequency_factors=self.FREQUENCY_factors,
+        #     dict_frequency=self.dict_binned_frequency,
+        #     num_items=self.n_items,
+        #     frequency_mode=self.frequency_mode,
+        # )
+        #
+        # arr_item_scores = _compute_soft_frequency_capping_score(
+        #     arr_item_scores=arr_item_scores,
+        #     arr_user_ids=arr_user_ids,
+        #     arr_item_ids=arr_item_ids,
+        #     arr_global_bias=self.BIAS_factors,
+        #     arr_user_factors=self.USER_factors,
+        #     arr_item_factors=self.ITEM_factors,
+        #     arr_frequency_factors=arr_frequency_factors,
+        # )
 
-        arr_item_scores = _compute_soft_frequency_capping_score(
+        arr_item_scores = _compute_soft_frequency_capping_score_2(
             arr_item_scores=arr_item_scores,
             arr_user_ids=arr_user_ids,
             arr_item_ids=arr_item_ids,
             arr_global_bias=self.BIAS_factors,
             arr_user_factors=self.USER_factors,
             arr_item_factors=self.ITEM_factors,
-            arr_frequency_factors=arr_frequency_factors,
+        )
+
+        arr_item_scores = _add_frequency_factor_to_item_scores(
+            arr_item_scores=arr_item_scores,
+            arr_user_ids=arr_user_ids,
+            arr_item_ids=arr_item_ids,
+            arr_frequency_factors=self.FREQUENCY_factors,
+            dict_frequency=self.dict_binned_frequency,
+            frequency_mode=self.frequency_mode,
         )
 
         return arr_item_scores
@@ -425,7 +566,6 @@ class SoftFrequencyCappingRecommender(
             self.model.embedding_bias,
             dtype=np.float32,
         )
-
         # Expected shape: (num_users, num_factors)
         self.USER_factors = np.asarray(
             self.model.embedding_user,
