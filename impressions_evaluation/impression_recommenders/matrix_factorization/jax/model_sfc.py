@@ -91,12 +91,18 @@ def create_dict_binned_frequency(
     uim_frequency_coo_data: np.ndarray,
     num_bins: int,
 ) -> dict[tuple[int, int], int]:
+    uim_frequency_coo_data = np.where(  # type: ignore
+        condition=uim_frequency_coo_data < num_bins,
+        x=uim_frequency_coo_data,
+        y=np.asarray(num_bins - 1),
+    )
+
     return {
-        (user, item): val if val < num_bins else num_bins - 1
+        (user, item): val
         for user, item, val in zip(
-            uim_frequency_coo_row,
-            uim_frequency_coo_col,
-            uim_frequency_coo_data,
+            uim_frequency_coo_row.astype(np.int32),
+            uim_frequency_coo_col.astype(np.int32),
+            uim_frequency_coo_data.astype(np.int32),
         )
     }
 
@@ -288,6 +294,8 @@ class SFCDataset(Dataset):
             (
                 urm_train_coo.row,
                 uim_train_coo.row,
+                # urm_train_coo.row[:10_000],  # TODO: DEBUG PURPOSES ONLY, REMOVE WHEN NOT NEEDED.
+                # uim_train_coo.row[:10_000],  # TODO: DEBUG PURPOSES ONLY, REMOVE WHEN NOT NEEDED.
             ),
             dtype=np.int32,
             axis=None,
@@ -297,6 +305,8 @@ class SFCDataset(Dataset):
             (
                 urm_train_coo.col,
                 uim_train_coo.col,
+                # urm_train_coo.col[:10_000],  # TODO: DEBUG PURPOSES ONLY, REMOVE WHEN NOT NEEDED.
+                # uim_train_coo.col[:10_000],  # TODO: DEBUG PURPOSES ONLY, REMOVE WHEN NOT NEEDED.
             ),
             dtype=np.int32,
             axis=None,
@@ -305,6 +315,8 @@ class SFCDataset(Dataset):
             (
                 np.ones_like(urm_train_coo.data),
                 np.zeros_like(uim_train_coo.data),
+                # np.ones_like(urm_train_coo.data[:10_000]),  # TODO: DEBUG PURPOSES ONLY, REMOVE WHEN NOT NEEDED.
+                # np.zeros_like(uim_train_coo.data[:10_000]),  # TODO: DEBUG PURPOSES ONLY, REMOVE WHEN NOT NEEDED.
             ),
             dtype=np.float32,
             axis=None,
