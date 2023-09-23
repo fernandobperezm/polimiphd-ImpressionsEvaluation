@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 
 import attrs
@@ -6,6 +7,9 @@ from HyperparameterTuning.SearchAbstractClass import SearchInputRecommenderArgs
 from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.hyper_parameter_search import (
     SearchBayesianSkopt,
+)
+from recsys_framework_extensions.recommenders.base import (
+    SearchHyperParametersBaseRecommender,
 )
 from recsys_framework_extensions.recommenders.graph_based.light_gcn import (
     SearchHyperParametersLightGCNRecommender,
@@ -19,6 +23,20 @@ from recsys_framework_extensions.recommenders.graph_based.rp3_beta import (
     ExtendedRP3BetaRecommender,
     SearchHyperParametersRP3BetaRecommender,
 )
+from recsys_framework_extensions.recommenders.mf.mf_bpr import (
+    FitParametersMFBPRRecommender,
+    SearchHyperParametersMFBPRRecommender,
+    ExtendedMFBPRRecommender,
+)
+from recsys_framework_extensions.recommenders.slim.slim_bpr import (
+    SearchHyperParametersSLIMBPRRecommender,
+    FitParametersSLIMBPRRecommenderAllowSparseTraining,
+    ExtendedSLIMBPRRecommender,
+)
+from recsys_framework_extensions.recommenders.slim.slim_elasticnet import (
+    ExtendedSLIMElasticNetRecommender,
+    SearchHyperParametersSLIMElasticNetRecommender,
+)
 
 from impressions_evaluation.experiments import commons
 from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES
@@ -26,9 +44,6 @@ from impressions_evaluation.experiments.commons import (
     ExperimentRecommender,
     RecommenderBaseline,
     RecommenderImpressions,
-)
-from impressions_evaluation.experiments.impression_aware import (
-    DIR_TRAINED_MODELS_IMPRESSION_AWARE,
 )
 from impressions_evaluation.impression_recommenders.graph_based.lightgcn import (
     ImpressionsProfileLightGCNRecommender,
@@ -46,11 +61,61 @@ from impressions_evaluation.impression_recommenders.matrix_factorization.sfc_jax
     SoftFrequencyCappingRecommender,
     SearchHyperParametersSFCRecommender,
 )
+from Recommenders.Recommender_import_list import Random, TopPop
 
 logger = logging.getLogger(__name__)
 
 
+DIR_TRAINED_MODELS_IMPRESSION_AWARE = os.path.join(
+    commons.DIR_TRAINED_MODELS,
+    "impression_aware",
+    "{benchmark}",
+    "{evaluation_strategy}",
+    "",
+)
+
+
 _MAPPER_COLLABORATIVE_RECOMMENDERS = {
+    RecommenderBaseline.RANDOM: ExperimentRecommender(
+        recommender=Random,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        fit_keyword_parameters=None,
+        priority=2,
+        use_gpu=False,
+        do_early_stopping=True,
+    ),
+    RecommenderBaseline.TOP_POPULAR: ExperimentRecommender(
+        recommender=TopPop,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        fit_keyword_parameters=None,
+        priority=3,
+        use_gpu=False,
+        do_early_stopping=True,
+    ),
+    RecommenderBaseline.MF_BPR: ExperimentRecommender(
+        recommender=ExtendedMFBPRRecommender,
+        search_hyper_parameters=SearchHyperParametersMFBPRRecommender,
+        fit_keyword_parameters=FitParametersMFBPRRecommender,
+        priority=10,
+        use_gpu=False,
+        do_early_stopping=True,
+    ),
+    RecommenderBaseline.SLIM_BPR: ExperimentRecommender(
+        recommender=ExtendedSLIMBPRRecommender,
+        search_hyper_parameters=SearchHyperParametersSLIMBPRRecommender,
+        fit_keyword_parameters=FitParametersSLIMBPRRecommenderAllowSparseTraining,
+        priority=10,
+        use_gpu=False,
+        do_early_stopping=True,
+    ),
+    RecommenderBaseline.SLIM_ELASTIC_NET: ExperimentRecommender(
+        recommender=ExtendedSLIMElasticNetRecommender,
+        search_hyper_parameters=SearchHyperParametersSLIMElasticNetRecommender,
+        fit_keyword_parameters=None,
+        priority=7,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
     RecommenderBaseline.P3_ALPHA: ExperimentRecommender(
         recommender=ExtendedP3AlphaRecommender,
         search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
@@ -178,6 +243,12 @@ def _run_collaborative_filtering_hyper_parameter_tuning(
         experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameter_tuning_parameters,
     )
 
+    fit_kwargs = (
+        attrs.asdict(experiment_recommender.fit_keyword_parameters())
+        if experiment_recommender.fit_keyword_parameters is not None
+        else {}
+    )
+
     early_stopping_kwargs = (
         attrs.asdict(
             commons.get_early_stopping_configuration(
@@ -196,7 +267,7 @@ def _run_collaborative_filtering_hyper_parameter_tuning(
             "use_gpu": experiment_recommender.use_gpu,
         },
         FIT_POSITIONAL_ARGS=[],
-        FIT_KEYWORD_ARGS={},
+        FIT_KEYWORD_ARGS=fit_kwargs,
         EARLYSTOPPING_KEYWORD_ARGS=early_stopping_kwargs,
     )
 
@@ -207,7 +278,7 @@ def _run_collaborative_filtering_hyper_parameter_tuning(
             "use_gpu": experiment_recommender.use_gpu,
         },
         FIT_POSITIONAL_ARGS=[],
-        FIT_KEYWORD_ARGS={},
+        FIT_KEYWORD_ARGS=fit_kwargs,
         EARLYSTOPPING_KEYWORD_ARGS={},
     )
 
@@ -223,6 +294,8 @@ def _run_collaborative_filtering_hyper_parameter_tuning(
         "urm_train_shape": interactions_data_splits.sp_urm_train.shape,
         "urm_validation_shape": interactions_data_splits.sp_urm_validation.shape,
         "urm_train_and_validation_shape": interactions_data_splits.sp_urm_train_validation.shape,
+        "fit_kwargs": fit_kwargs,
+        "early_stopping_kwargs": early_stopping_kwargs,
         "hyper_parameter_tuning_parameters": repr(
             experiment_hyper_parameter_tuning_parameters
         ),
@@ -589,6 +662,7 @@ def run_experiments_sequentially(
     )
 
     for experiment_case in experiment_cases:
+        logger.info(f"Training recommender: \n {attrs.asdict(experiment_case)}")
         experiment_case.training_function(
             experiment_case=experiment_case,
         )

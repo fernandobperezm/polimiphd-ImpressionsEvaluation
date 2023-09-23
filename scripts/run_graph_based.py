@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+from typing import Union, Sequence
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import logging
 
 from tap import Tap
@@ -20,6 +26,7 @@ from impressions_evaluation.experiments.graph_based import (
     _run_pure_impressions_hyper_parameter_tuning,
     run_experiments_sequentially,
 )
+from impressions_evaluation.experiments.graph_based.results import print_results
 
 
 class ConsoleArguments(Tap):
@@ -49,20 +56,23 @@ class ConsoleArguments(Tap):
 _TO_USE_BENCHMARKS = [
     Benchmarks.ContentWiseImpressions,
     Benchmarks.MINDSmall,
-    Benchmarks.FINNNoSlates,
+    # Benchmarks.FINNNoSlates,
 ]
 
 
 _TO_USE_RECOMMENDERS_BASELINES = [
-    RecommenderBaseline.P3_ALPHA,
-    # RecommenderBaseline.LIGHT_GCN,
+    # RecommenderBaseline.P3_ALPHA,
+    # RecommenderBaseline.RP3_BETA,
+    RecommenderBaseline.LIGHT_GCN,
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS = [
-    RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
-    RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-    # RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS,
-    # RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS,
+    # RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
+    # RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+    # RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
+    # RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+    RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS,
+    RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS,
 ]
 
 _TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS = [
@@ -76,6 +86,63 @@ _TO_USE_TRAINING_FUNCTIONS_BASELINES = [
 
 _TO_USE_TRAINING_FUNCTIONS_PURE_IMPRESSIONS = [
     _run_pure_impressions_hyper_parameter_tuning,
+]
+
+_TO_PRINT_RECOMMENDERS: list[
+    tuple[
+        Benchmarks,
+        EHyperParameterTuningParameters,
+        list[Sequence[Union[RecommenderBaseline, RecommenderImpressions]]],
+    ]
+] = [
+    (
+        Benchmarks.MINDSmall,
+        EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
+        [
+            (
+                RecommenderBaseline.P3_ALPHA,
+                RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
+                RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+            ),
+            (
+                RecommenderBaseline.RP3_BETA,
+                RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
+                RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+            ),
+        ],
+    ),
+    (
+        Benchmarks.ContentWiseImpressions,
+        EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
+        [
+            (
+                RecommenderBaseline.P3_ALPHA,
+                RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
+                RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+            ),
+            (
+                RecommenderBaseline.RP3_BETA,
+                RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
+                RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+            ),
+        ],
+    ),
+    # (
+    #     Benchmarks.FINNNoSlates,
+    #     EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
+    #     [
+    #         (
+    #             RecommenderBaseline.P3_ALPHA,
+    #             RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
+    #             RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+    #         ),
+    #         (
+    #             RecommenderBaseline.RP3_BETA,
+    #             RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
+    #             RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+    #         ),
+    #     ],
+    # ),
 ]
 
 
@@ -119,3 +186,10 @@ if __name__ == "__main__":
         run_experiments_sequentially(
             experiment_cases_interface=experiments_impressions_interface,
         )
+
+    if input_flags.print_evaluation_results:
+        print_results(
+            results_interface=_TO_PRINT_RECOMMENDERS,
+        )
+
+    logger.info(f"Finished running script: {__file__}")

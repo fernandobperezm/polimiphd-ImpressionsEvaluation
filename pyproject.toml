@@ -21,11 +21,11 @@ path_token_json = "./token.json"
 
 [dask]
 use_processes = true
+num_workers = 6
+threads_per_worker = 1
+memory_limit = 0 # "30GiB" #0
 dashboard_address = ":8787"
 scheduler_port = 8786
-num_workers = 1
-threads_per_worker = 12
-memory_limit = 1e10 #0
 
 [logs]
 dir_logs = ".logs"
@@ -56,6 +56,8 @@ jax = [
 ]
 optax = "^0.1.5"
 python-dotenv = "^1.0.0"
+lightgbm = "^4.0.0"
+tikzplotlib = "^0.10.1"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.4.1"
