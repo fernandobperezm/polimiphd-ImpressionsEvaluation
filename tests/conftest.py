@@ -26,33 +26,40 @@ ALL_USER_IDS = np.arange(start=0, stop=NUM_USERS, step=1, dtype=np.int32)
 ALL_ITEM_IDS = np.arange(start=0, stop=NUM_ITEMS, step=1, dtype=np.int32)
 
 MIN_TIMESTAMP = datetime.datetime(year=2022, month=1, day=1, hour=0, minute=0, second=1)
-MAX_TIMESTAMP = datetime.datetime(year=2022, month=1, day=2, hour=23, minute=59, second=59)
+MAX_TIMESTAMP = datetime.datetime(
+    year=2022, month=1, day=2, hour=23, minute=59, second=59
+)
 
 USER_IDS = rng.choice(
-    a=ALL_USER_IDS, size=NUM_INTERACTIONS, replace=True, shuffle=True,
+    a=ALL_USER_IDS,
+    size=NUM_INTERACTIONS,
+    replace=True,
+    shuffle=True,
 )
 ITEM_IDS = rng.choice(
-    a=ALL_ITEM_IDS, size=NUM_INTERACTIONS, replace=True, shuffle=True,
+    a=ALL_ITEM_IDS,
+    size=NUM_INTERACTIONS,
+    replace=True,
+    shuffle=True,
 )
 
 IMPRESSIONS = []
 for item_id in ITEM_IDS:
-    items_except_interacted = list(
-        set(ALL_ITEM_IDS).difference([item_id])
-    )
+    items_except_interacted = list(set(ALL_ITEM_IDS).difference([item_id]))
 
     impressions = np.empty(shape=(LENGTH_IMPRESSIONS,), dtype=np.int32)
     impressions[0] = item_id
     impressions[1:] = rng.choice(
-        a=items_except_interacted, size=LENGTH_IMPRESSIONS - 1, replace=False, shuffle=False
+        a=items_except_interacted,
+        size=LENGTH_IMPRESSIONS - 1,
+        replace=False,
+        shuffle=False,
     )
 
     rng.shuffle(impressions)
     IMPRESSIONS.append(impressions)
 
-POSITIONS = np.array(
-    [0, 1, 2] * NUM_INTERACTIONS
-).reshape(
+POSITIONS = np.array([0, 1, 2] * NUM_INTERACTIONS).reshape(
     (NUM_INTERACTIONS, LENGTH_IMPRESSIONS)
 )
 TIMESTAMPS = np.array(
@@ -60,8 +67,18 @@ TIMESTAMPS = np.array(
         fake.date_time_between(start_date=MIN_TIMESTAMP, end_date=MAX_TIMESTAMP)
         for _ in range(NUM_INTERACTIONS)
     ],
-    dtype=object
+    dtype=object,
 )
+
+
+@fixture
+def num_users() -> int:
+    return NUM_USERS
+
+
+@fixture
+def num_items() -> int:
+    return NUM_ITEMS
 
 
 @fixture
@@ -122,21 +139,30 @@ def urm(df: pd.DataFrame) -> sp.csr_matrix:
 
 @fixture
 def uim_timestamp(df: pd.DataFrame) -> sp.csr_matrix:
-    df = df.set_index(
-        ["timestamp", "user_id", "item_id", ]
-    ).apply(
-        pd.Series.explode,
-    ).reset_index(
-        drop=False,
-    ).drop_duplicates(
-        subset=["user_id", "impressions"],
-        keep="last",
-        inplace=False,
+    df = (
+        df.set_index(
+            [
+                "timestamp",
+                "user_id",
+                "item_id",
+            ]
+        )
+        .apply(
+            pd.Series.explode,
+        )
+        .reset_index(
+            drop=False,
+        )
+        .drop_duplicates(
+            subset=["user_id", "impressions"],
+            keep="last",
+            inplace=False,
+        )
     )
 
     arr_user_id = df["user_id"].to_numpy()
     arr_item_id = df["impressions"].to_numpy()
-    arr_data = df["timestamp"].to_numpy().astype(np.int64) // 10 ** 9
+    arr_data = df["timestamp"].to_numpy().astype(np.int64) // 10**9
 
     return sp.csr_matrix(
         (
@@ -150,16 +176,19 @@ def uim_timestamp(df: pd.DataFrame) -> sp.csr_matrix:
 
 @fixture
 def uim_position(df: pd.DataFrame) -> sp.csr_matrix:
-    df = df.set_index(
-        ["timestamp", "user_id", "item_id"]
-    ).apply(
-        pd.Series.explode,
-    ).reset_index(
-        drop=False,
-    ).drop_duplicates(
-        subset=["user_id", "positions"],
-        keep="last",
-        inplace=False,
+    df = (
+        df.set_index(["timestamp", "user_id", "item_id"])
+        .apply(
+            pd.Series.explode,
+        )
+        .reset_index(
+            drop=False,
+        )
+        .drop_duplicates(
+            subset=["user_id", "positions"],
+            keep="last",
+            inplace=False,
+        )
     )
 
     arr_user_id = df["user_id"].to_numpy()
@@ -178,12 +207,14 @@ def uim_position(df: pd.DataFrame) -> sp.csr_matrix:
 
 @fixture
 def uim_frequency(df: pd.DataFrame) -> sp.csr_matrix:
-    df = df.set_index(
-        ["timestamp", "user_id", "item_id"]
-    ).apply(
-        pd.Series.explode,
-    ).reset_index(
-        drop=False,
+    df = (
+        df.set_index(["timestamp", "user_id", "item_id"])
+        .apply(
+            pd.Series.explode,
+        )
+        .reset_index(
+            drop=False,
+        )
     )
 
     arr_user_id = df["user_id"].to_numpy()
@@ -209,7 +240,7 @@ def uim_last_seen(df: pd.DataFrame) -> sp.csr_matrix:
         df=df,
         users_column="user_id",
         items_column="impressions",
-        timestamp_column="timestamp"
+        timestamp_column="timestamp",
     )
 
     arr_user_id = df_keep["user_id"].to_numpy()
@@ -228,16 +259,19 @@ def uim_last_seen(df: pd.DataFrame) -> sp.csr_matrix:
 
 @fixture
 def uim(df: pd.DataFrame) -> sp.csr_matrix:
-    df = df.set_index(
-        ["timestamp", "user_id", "item_id"]
-    ).apply(
-        pd.Series.explode,
-    ).reset_index(
-        drop=False,
-    ).drop_duplicates(
-        subset=["user_id", "impressions"],
-        keep="last",
-        inplace=False,
+    df = (
+        df.set_index(["timestamp", "user_id", "item_id"])
+        .apply(
+            pd.Series.explode,
+        )
+        .reset_index(
+            drop=False,
+        )
+        .drop_duplicates(
+            subset=["user_id", "impressions"],
+            keep="last",
+            inplace=False,
+        )
     )
 
     arr_user_id = df["user_id"].to_numpy()
