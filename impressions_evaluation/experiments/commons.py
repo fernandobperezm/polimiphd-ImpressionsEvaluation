@@ -11,6 +11,7 @@ from typing import (
     Sequence,
     Callable,
     Any,
+    Mapping,
 )
 
 import Recommenders.Recommender_import_list as recommenders
@@ -30,9 +31,36 @@ from recsys_framework_extensions.recommenders.base import (
     AbstractExtendedBaseRecommender,
     load_extended_recommender,
     load_recsys_framework_recommender,
+    FitParametersBaseRecommender,
+)
+from recsys_framework_extensions.recommenders.graph_based.light_gcn import (
+    SearchHyperParametersLightGCNRecommender,
+)
+from recsys_framework_extensions.recommenders.graph_based.p3_alpha import (
+    SearchHyperParametersP3AlphaRecommender,
+)
+from recsys_framework_extensions.recommenders.graph_based.rp3_beta import (
+    SearchHyperParametersRP3BetaRecommender,
 )
 from typing_extensions import ParamSpec
 
+from impressions_evaluation.impression_recommenders.graph_based.lightgcn import (
+    ImpressionsDirectedLightGCNRecommender,
+    ImpressionsProfileLightGCNRecommender,
+)
+from impressions_evaluation.impression_recommenders.graph_based.p3_alpha import (
+    ImpressionsDirectedP3AlphaRecommender,
+    ImpressionsProfileP3AlphaRecommender,
+)
+from impressions_evaluation.impression_recommenders.graph_based.rp3_beta import (
+    ImpressionsDirectedRP3BetaRecommender,
+    ImpressionsProfileRP3BetaRecommender,
+)
+from impressions_evaluation.impression_recommenders.re_ranking.hard_frequency_capping import (
+    SearchHyperParametersHardFrequencyCappingRecommender,
+    HardFrequencyCappingRecommender,
+    HARD_FREQUENCY_CAPPING_HYPER_PARAMETER_SEARCH_CONFIGURATIONS,
+)
 from impressions_evaluation.readers.ContentWiseImpressionsReader import (
     ContentWiseImpressionsReader,
     ContentWiseImpressionsConfig,
@@ -55,10 +83,12 @@ from impressions_evaluation.impression_recommenders.heuristics.latest_impression
 from impressions_evaluation.impression_recommenders.re_ranking.cycling import (
     CyclingRecommender,
     SearchHyperParametersCyclingRecommender,
+    CYCLING_HYPER_PARAMETER_SEARCH_CONFIGURATIONS,
 )
 from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import (
     ImpressionsDiscountingRecommender,
     SearchHyperParametersImpressionsDiscountingRecommender,
+    IMPRESSIONS_DISCOUNTING_HYPER_PARAMETER_SEARCH_CONFIGURATIONS,
 )
 from impressions_evaluation.impression_recommenders.user_profile.folding import (
     FoldedMatrixFactorizationRecommender,
@@ -149,6 +179,7 @@ class RecommenderImpressions(Enum):
     LAST_IMPRESSIONS = "LAST_IMPRESSIONS"
     FREQUENCY_RECENCY = "FREQUENCY_RECENCY"
     RECENCY = "RECENCY"
+    HARD_FREQUENCY_CAPPING = "HARD_FREQUENCY_CAPPING"
     CYCLING = "CYCLING"
     IMPRESSIONS_DISCOUNTING = "IMPRESSIONS_DISCOUNTING"
     USER_WEIGHTED_USER_PROFILE = "USER_WEIGHTED_USER_PROFILE"
@@ -193,17 +224,27 @@ class HyperParameterTuningParameters:
     """
 
     evaluation_strategy: EvaluationStrategy = attrs.field(
-        default=EvaluationStrategy.LEAVE_LAST_K_OUT
+        default=EvaluationStrategy.LEAVE_LAST_K_OUT,
     )
-    reproducibility_seed: int = attrs.field(default=1234567890)
-    max_total_time: int = attrs.field(default=60 * 60 * 24 * 14)
-    metric_to_optimize: T_METRIC = attrs.field(default="NDCG")
-    cutoff_to_optimize: int = attrs.field(default=10)
+    reproducibility_seed: int = attrs.field(
+        default=1234567890,
+    )
+    max_total_time: int = attrs.field(
+        default=60 * 60 * 24 * 14,
+    )
+    metric_to_optimize: T_METRIC = attrs.field(
+        default="NDCG",
+    )
+    cutoff_to_optimize: int = attrs.field(
+        default=10,
+    )
     num_cases: int = attrs.field(
-        default=50, validator=[attrs.validators.instance_of(int)]
+        default=50,
+        validator=[attrs.validators.instance_of(int)],
     )
     num_random_starts: int = attrs.field(
-        default=16, validator=[attrs.validators.instance_of(int)]
+        default=16,
+        validator=[attrs.validators.instance_of(int)],
     )
     knn_similarity_types: list[T_SIMILARITY_TYPE] = attrs.field(
         default=[
@@ -212,13 +253,23 @@ class HyperParameterTuningParameters:
             "jaccard",
             "asymmetric",
             "tversky",
-        ]
+        ],
     )
-    resume_from_saved: bool = attrs.field(default=True)
-    evaluate_on_test: T_EVALUATE_ON_TEST = attrs.field(default="last")
-    evaluation_cutoffs: list[int] = attrs.field(default=[5, 10, 20, 30, 40, 50, 100])
-    evaluation_min_ratings_per_user: int = attrs.field(default=1)
-    evaluation_exclude_seen: bool = attrs.field(default=True)
+    resume_from_saved: bool = attrs.field(
+        default=True,
+    )
+    evaluate_on_test: T_EVALUATE_ON_TEST = attrs.field(
+        default="last",
+    )
+    evaluation_cutoffs: list[int] = attrs.field(
+        default=[5, 10, 20, 30, 40, 50, 100],
+    )
+    evaluation_min_ratings_per_user: int = attrs.field(
+        default=1,
+    )
+    evaluation_exclude_seen: bool = attrs.field(
+        default=True,
+    )
     evaluation_percentage_ignore_users: Optional[float] = attrs.field(
         default=None,
         validator=attrs.validators.optional(
@@ -240,11 +291,15 @@ class HyperParameterTuningParameters:
         ),
     )
     save_metadata: bool = attrs.field(
-        default=True, validator=[attrs.validators.instance_of(bool)]
+        default=True,
+        validator=[attrs.validators.instance_of(bool)],
     )
-    save_model: T_SAVE_MODEL = attrs.field(default="best")
+    save_model: T_SAVE_MODEL = attrs.field(
+        default="best",
+    )
     terminate_on_memory_error: bool = attrs.field(
-        default=True, validator=[attrs.validators.instance_of(bool)]
+        default=False,
+        validator=[attrs.validators.instance_of(bool)],
     )
 
 
@@ -285,6 +340,23 @@ class ExperimentRecommender:
     priority: int = attrs.field()
     use_gpu: bool = attrs.field(default=False)
     do_early_stopping: bool = attrs.field(default=False)
+    fit_keyword_parameters: Optional[Type[FitParametersBaseRecommender]] = attrs.field(
+        default=None
+    )
+
+
+@attrs.define(frozen=True, kw_only=True)
+class ExperimentRecommenderSignalAnalysis:
+    recommender_impressions: Type[AbstractExtendedBaseRecommender] = attrs.field()
+    available_parameter_search_configurations: Mapping[
+        str, SearchHyperParametersBaseRecommender
+    ] = attrs.field()
+    priority: int = attrs.field()
+    use_gpu: bool = attrs.field(default=False)
+    do_early_stopping: bool = attrs.field(default=False)
+    fit_keyword_parameters: Optional[Type[FitParametersBaseRecommender]] = attrs.field(
+        default=None
+    )
 
 
 @attrs.define(frozen=True, kw_only=True)
@@ -308,6 +380,16 @@ class ExperimentCase:
 
 
 @attrs.define(frozen=True, kw_only=True)
+class ExperimentCaseSignalAnalysis:
+    benchmark: Benchmarks = attrs.field()
+    hyper_parameter_tuning_parameters: EHyperParameterTuningParameters = attrs.field()
+    recommender_baseline: RecommenderBaseline = attrs.field()
+    recommender_impressions: RecommenderImpressions = attrs.field()
+    signal_analysis_case: str = attrs.field()
+    training_function: Callable = attrs.field()
+
+
+@attrs.define(frozen=True, kw_only=True)
 class ExperimentCasesInterface:
     to_use_benchmarks: list[Benchmarks] = attrs.field()
     to_use_hyper_parameter_tuning_parameters: list[
@@ -318,12 +400,24 @@ class ExperimentCasesInterface:
 
     @property
     def experiment_cases(self) -> list[ExperimentCase]:
-        list_cases = itertools.product(
-            self.to_use_benchmarks,
-            self.to_use_hyper_parameter_tuning_parameters,
-            self.to_use_recommenders,
-            self.to_use_training_functions,
-        )
+        if len(self.to_use_training_functions) == 0:
+            list_cases = itertools.product(
+                self.to_use_benchmarks,
+                self.to_use_hyper_parameter_tuning_parameters,
+                self.to_use_recommenders,
+                [
+                    lambda: print(
+                        "USING DUMMY CALLABLE CHECK `to_use_training_functions` argument when initializing an ExperimentCasesInterface"
+                    )
+                ],
+            )
+        else:
+            list_cases = itertools.product(
+                self.to_use_benchmarks,
+                self.to_use_hyper_parameter_tuning_parameters,
+                self.to_use_recommenders,
+                self.to_use_training_functions,
+            )
 
         return [
             ExperimentCase(
@@ -342,6 +436,50 @@ class ExperimentCasesInterface:
     @property
     def evaluation_strategies(self) -> list[EvaluationStrategy]:
         return list(EvaluationStrategy)
+
+
+@attrs.define(frozen=True, kw_only=True)
+class ExperimentCasesSignalAnalysisInterface:
+    to_use_benchmarks: list[Benchmarks] = attrs.field()
+    to_use_hyper_parameter_tuning_parameters: list[
+        EHyperParameterTuningParameters
+    ] = attrs.field()
+    to_use_recommenders_baselines: list[RecommenderBaseline] = attrs.field()
+    to_use_recommenders_impressions: list[
+        tuple[RecommenderImpressions, str]
+    ] = attrs.field()
+    to_use_training_functions: list[Callable] = attrs.field(
+        default=[],
+        converter=lambda val: val
+        if len(val) > 0
+        else [
+            lambda: print(
+                "USING DUMMY CALLABLE CHECK `to_use_training_functions` argument when initializing an ExperimentCasesInterface"
+            )
+        ],
+    )
+
+    @property
+    def experiment_cases(self) -> list[ExperimentCaseSignalAnalysis]:
+        list_cases = itertools.product(
+            self.to_use_benchmarks,
+            self.to_use_hyper_parameter_tuning_parameters,
+            self.to_use_recommenders_baselines,
+            self.to_use_recommenders_impressions,
+            self.to_use_training_functions,
+        )
+
+        return [
+            ExperimentCaseSignalAnalysis(
+                benchmark=benchmark,
+                hyper_parameter_tuning_parameters=hyper_parameter_tuning_parameters,
+                recommender_baseline=recommender_baseline,
+                recommender_impressions=recommender_impressions_and_case[0],
+                signal_analysis_case=recommender_impressions_and_case[1],
+                training_function=training_function,
+            )
+            for benchmark, hyper_parameter_tuning_parameters, recommender_baseline, recommender_impressions_and_case, training_function in list_cases
+        ]
 
 
 DIR_TRAINED_MODELS = os.path.join(
@@ -443,17 +581,17 @@ MAPPER_AVAILABLE_BENCHMARKS = {
     Benchmarks.ContentWiseImpressions: ExperimentBenchmark(
         benchmark=Benchmarks.ContentWiseImpressions,
         config=ContentWiseImpressionsConfig(),
-        priority=30,
+        priority=3000,
     ),
     Benchmarks.MINDSmall: ExperimentBenchmark(
         benchmark=Benchmarks.MINDSmall,
         config=MINDSmallConfig(),
-        priority=20,
+        priority=2000,
     ),
     Benchmarks.FINNNoSlates: ExperimentBenchmark(
         benchmark=Benchmarks.FINNNoSlates,
         config=FinnNoSlatesConfig(frac_users_to_keep=0.05),
-        priority=10,
+        priority=1000,
     ),
 }
 
@@ -461,136 +599,223 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
     RecommenderBaseline.RANDOM: ExperimentRecommender(
         recommender=recommenders.Random,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=30,
+        priority=999,
     ),
     RecommenderBaseline.TOP_POPULAR: ExperimentRecommender(
         recommender=recommenders.TopPop,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=30,
+        priority=999,
     ),
     RecommenderBaseline.GLOBAL_EFFECTS: ExperimentRecommender(
         recommender=recommenders.GlobalEffects,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=30,
+        priority=999,
     ),
     RecommenderBaseline.USER_KNN: ExperimentRecommender(
         recommender=recommenders.UserKNNCFRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=20,
+        priority=900,
     ),
     RecommenderBaseline.ITEM_KNN: ExperimentRecommender(
         recommender=recommenders.ItemKNNCFRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=20,
-    ),
-    RecommenderBaseline.ASYMMETRIC_SVD: ExperimentRecommender(
-        recommender=recommenders.MatrixFactorization_AsySVD_Cython,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=20,
-    ),
-    RecommenderBaseline.SVDpp: ExperimentRecommender(
-        recommender=recommenders.MatrixFactorization_SVDpp_Cython,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=20,
-    ),
-    RecommenderBaseline.PURE_SVD: ExperimentRecommender(
-        recommender=recommenders.PureSVDRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=20,
-    ),
-    RecommenderBaseline.NMF: ExperimentRecommender(
-        recommender=recommenders.NMFRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=10,
-    ),
-    RecommenderBaseline.IALS: ExperimentRecommender(
-        recommender=recommenders.IALSRecommender,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=5,
-    ),
-    RecommenderBaseline.MF_BPR: ExperimentRecommender(
-        recommender=recommenders.MatrixFactorization_BPR_Cython,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=10,
+        priority=900,
     ),
     RecommenderBaseline.P3_ALPHA: ExperimentRecommender(
         recommender=recommenders.P3alphaRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=10,
+        priority=900,
     ),
     RecommenderBaseline.RP3_BETA: ExperimentRecommender(
         recommender=recommenders.RP3betaRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=10,
+        priority=900,
     ),
-    RecommenderBaseline.SLIM_ELASTIC_NET: ExperimentRecommender(
-        recommender=recommenders.SLIMElasticNetRecommender,
+    RecommenderBaseline.PURE_SVD: ExperimentRecommender(
+        recommender=recommenders.PureSVDRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=5,
+        priority=800,
+    ),
+    RecommenderBaseline.NMF: ExperimentRecommender(
+        recommender=recommenders.NMFRecommender,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        priority=800,
+    ),
+    RecommenderBaseline.MF_BPR: ExperimentRecommender(
+        recommender=recommenders.MatrixFactorization_BPR_Cython,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        priority=700,
+    ),
+    RecommenderBaseline.SVDpp: ExperimentRecommender(
+        recommender=recommenders.MatrixFactorization_SVDpp_Cython,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        priority=700,
+    ),
+    RecommenderBaseline.IALS: ExperimentRecommender(
+        recommender=recommenders.IALSRecommender,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        priority=500,
+    ),
+    RecommenderBaseline.ASYMMETRIC_SVD: ExperimentRecommender(
+        recommender=recommenders.MatrixFactorization_AsySVD_Cython,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        priority=500,
     ),
     RecommenderBaseline.SLIM_BPR: ExperimentRecommender(
         recommender=recommenders.SLIM_BPR_Cython,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=2,
+        priority=600,
+    ),
+    RecommenderBaseline.SLIM_ELASTIC_NET: ExperimentRecommender(
+        recommender=recommenders.SLIMElasticNetRecommender,
+        search_hyper_parameters=SearchHyperParametersBaseRecommender,
+        priority=600,
     ),
     RecommenderBaseline.LIGHT_FM: ExperimentRecommender(
         recommender=recommenders.LightFMCFRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=5,
+        priority=500,
     ),
     RecommenderBaseline.MULT_VAE: ExperimentRecommender(
         recommender=recommenders.MultVAERecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=2,
+        priority=500,
     ),
     RecommenderBaseline.EASE_R: ExperimentRecommender(
         recommender=recommenders.EASE_R_Recommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=1,
+        priority=500,
     ),
     # IMPRESSIONS_FOLDING
     RecommenderFolded.FOLDED: ExperimentRecommender(
         recommender=FoldedMatrixFactorizationRecommender,
         search_hyper_parameters=SearchHyperParametersFoldedMatrixFactorizationRecommender,
-        priority=40,
+        priority=400,
     ),
     # IMPRESSIONS APPROACHES: HEURISTIC
     RecommenderImpressions.LAST_IMPRESSIONS: ExperimentRecommender(
         recommender=LastImpressionsRecommender,
         search_hyper_parameters=SearchHyperParametersLastImpressionsRecommender,
-        priority=50,
+        priority=999,
+        use_gpu=False,
+        do_early_stopping=False,
     ),
     RecommenderImpressions.FREQUENCY_RECENCY: ExperimentRecommender(
         recommender=FrequencyRecencyRecommender,
         search_hyper_parameters=SearchHyperParametersFrequencyRecencyRecommender,
-        priority=50,
+        priority=999,
+        use_gpu=False,
+        do_early_stopping=False,
     ),
     RecommenderImpressions.RECENCY: ExperimentRecommender(
         recommender=RecencyRecommender,
         search_hyper_parameters=SearchHyperParametersRecencyRecommender,
-        priority=50,
+        priority=999,
+        use_gpu=False,
+        do_early_stopping=False,
     ),
     # IMPRESSIONS APPROACHES: RE RANKING
+    RecommenderImpressions.HARD_FREQUENCY_CAPPING: ExperimentRecommender(
+        recommender=HardFrequencyCappingRecommender,
+        search_hyper_parameters=SearchHyperParametersHardFrequencyCappingRecommender,
+        priority=-99,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
     RecommenderImpressions.CYCLING: ExperimentRecommender(
         recommender=CyclingRecommender,
         search_hyper_parameters=SearchHyperParametersCyclingRecommender,
-        priority=60,
+        priority=-99,
+        use_gpu=False,
+        do_early_stopping=False,
     ),
     RecommenderImpressions.IMPRESSIONS_DISCOUNTING: ExperimentRecommender(
         recommender=ImpressionsDiscountingRecommender,
         search_hyper_parameters=SearchHyperParametersImpressionsDiscountingRecommender,
-        priority=70,
+        priority=-99,
+        use_gpu=False,
+        do_early_stopping=False,
     ),
     # IMPRESSIONS APPROACHES: USER PROFILES
     RecommenderImpressions.USER_WEIGHTED_USER_PROFILE: ExperimentRecommender(
         recommender=UserWeightedUserProfileRecommender,
         search_hyper_parameters=SearchHyperParametersWeightedUserProfileRecommender,
-        priority=65,
+        priority=-99,
+        use_gpu=False,
+        do_early_stopping=False,
     ),
     RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE: ExperimentRecommender(
         recommender=ItemWeightedUserProfileRecommender,
         search_hyper_parameters=SearchHyperParametersWeightedUserProfileRecommender,
-        priority=70,
+        priority=-99,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS: ExperimentRecommender(
+        recommender=ImpressionsProfileP3AlphaRecommender,
+        search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS: ExperimentRecommender(
+        recommender=ImpressionsDirectedP3AlphaRecommender,
+        search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS: ExperimentRecommender(
+        recommender=ImpressionsProfileRP3BetaRecommender,
+        search_hyper_parameters=SearchHyperParametersRP3BetaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS: ExperimentRecommender(
+        recommender=ImpressionsDirectedRP3BetaRecommender,
+        search_hyper_parameters=SearchHyperParametersRP3BetaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS: ExperimentRecommender(
+        recommender=ImpressionsProfileLightGCNRecommender,
+        search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
+        priority=40,
+        use_gpu=True,
+        do_early_stopping=True,
+    ),
+    RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS: ExperimentRecommender(
+        recommender=ImpressionsDirectedLightGCNRecommender,
+        search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
+        priority=40,
+        use_gpu=True,
+        do_early_stopping=True,
+    ),
+}
+
+MAPPER_AVAILABLE_RECOMMENDERS_SIGNAL_ANALYSIS = {
+    RecommenderImpressions.HARD_FREQUENCY_CAPPING: ExperimentRecommenderSignalAnalysis(
+        recommender_impressions=HardFrequencyCappingRecommender,
+        available_parameter_search_configurations=HARD_FREQUENCY_CAPPING_HYPER_PARAMETER_SEARCH_CONFIGURATIONS,
+        priority=-99,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.CYCLING: ExperimentRecommenderSignalAnalysis(
+        recommender_impressions=CyclingRecommender,
+        available_parameter_search_configurations=CYCLING_HYPER_PARAMETER_SEARCH_CONFIGURATIONS,
+        priority=-99,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.IMPRESSIONS_DISCOUNTING: ExperimentRecommenderSignalAnalysis(
+        recommender_impressions=ImpressionsDiscountingRecommender,
+        available_parameter_search_configurations=IMPRESSIONS_DISCOUNTING_HYPER_PARAMETER_SEARCH_CONFIGURATIONS,
+        priority=-99,
+        use_gpu=False,
+        do_early_stopping=False,
     ),
 }
 
@@ -598,7 +823,7 @@ MAPPER_ABLATION_AVAILABLE_RECOMMENDERS = {
     RecommenderImpressions.IMPRESSIONS_DISCOUNTING: ExperimentRecommender(
         recommender=ImpressionsDiscountingRecommender,
         search_hyper_parameters=SearchHyperParametersImpressionsDiscountingRecommender,
-        priority=80,
+        priority=-10,
     ),
 }
 

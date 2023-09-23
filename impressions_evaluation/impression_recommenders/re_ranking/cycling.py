@@ -6,8 +6,10 @@ import scipy.sparse as sp
 from Recommenders.BaseRecommender import BaseRecommender
 from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
-    AbstractExtendedBaseRecommender
+from recsys_framework_extensions.recommenders.base import (
+    SearchHyperParametersBaseRecommender,
+    AbstractExtendedBaseRecommender,
+)
 from recsys_framework_extensions.recommenders.rank import rank_data_by_row
 from skopt.space import Integer, Categorical
 
@@ -32,10 +34,17 @@ class SearchHyperParametersCyclingRecommender(SearchHyperParametersBaseRecommend
     )
 
 
-DICT_SEARCH_CONFIGS = {
+CYCLING_HYPER_PARAMETER_SEARCH_CONFIGURATIONS = {
+    "ORIGINAL": SearchHyperParametersCyclingRecommender(),
     "REPRODUCIBILITY_ORIGINAL_PAPER": SearchHyperParametersCyclingRecommender(
         sign=Categorical(categories=[-1]),
-    )
+    ),
+    "SIGNAL_ANALYSIS_SIGN_POSITIVE": SearchHyperParametersCyclingRecommender(
+        sign=Categorical(categories=[1]),
+    ),
+    "SIGNAL_ANALYSIS_SIGN_NEGATIVE": SearchHyperParametersCyclingRecommender(
+        sign=Categorical(categories=[-1]),
+    ),
 }
 
 
@@ -59,35 +68,43 @@ def compute_presentation_score(
 
 
 sp_presentation_score = compute_presentation_score(
-    uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32), weight=3, sign=1
+    uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32),
+    weight=3,
+    sign=1,
 )
 assert np.array_equal(
     sp.csr_matrix([[1, 2], [1, 1], [2, 2]], dtype=np.float32).data,
-    sp_presentation_score.data
+    sp_presentation_score.data,
 )
 
 sp_presentation_score = compute_presentation_score(
-    uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32), weight=5, sign=1
+    uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32),
+    weight=5,
+    sign=1,
 )
 assert np.array_equal(
     sp.csr_matrix([[1, 2], [4, 1], [1, 1]], dtype=np.float32).data,
-    sp_presentation_score.data
+    sp_presentation_score.data,
 )
 
 sp_presentation_score = compute_presentation_score(
-    uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32), weight=3, sign=-1
+    uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32),
+    weight=3,
+    sign=-1,
 )
 assert np.array_equal(
     sp.csr_matrix([[-1, -2], [-1, -1], [-2, -2]], dtype=np.float32).data,
-    sp_presentation_score.data
+    sp_presentation_score.data,
 )
 
 sp_presentation_score = compute_presentation_score(
-    uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32), weight=5, sign=-1
+    uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32),
+    weight=5,
+    sign=-1,
 )
 assert np.array_equal(
     sp.csr_matrix([[-1, -2], [-4, -1], [-1, -1]], dtype=np.float32).data,
-    sp_presentation_score.data
+    sp_presentation_score.data,
 )
 
 
@@ -111,7 +128,9 @@ class CyclingRecommender(AbstractExtendedBaseRecommender):
         self._cycling_weight: int = 3
         self._cycling_sign: T_SIGN = -1
 
-        self.RECOMMENDER_NAME = f"CyclingRecommender_{trained_recommender.RECOMMENDER_NAME}"
+        self.RECOMMENDER_NAME = (
+            f"CyclingRecommender_{trained_recommender.RECOMMENDER_NAME}"
+        )
 
     def _compute_item_score(
         self,
@@ -149,11 +168,15 @@ class CyclingRecommender(AbstractExtendedBaseRecommender):
         num_score_items: int = self.URM_train.shape[1]
 
         # Dense array of shape (M,N) where M is len(user_id_array) and N is the total number of users in the dataset.
-        arr_scores_relevance: np.ndarray = self._trained_recommender._compute_item_score(
-            user_id_array=user_id_array,
-            items_to_compute=items_to_compute,
+        arr_scores_relevance: np.ndarray = (
+            self._trained_recommender._compute_item_score(
+                user_id_array=user_id_array,
+                items_to_compute=items_to_compute,
+            )
         )
-        arr_scores_presentation: np.ndarray = self._matrix_presentation_scores[user_id_array, :].toarray()
+        arr_scores_presentation: np.ndarray = self._matrix_presentation_scores[
+            user_id_array, :
+        ].toarray()
 
         assert (num_score_users, num_score_items) == arr_scores_presentation.shape
         assert (num_score_users, num_score_items) == arr_scores_relevance.shape
@@ -203,13 +226,11 @@ class CyclingRecommender(AbstractExtendedBaseRecommender):
             weight=self._cycling_weight,
             sign=self._cycling_sign,
         )
-        self._matrix_presentation_scores = check_matrix(X=matrix_presentation_scores, format="csr", dtype=np.float32)
+        self._matrix_presentation_scores = check_matrix(
+            X=matrix_presentation_scores, format="csr", dtype=np.float32
+        )
 
-    def save_model(
-        self,
-        folder_path: str,
-        file_name: Optional[str] = None
-    ):
+    def save_model(self, folder_path: str, file_name: Optional[str] = None):
         if file_name is None:
             file_name = self.RECOMMENDER_NAME
 
@@ -220,18 +241,17 @@ class CyclingRecommender(AbstractExtendedBaseRecommender):
                 "_matrix_presentation_scores": self._matrix_presentation_scores,
                 "_cycling_weight": self._cycling_weight,
                 "_cycling_sign": self._cycling_sign,
-            }
+            },
         )
 
-    def validate_load_trained_recommender(
-        self, *args, **kwargs
-    ) -> None:
+    def validate_load_trained_recommender(self, *args, **kwargs) -> None:
         assert hasattr(self, "_cycling_weight")
         assert hasattr(self, "_cycling_sign")
-        assert hasattr(self, "_matrix_presentation_scores") and self._matrix_presentation_scores.nnz > 0
+        assert (
+            hasattr(self, "_matrix_presentation_scores")
+            and self._matrix_presentation_scores.nnz > 0
+        )
 
         self._matrix_presentation_scores = check_matrix(
-            X=self._matrix_presentation_scores,
-            format="csr",
-            dtype=np.float32
+            X=self._matrix_presentation_scores, format="csr", dtype=np.float32
         )

@@ -17,7 +17,9 @@ T_SIGN = Literal[-1, 1]
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class SearchHyperParametersFrequencyRecencyRecommender(SearchHyperParametersBaseRecommender):
+class SearchHyperParametersFrequencyRecencyRecommender(
+    SearchHyperParametersBaseRecommender
+):
     sign_frequency: Categorical = attrs.field(
         default=Categorical(
             categories=[-1, 1],
@@ -52,17 +54,13 @@ class FrequencyRecencyRecommender(AbstractExtendedBaseRecommender):
         Parameters
         ----------
         urm_train: csr_matrix
-            A sparse matrix of shape (M, N), where M = #Users, and N = #Items. The content of this matrix is the latest
-            recorded implicit interaction for the user-item pair (u,i), i.e., urm_train[u,i] = 1
+            A sparse matrix of shape (M, N), where M = #Users, and N = #Items. The content of this matrix is the latest recorded implicit interaction for the user-item pair (u,i), i.e., urm_train[u,i] = 1
 
         uim_frequency: csr_matrix
-            A sparse matrix of shape (M, N), where M = #Users, and N = #Items. The content of this matrix is the
-            frequency of impressions (number of times a given item has been impressed to a given user) for the
-            user-item pair (u,i), i.e., uim_frequency[u,i] = frequency.
+            A sparse matrix of shape (M, N), where M = #Users, and N = #Items. The content of this matrix is the frequency of impressions (number of times a given item has been impressed to a given user) for the user-item pair (u,i), i.e., uim_frequency[u,i] = frequency.
 
         uim_timestamp: csr_matrix
-            A sparse matrix of shape (M, N), where M = #Users, and N = #Items. The content of this matrix is the
-            latest recorded timestamp for the user-item pair (u,i), i.e., uim_timestamp[u,i] = timestamp.
+            A sparse matrix of shape (M, N), where M = #Users, and N = #Items. The content of this matrix is the latest recorded timestamp for the user-item pair (u,i), i.e., uim_timestamp[u,i] = timestamp.
         """
         super().__init__(
             urm_train=urm_train,
@@ -73,8 +71,12 @@ class FrequencyRecencyRecommender(AbstractExtendedBaseRecommender):
 
         self._sign_frequency: T_SIGN = 1
         self._sign_recency: T_SIGN = 1
-        self._sp_matrix_frequency_scores: sp.csr_matrix = sp.csr_matrix([], dtype=np.float32)
-        self._sp_matrix_timestamp_scores: sp.csr_matrix = sp.csr_matrix([], dtype=np.float32)
+        self._sp_matrix_frequency_scores: sp.csr_matrix = sp.csr_matrix(
+            [], dtype=np.float32
+        )
+        self._sp_matrix_timestamp_scores: sp.csr_matrix = sp.csr_matrix(
+            [], dtype=np.float32
+        )
 
     def fit(
         self,
@@ -82,14 +84,18 @@ class FrequencyRecencyRecommender(AbstractExtendedBaseRecommender):
         sign_recency: T_SIGN,
         **kwargs,
     ) -> None:
-
-        sp_matrix_frequency_scores = sign_frequency * self._uim_frequency
-        sp_matrix_timestamp_scores = sign_recency * self._uim_timestamp
-
         self._sign_frequency = sign_frequency
         self._sign_recency = sign_recency
-        self._sp_matrix_frequency_scores = check_matrix(X=sp_matrix_frequency_scores, dtype=np.float32, format="csr")
-        self._sp_matrix_timestamp_scores = check_matrix(X=sp_matrix_timestamp_scores, dtype=np.float32, format="csr")
+
+        self._sp_matrix_frequency_scores = self._sign_frequency * self._uim_frequency
+        self._sp_matrix_frequency_scores = check_matrix(
+            X=self._sp_matrix_frequency_scores, dtype=np.float32, format="csr"
+        )
+
+        self._sp_matrix_timestamp_scores = self._sign_recency * self._uim_timestamp
+        self._sp_matrix_timestamp_scores = check_matrix(
+            X=self._sp_matrix_timestamp_scores, dtype=np.float32, format="csr"
+        )
 
     def save_model(
         self,
@@ -107,11 +113,13 @@ class FrequencyRecencyRecommender(AbstractExtendedBaseRecommender):
                 "_sign_recency": self._sign_recency,
                 "_sp_matrix_frequency_scores": self._sp_matrix_frequency_scores,
                 "_sp_matrix_timestamp_scores": self._sp_matrix_timestamp_scores,
-            }
+            },
         )
 
     def validate_load_trained_recommender(
-        self, *args, **kwargs,
+        self,
+        *args,
+        **kwargs,
     ) -> None:
         assert hasattr(self, "_sign_frequency")
         assert hasattr(self, "_sign_recency")
@@ -119,20 +127,14 @@ class FrequencyRecencyRecommender(AbstractExtendedBaseRecommender):
         assert hasattr(self, "_sp_matrix_timestamp_scores")
 
         self._sp_matrix_frequency_scores = check_matrix(
-            X=self._sp_matrix_frequency_scores,
-            format="csr",
-            dtype=np.float32
+            X=self._sp_matrix_frequency_scores, format="csr", dtype=np.float32
         )
         self._sp_matrix_timestamp_scores = check_matrix(
-            X=self._sp_matrix_timestamp_scores,
-            format="csr",
-            dtype=np.float32
+            X=self._sp_matrix_timestamp_scores, format="csr", dtype=np.float32
         )
 
     def _compute_item_score(
-        self,
-        user_id_array: list[int],
-        items_to_compute: Optional[list[int]] = None
+        self, user_id_array: list[int], items_to_compute: Optional[list[int]] = None
     ) -> np.ndarray:
         """
         Return
@@ -146,8 +148,12 @@ class FrequencyRecencyRecommender(AbstractExtendedBaseRecommender):
         num_score_users: int = len(user_id_array)
         num_score_items: int = self.URM_train.shape[1]
 
-        arr_scores_timestamp = self._sp_matrix_timestamp_scores[user_id_array, :].toarray()
-        arr_scores_frequency = self._sp_matrix_frequency_scores[user_id_array, :].toarray()
+        arr_scores_timestamp = self._sp_matrix_timestamp_scores[
+            user_id_array, :
+        ].toarray()
+        arr_scores_frequency = self._sp_matrix_frequency_scores[
+            user_id_array, :
+        ].toarray()
 
         assert arr_scores_frequency.shape == arr_scores_timestamp.shape
         assert num_score_items == arr_scores_timestamp.shape[1]
@@ -159,7 +165,9 @@ class FrequencyRecencyRecommender(AbstractExtendedBaseRecommender):
         # If we want to compute for only a certain group of items (`items_to_compute` not being None),
         # then we must have a mask that sets -INF to items outside this list.
         if items_to_compute is None:
-            arr_mask_items: np.ndarray = np.ones_like(arr_scores_frequency, dtype=np.bool8)
+            arr_mask_items: np.ndarray = np.ones_like(
+                arr_scores_frequency, dtype=np.bool8
+            )
         else:
             arr_mask_items = np.zeros_like(arr_scores_frequency, dtype=np.bool8)
             arr_mask_items[:, items_to_compute] = True
@@ -189,12 +197,10 @@ class RecencyRecommender(AbstractExtendedBaseRecommender):
         Parameters
         ----------
         urm_train: csr_matrix
-            A sparse matrix of shape (M, N), where M = #Users, and N = #Items. The content of this matrix is the latest
-            recorded implicit interaction for the user-item pair (u,i), i.e., urm_train[u,i] = 1
+            A sparse matrix of shape (M, N), where M = #Users, and N = #Items. The content of this matrix is the latest recorded implicit interaction for the user-item pair (u,i), i.e., urm_train[u,i] = 1
 
         uim_timestamp: csr_matrix
-            A sparse matrix of shape (M, N), where M = #Users, and N = #Items. The content of this matrix is the
-            latest recorded timestamp for the user-item pair (u,i), i.e., uim_timestamp[u,i] = timestamp.
+            A sparse matrix of shape (M, N), where M = #Users, and N = #Items. The content of this matrix is the latest recorded timestamp for the user-item pair (u,i), i.e., uim_timestamp[u,i] = timestamp.
         """
         super().__init__(
             urm_train=urm_train,
@@ -203,7 +209,9 @@ class RecencyRecommender(AbstractExtendedBaseRecommender):
         self._uim_timestamp: sp.csr_matrix = uim_timestamp.copy()
 
         self._sign_recency: T_SIGN = 1
-        self._sp_matrix_timestamp_scores: sp.csr_matrix = sp.csr_matrix([], dtype=np.float32)
+        self._sp_matrix_timestamp_scores: sp.csr_matrix = sp.csr_matrix(
+            [], dtype=np.float32
+        )
 
     def fit(
         self,
@@ -212,8 +220,10 @@ class RecencyRecommender(AbstractExtendedBaseRecommender):
     ) -> None:
         self._sign_recency = sign_recency
 
-        sp_matrix_timestamp_scores = sign_recency * self._uim_timestamp
-        self._sp_matrix_timestamp_scores = check_matrix(X=sp_matrix_timestamp_scores, dtype=np.float32, format="csr")
+        self._sp_matrix_timestamp_scores = self._sign_recency * self._uim_timestamp
+        self._sp_matrix_timestamp_scores = check_matrix(
+            X=self._sp_matrix_timestamp_scores, dtype=np.float32, format="csr"
+        )
 
     def _compute_item_score(
         self,
@@ -239,9 +249,13 @@ class RecencyRecommender(AbstractExtendedBaseRecommender):
         num_score_users: int = len(user_id_array)
         num_score_items: int = self.URM_train.shape[1]
 
-        arr_timestamp_users: np.ndarray = self._sp_matrix_timestamp_scores[user_id_array, :].toarray()
+        arr_timestamp_users: np.ndarray = self._sp_matrix_timestamp_scores[
+            user_id_array, :
+        ].toarray()
         if items_to_compute is None:
-            arr_mask_items: np.ndarray = np.ones_like(arr_timestamp_users, dtype=np.bool8)
+            arr_mask_items: np.ndarray = np.ones_like(
+                arr_timestamp_users, dtype=np.bool8
+            )
         else:
             arr_mask_items = np.zeros_like(arr_timestamp_users, dtype=np.bool8)
             arr_mask_items[:, items_to_compute] = True
@@ -270,11 +284,13 @@ class RecencyRecommender(AbstractExtendedBaseRecommender):
             data_dict_to_save={
                 "_sign_recency": self._sign_recency,
                 "_sp_matrix_timestamp_scores": self._sp_matrix_timestamp_scores,
-            }
+            },
         )
 
     def validate_load_trained_recommender(
-        self, *args, **kwargs,
+        self,
+        *args,
+        **kwargs,
     ) -> None:
         assert hasattr(self, "_sign_recency")
         assert hasattr(self, "_sp_matrix_timestamp_scores")

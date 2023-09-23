@@ -1,31 +1,48 @@
 import itertools
 import os
-from typing import Type, Optional, cast, Union
+from typing import Type, Optional, cast, Union, Sequence
 
 import Recommenders.Recommender_import_list as recommenders
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-from Recommenders.BaseMatrixFactorizationRecommender import BaseMatrixFactorizationRecommender
+from Recommenders.BaseMatrixFactorizationRecommender import (
+    BaseMatrixFactorizationRecommender,
+)
 from Recommenders.BaseRecommender import BaseRecommender
-from Recommenders.BaseSimilarityMatrixRecommender import BaseSimilarityMatrixRecommender, \
-    BaseUserSimilarityMatrixRecommender, BaseItemSimilarityMatrixRecommender
+from Recommenders.BaseSimilarityMatrixRecommender import (
+    BaseSimilarityMatrixRecommender,
+    BaseUserSimilarityMatrixRecommender,
+    BaseItemSimilarityMatrixRecommender,
+)
 from recsys_framework_extensions.data.io import DataIO
 from recsys_framework_extensions.data.mixins import InteractionsDataSplits
 import logging
-from recsys_framework_extensions.plotting import generate_accuracy_and_beyond_metrics_pandas, DataFrameResults
+from recsys_framework_extensions.plotting import (
+    generate_accuracy_and_beyond_metrics_pandas,
+    DataFrameResults,
+)
 
 import impressions_evaluation.experiments.commons as commons
 import impressions_evaluation.experiments.baselines as baselines
-import impressions_evaluation.experiments.re_ranking as re_ranking
-import impressions_evaluation.experiments.time_aware as heuristics
-import impressions_evaluation.experiments.user_profiles as user_profiles
+import impressions_evaluation.experiments.impression_aware.re_ranking as re_ranking
+import impressions_evaluation.experiments.impression_aware.heuristics as heuristics
+import impressions_evaluation.experiments.impression_aware.user_profiles as user_profiles
 
-from impressions_evaluation.impression_recommenders.re_ranking.cycling import CyclingRecommender
-from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import ImpressionsDiscountingRecommender
-from impressions_evaluation.impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
-from impressions_evaluation.impression_recommenders.user_profile.weighted import BaseWeightedUserProfileRecommender, \
-    ItemWeightedUserProfileRecommender, UserWeightedUserProfileRecommender
+from impressions_evaluation.impression_recommenders.re_ranking.cycling import (
+    CyclingRecommender,
+)
+from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import (
+    ImpressionsDiscountingRecommender,
+)
+from impressions_evaluation.impression_recommenders.user_profile.folding import (
+    FoldedMatrixFactorizationRecommender,
+)
+from impressions_evaluation.impression_recommenders.user_profile.weighted import (
+    BaseWeightedUserProfileRecommender,
+    ItemWeightedUserProfileRecommender,
+    UserWeightedUserProfileRecommender,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +91,7 @@ commons.FOLDERS.add(DIR_PARQUET_RESULTS)
 commons.FOLDERS.add(DIR_ACCURACY_METRICS_BASELINES_LATEX)
 commons.FOLDERS.add(DIR_ARTICLE_ACCURACY_METRICS_BASELINES_LATEX)
 
-RESULT_EXPORT_CUTOFFS = [20]
+RESULT_EXPORT_CUTOFFS = [5, 10, 20, 30, 40, 50, 100]
 
 ACCURACY_METRICS_LIST = [
     "PRECISION",
@@ -89,7 +106,7 @@ BEYOND_ACCURACY_METRICS_LIST = [
     "DIVERSITY_MEAN_INTER_LIST",
     "COVERAGE_ITEM",
     "DIVERSITY_GINI",
-    "SHANNON_ENTROPY"
+    "SHANNON_ENTROPY",
 ]
 ALL_METRICS_LIST = [
     *ACCURACY_METRICS_LIST,
@@ -166,14 +183,23 @@ def mock_trained_recommender(
         raise ValueError(
             f"{mock_trained_recommender.__name__} failed because it received an invalid instance of the "
             f"enum {baselines.TrainedRecommenderType} (received value {model_type}). Valid values are "
-            f"{list(baselines.TrainedRecommenderType)}")
+            f"{list(baselines.TrainedRecommenderType)}"
+        )
 
     recommender_name = f"{experiment_recommender.recommender.RECOMMENDER_NAME}"
-    if experiment_recommender.recommender in [recommenders.ItemKNNCFRecommender, recommenders.UserKNNCFRecommender]:
+    if experiment_recommender.recommender in [
+        recommenders.ItemKNNCFRecommender,
+        recommenders.UserKNNCFRecommender,
+    ]:
         assert similarity is not None
-        assert similarity in experiment_hyper_parameter_tuning_parameters.knn_similarity_types
+        assert (
+            similarity
+            in experiment_hyper_parameter_tuning_parameters.knn_similarity_types
+        )
 
-        recommender_name = f"{experiment_recommender.recommender.RECOMMENDER_NAME}_{similarity}"
+        recommender_name = (
+            f"{experiment_recommender.recommender.RECOMMENDER_NAME}_{similarity}"
+        )
 
     folder_path = experiment_model_dir.format(
         benchmark=experiment_benchmark.benchmark.value,
@@ -213,7 +239,7 @@ def mock_trained_recommender(
             setattr(
                 trained_recommender_instance,
                 FoldedMatrixFactorizationRecommender.ATTR_NAME_ITEM_FACTORS,
-                np.array([], np.float32)
+                np.array([], np.float32),
             )
 
             trained_folded_recommender_instance = FoldedMatrixFactorizationRecommender(
@@ -261,7 +287,10 @@ def _print_baselines_metrics(
         base_algorithm_list.append(baseline_experiment_recommender.recommender)
 
         similarities: list[commons.T_SIMILARITY_TYPE] = [None]  # type: ignore
-        if baseline_experiment_recommender.recommender in [recommenders.ItemKNNCFRecommender, recommenders.UserKNNCFRecommender]:
+        if baseline_experiment_recommender.recommender in [
+            recommenders.ItemKNNCFRecommender,
+            recommenders.UserKNNCFRecommender,
+        ]:
             similarities = knn_similarity_list
 
         for similarity in similarities:
@@ -298,7 +327,7 @@ def _print_baselines_metrics(
         beyond_accuracy_metrics_list=beyond_accuracy_metrics_list,
         all_metrics_list=all_metrics_list,
         cutoffs_list=cutoffs_list,
-        icm_names=None
+        icm_names=None,
     )
 
 
@@ -313,9 +342,11 @@ def _print_impressions_heuristics_metrics(
     cutoffs_list: list[int],
     export_experiments_folder_path: str,
 ) -> DataFrameResults:
-    experiments_folder_path = heuristics.DIR_TRAINED_MODELS_TIME_AWARE.format(
-        benchmark=experiment_benchmark.benchmark.value,
-        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+    experiments_folder_path = (
+        heuristics.DIR_TRAINED_MODELS_IMPRESSION_AWARE_HEURISTICS.format(
+            benchmark=experiment_benchmark.benchmark.value,
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+        )
     )
 
     impressions_heuristics_recommenders = [
@@ -334,7 +365,7 @@ def _print_impressions_heuristics_metrics(
         beyond_accuracy_metrics_list=beyond_accuracy_metrics_list,
         all_metrics_list=all_metrics_list,
         cutoffs_list=cutoffs_list,
-        icm_names=None
+        icm_names=None,
     )
 
 
@@ -378,7 +409,7 @@ def _print_impressions_re_ranking_metrics(
             similarities: list[commons.T_SIMILARITY_TYPE] = [None]  # type: ignore
             if baseline_experiment_recommender.recommender in [
                 recommenders.ItemKNNCFRecommender,
-                recommenders.UserKNNCFRecommender
+                recommenders.UserKNNCFRecommender,
             ]:
                 similarities = knn_similarity_list
 
@@ -399,8 +430,10 @@ def _print_impressions_re_ranking_metrics(
                         continue
 
                     re_ranking_class = cast(
-                        Type[Union[CyclingRecommender, ImpressionsDiscountingRecommender]],
-                        re_ranking_experiment_recommender.recommender
+                        Type[
+                            Union[CyclingRecommender, ImpressionsDiscountingRecommender]
+                        ],
+                        re_ranking_experiment_recommender.recommender,
                     )
 
                     re_ranking_recommender = re_ranking_class(
@@ -429,7 +462,7 @@ def _print_impressions_re_ranking_metrics(
         beyond_accuracy_metrics_list=beyond_accuracy_metrics_list,
         all_metrics_list=all_metrics_list,
         cutoffs_list=cutoffs_list,
-        icm_names=None
+        icm_names=None,
     )
 
 
@@ -473,7 +506,7 @@ def _print_ablation_impressions_re_ranking_metrics(
             similarities: list[commons.T_SIMILARITY_TYPE] = [None]  # type: ignore
             if baseline_experiment_recommender.recommender in [
                 recommenders.ItemKNNCFRecommender,
-                recommenders.UserKNNCFRecommender
+                recommenders.UserKNNCFRecommender,
             ]:
                 similarities = knn_similarity_list
 
@@ -494,8 +527,10 @@ def _print_ablation_impressions_re_ranking_metrics(
                         continue
 
                     re_ranking_class = cast(
-                        Type[Union[CyclingRecommender, ImpressionsDiscountingRecommender]],
-                        re_ranking_experiment_recommender.recommender
+                        Type[
+                            Union[CyclingRecommender, ImpressionsDiscountingRecommender]
+                        ],
+                        re_ranking_experiment_recommender.recommender,
                     )
 
                     re_ranking_recommender = re_ranking_class(
@@ -525,7 +560,7 @@ def _print_ablation_impressions_re_ranking_metrics(
         beyond_accuracy_metrics_list=beyond_accuracy_metrics_list,
         all_metrics_list=all_metrics_list,
         cutoffs_list=cutoffs_list,
-        icm_names=None
+        icm_names=None,
     )
 
 
@@ -580,7 +615,7 @@ def _print_impressions_user_profiles_metrics(
             similarities: list[commons.T_SIMILARITY_TYPE] = [None]  # type: ignore
             if baseline_experiment_recommender.recommender in [
                 recommenders.ItemKNNCFRecommender,
-                recommenders.UserKNNCFRecommender
+                recommenders.UserKNNCFRecommender,
             ]:
                 similarities = knn_similarity_list
 
@@ -646,7 +681,7 @@ def _print_impressions_user_profiles_metrics(
 
                     user_profiles_class = cast(
                         Type[BaseWeightedUserProfileRecommender],
-                        user_profiles_experiment_recommender.recommender
+                        user_profiles_experiment_recommender.recommender,
                     )
 
                     setattr(
@@ -674,7 +709,7 @@ def _print_impressions_user_profiles_metrics(
         beyond_accuracy_metrics_list=beyond_accuracy_metrics_list,
         all_metrics_list=all_metrics_list,
         cutoffs_list=cutoffs_list,
-        icm_names=None
+        icm_names=None,
     )
 
 
@@ -704,11 +739,7 @@ def _model_orders(value):
 
 
 def _results_to_pandas(
-    df_baselines: pd.DataFrame,
-    df_heuristics: pd.DataFrame,
-    df_re_ranking: pd.DataFrame,
-    df_ablation_re_ranking: pd.DataFrame,
-    df_user_profiles: pd.DataFrame,
+    dfs: list[pd.DataFrame],
     results_name: str,
     folder_path_latex: str,
     folder_path_csv: str,
@@ -721,142 +752,122 @@ def _results_to_pandas(
     ORDER_COLUMN = "Order"
 
     df_results: pd.DataFrame = pd.concat(
-        [
-            df_baselines,
-            df_heuristics,
-            df_re_ranking,
-            df_ablation_re_ranking,
-            df_user_profiles,
-        ],
+        dfs,
         axis=0,
         ignore_index=False,  # The index is the list of recommender names.
     )
 
     if "accuracy-metrics" == results_name:
         df_results = (
-            df_results
-                .stack(0, dropna=False)  # Sets the @20 column as index.
-                .reset_index(drop=False)  # Makes the @20 column as another column.
-                .rename(
-                    columns={
-                        "level_0": MODEL_COLUMN,
-                        "level_1": CUTOFF_COLUMN,
-                        "algorithm_row_label": MODEL_COLUMN,
-                    })
+            df_results.stack(0, dropna=False)  # Sets the @20 column as index.
+            .reset_index(drop=False)  # Makes the @20 column as another column.
+            .rename(
+                columns={
+                    "level_0": MODEL_COLUMN,
+                    "level_1": CUTOFF_COLUMN,
+                    "algorithm_row_label": MODEL_COLUMN,
+                }
+            )
         )
     elif "times" == results_name:
-        df_results = (
-            df_results
-                .reset_index(drop=False)  # Makes the @20 column as another column.
-                .rename(
-                    columns={
-                        "level_0": MODEL_COLUMN,
-                        "index": MODEL_COLUMN,
-                    })
+        df_results = df_results.reset_index(
+            drop=False
+        ).rename(  # Makes the @20 column as another column.
+            columns={
+                "level_0": MODEL_COLUMN,
+                "index": MODEL_COLUMN,
+            }
         )
     elif "hyper-parameters" == results_name:
         # Resulting dataframe
         # Index: (algorithm_row_label, hyperparameter_name)
         # Columns: [hyperparameter_value]
-        df_results = (
-            df_results
-                .reset_index(drop=False)
-                .rename(
-                    columns={
-                        "algorithm_row_label": MODEL_COLUMN,
-                        "hyperparameter_name": "Hyper-Parameter",
-                        "hyperparameter_value": "Value",
-                    })
+        df_results = df_results.reset_index(drop=False).rename(
+            columns={
+                "algorithm_row_label": MODEL_COLUMN,
+                "hyperparameter_name": "Hyper-Parameter",
+                "hyperparameter_value": "Value",
+            }
         )
     else:
         return
 
     df_results[MODEL_COLUMN] = (
         df_results[MODEL_COLUMN]
-            .str.replace("ImpressionsDiscounting", "Impressions Discounting")
-            .str.replace("FrequencyRecency", "Frequency & Recency")
-            .str.replace("LastImpressions", "Last Impressions")
-            .str.replace("ItemWeightedUserProfile", "Impressions as User Profiles")
-            .str.replace("UserWeightedUserProfile", "Impressions as User Profiles")
-            .str.replace("FoldedMF", "Folded")
-            .str.replace("ABLATION UIM FREQUENCY", "Ablation")
-            .str.strip()
+        .str.replace("ImpressionsDiscounting", "Impressions Discounting")
+        .str.replace("FrequencyRecency", "Frequency & Recency")
+        .str.replace("LastImpressions", "Last Impressions")
+        .str.replace("ItemWeightedUserProfile", "Impressions as User Profiles")
+        .str.replace("UserWeightedUserProfile", "Impressions as User Profiles")
+        .str.replace("FoldedMF", "Folded")
+        .str.replace("ABLATION UIM FREQUENCY", "Ablation")
+        .str.strip()
     )
 
     df_results[MODEL_BASE_COLUMN] = (
         df_results[MODEL_COLUMN]
-            .str.replace("Recommender", "")
-            .str.replace("Cycling", "")
-            .str.replace("Impressions Discounting", "")
-            .str.replace("KNNCF", "KNN CF")
-            .str.replace("Item Weighted Profile", "")
-            .str.replace("User Weighted Profile", "")
-            .str.replace("Impressions as User Profiles", "")
-            .str.replace("Folded", "")
-            .str.replace("ABLATION UIM FREQUENCY", "")
-            .str.replace("Ablation", "")
-            .str.strip()
+        .str.replace("Recommender", "")
+        .str.replace("Cycling", "")
+        .str.replace("Impressions Discounting", "")
+        .str.replace("KNNCF", "KNN CF")
+        .str.replace("Item Weighted Profile", "")
+        .str.replace("User Weighted Profile", "")
+        .str.replace("Impressions as User Profiles", "")
+        .str.replace("Folded", "")
+        .str.replace("ABLATION UIM FREQUENCY", "")
+        .str.replace("Ablation", "")
+        .str.strip()
     )
 
     df_results[MODEL_TYPE_COLUMN] = (
         df_results[MODEL_COLUMN]
-            .str.replace("asymmetric", "")
-            .str.replace("cosine", "")
-            .str.replace("dice", "")
-            .str.replace("jaccard", "")
-            .str.replace("tversky", "")
-
-            .str.replace("CF", "")
-
-            .str.replace("AsySVD", "")
-            .str.replace("BPR", "")
-            .str.replace("FunkSVD", "")
-            .str.replace("ElasticNet", "")
-
-            .str.replace("ItemKNN", "")
-            .str.replace("UserKNN", "")
-
-            .str.replace("PureSVD", "")
-            .str.replace("NMF", "")
-            .str.replace("IALS", "")
-            .str.replace("MF", "")
-            .str.replace("MF AsySVD", "")
-            .str.replace("MF BPR", "")
-            .str.replace("MF FunkSVD", "")
-
-            .str.replace("P3alpha", "")
-            .str.replace("RP3beta", "")
-
-            .str.replace("SLIM", "")
-            .str.replace("SLIM BPR", "")
-            .str.replace("SLIM ElasticNet", "")
-
-            .str.replace("EASE R", "")
-            .str.replace("FM", "")
-            .str.replace("Light", "")
-            .str.replace("LightFM", "")
-            .str.replace("MultVAE", "")
-
-            .str.replace("GlobalEffects", "")
-            .str.replace("Random", "")
-            .str.replace("TopPop", "")
-
-            .str.replace("Last Impressions", "")
-            .str.replace("Frequency & Recency", "")
-            .str.replace("Recency", "")
-            .str.replace("Item Weighted Profile Folded", "Impressions as User Profiles")
-            .str.replace("User Weighted Profile Folded", "Impressions as User Profiles")
-            .str.replace("Impressions as User Profiles Folded", "Impressions as User Profiles")
-
-            .str.strip()
+        .str.replace("asymmetric", "")
+        .str.replace("cosine", "")
+        .str.replace("dice", "")
+        .str.replace("jaccard", "")
+        .str.replace("tversky", "")
+        .str.replace("CF", "")
+        .str.replace("AsySVD", "")
+        .str.replace("BPR", "")
+        .str.replace("FunkSVD", "")
+        .str.replace("ElasticNet", "")
+        .str.replace("ItemKNN", "")
+        .str.replace("UserKNN", "")
+        .str.replace("PureSVD", "")
+        .str.replace("NMF", "")
+        .str.replace("IALS", "")
+        .str.replace("MF", "")
+        .str.replace("MF AsySVD", "")
+        .str.replace("MF BPR", "")
+        .str.replace("MF FunkSVD", "")
+        .str.replace("P3alpha", "")
+        .str.replace("RP3beta", "")
+        .str.replace("SLIM", "")
+        .str.replace("SLIM BPR", "")
+        .str.replace("SLIM ElasticNet", "")
+        .str.replace("EASE R", "")
+        .str.replace("FM", "")
+        .str.replace("Light", "")
+        .str.replace("LightFM", "")
+        .str.replace("MultVAE", "")
+        .str.replace("GlobalEffects", "")
+        .str.replace("Random", "")
+        .str.replace("TopPop", "")
+        .str.replace("Last Impressions", "")
+        .str.replace("Frequency & Recency", "")
+        .str.replace("Recency", "")
+        .str.replace("Item Weighted Profile Folded", "Impressions as User Profiles")
+        .str.replace("User Weighted Profile Folded", "Impressions as User Profiles")
+        .str.replace(
+            "Impressions as User Profiles Folded", "Impressions as User Profiles"
+        )
+        .str.strip()
     )
     df_results[MODEL_TYPE_COLUMN] = df_results[MODEL_TYPE_COLUMN].where(
         df_results[MODEL_TYPE_COLUMN] != "", "Baseline"
     )
 
-    df_results[ORDER_COLUMN] = df_results[MODEL_TYPE_COLUMN].apply(
-        _model_orders
-    )
+    df_results[ORDER_COLUMN] = df_results[MODEL_TYPE_COLUMN].apply(_model_orders)
 
     if results_name == "accuracy-metrics":
         df_results = df_results.sort_values(
@@ -867,10 +878,97 @@ def _results_to_pandas(
         )
 
         df_results_pivoted = df_results.pivot(
-            index=[MODEL_BASE_COLUMN, CUTOFF_COLUMN],
-            columns=[MODEL_TYPE_COLUMN],
-            values=["NDCG", "F1", "PRECISION", "RECALL", "DIVERSITY_MEAN_INTER_LIST", "COVERAGE_ITEM", "DIVERSITY_GINI"]
+            index=[MODEL_BASE_COLUMN, MODEL_COLUMN],
+            columns=[CUTOFF_COLUMN],
+            values=[
+                "NDCG",
+                "PRECISION",
+                "RECALL",
+                "F1",
+                "COVERAGE_ITEM",
+                "DIVERSITY_MEAN_INTER_LIST",
+                "DIVERSITY_GINI",
+                "NOVELTY",
+            ],
         )
+
+        def _sorter_export_table(
+            series_col: pd.Series,
+        ) -> pd.Series:
+            """
+            See: https://stackoverflow.com/a/63902171
+            """
+            reorder: Sequence[Union[str, int]]
+
+            if series_col.name == MODEL_BASE_COLUMN:
+                reorder = [
+                    "Random",
+                    "TopPop",
+                    "Last Impressions",
+                    "Recency",
+                    "Frequency & Recency",
+                    "ItemKNN CF asymmetric",
+                    "ItemKNN CF cosine",
+                    "ItemKNN CF dice",
+                    "ItemKNN CF jaccard",
+                    "ItemKNN CF tversky",
+                    "P3alpha",
+                    "RP3beta",
+                    "UserKNN CF asymmetric",
+                    "UserKNN CF cosine",
+                    "UserKNN CF dice",
+                    "UserKNN CF jaccard",
+                    "UserKNN CF tversky",
+                ]
+            elif series_col.name == MODEL_TYPE_COLUMN:
+                reorder = [
+                    "Baseline",
+                    "Cycling",
+                    "Impressions Discounting",
+                    "Impressions as User Profiles",
+                    "Ablation Impressions Discounting",
+                ]
+            else:
+                raise ValueError(
+                    f"Invalid column name {series_col.name}. "
+                    f"Expected one of 'Model-Centric Taxonomy', 'Data-Centric Taxonomy', 'Signal-Centric Taxonomy', 'Impressions Type', 'Impressions Signal', or 'Recommender Type'"
+                )
+
+            mapper = {name: order for order, name in enumerate(reorder)}
+            return series_col.map(mapper)
+
+        columns_metrics = [
+            "NDCG",
+            "PRECISION",
+            "RECALL",
+            "F1",
+            "COVERAGE_ITEM",
+            "DIVERSITY_MEAN_INTER_LIST",
+            "DIVERSITY_GINI",
+            "NOVELTY",
+        ]
+        columns_index = [
+            MODEL_BASE_COLUMN,
+            MODEL_TYPE_COLUMN,
+        ]
+        df_results_per_cutoff = {
+            cutoff: (
+                df_results[df_results[CUTOFF_COLUMN] == cutoff][
+                    columns_index + columns_metrics
+                ]
+                .set_index(keys=columns_index)
+                .sort_index(ascending=True, inplace=False, key=_sorter_export_table)
+                .astype(np.float64)
+                .copy()
+            )
+            for cutoff in df_results[CUTOFF_COLUMN].unique()
+        }
+
+        df_export = pd.concat(
+            objs=df_results_per_cutoff,
+            axis=1,
+        )
+
     elif "times" == results_name:
         df_results = df_results.sort_values(
             by=[MODEL_BASE_COLUMN, ORDER_COLUMN],
@@ -882,8 +980,9 @@ def _results_to_pandas(
         df_results_pivoted = df_results.pivot(
             index=[MODEL_BASE_COLUMN],
             columns=[MODEL_TYPE_COLUMN],
-            values=["Train Time", "Recommendation Time", "Recommendation Throughput"]
+            values=["Train Time", "Recommendation Time", "Recommendation Throughput"],
         )
+        df_export = df_results
     else:
         df_results = df_results.sort_values(
             by=[MODEL_BASE_COLUMN, ORDER_COLUMN],
@@ -892,8 +991,20 @@ def _results_to_pandas(
             ignore_index=False,
         )
         df_results_pivoted = df_results
+        df_export = df_results
 
     with pd.option_context("max_colwidth", 1000):
+        df_export.to_csv(
+            path_or_buf=os.path.join(folder_path_csv, f"export-{results_name}.csv"),
+            index=True,
+            header=True,
+            encoding="utf-8",
+            na_rep="-",
+            sep=";",
+            decimal=",",
+            float_format="%.4f",
+        )
+
         df_results_pivoted.to_csv(
             path_or_buf=os.path.join(folder_path_csv, f"pivot-{results_name}.csv"),
             index=True,
@@ -901,6 +1012,7 @@ def _results_to_pandas(
             encoding="utf-8",
             na_rep="-",
         )
+
         df_results.to_csv(
             path_or_buf=os.path.join(folder_path_csv, f"{results_name}.csv"),
             index=True,
@@ -909,16 +1021,16 @@ def _results_to_pandas(
             na_rep="-",
         )
 
-        df_results_pivoted.to_latex(
-            buf=os.path.join(folder_path_latex, f"pivot-{results_name}.tex"),
-            index=True,
-            header=True,
-            escape=False,
-            float_format="{:.4f}".format,
-            encoding="utf-8",
-            na_rep="-",
-            longtable=True,
-        )
+        #         df_results_pivoted.to_latex(
+        #             buf=os.path.join(folder_path_latex, f"pivot-{results_name}.tex"),
+        #             index=True,
+        #             header=True,
+        #             escape=False,
+        #             float_format="{:.4f}".format,
+        #             encoding="utf-8",
+        #             na_rep="-",
+        #             longtable=True,
+        #         )
         df_results.to_latex(
             buf=os.path.join(folder_path_latex, f"{results_name}.tex"),
             index=True,
@@ -941,23 +1053,27 @@ def print_results(
     """
     Public method that exports into CSV and LaTeX tables the evaluation metrics, hyper-parameters, and times.
     """
-    printed_experiments: set[tuple[commons.Benchmarks, commons.EHyperParameterTuningParameters]] = set()
+    printed_experiments: set[
+        tuple[commons.Benchmarks, commons.EHyperParameterTuningParameters]
+    ] = set()
 
     baseline_benchmarks = baseline_experiment_cases_interface.to_use_benchmarks
-    baseline_hyper_parameters = baseline_experiment_cases_interface.to_use_hyper_parameter_tuning_parameters
+    baseline_hyper_parameters = (
+        baseline_experiment_cases_interface.to_use_hyper_parameter_tuning_parameters
+    )
 
-    for benchmark, hyper_parameters in itertools.product(baseline_benchmarks, baseline_hyper_parameters):
+    for benchmark, hyper_parameters in itertools.product(
+        baseline_benchmarks, baseline_hyper_parameters
+    ):
         if (benchmark, hyper_parameters) in printed_experiments:
             continue
         else:
             printed_experiments.add((benchmark, hyper_parameters))
 
-        experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
-            benchmark
-        ]
-        experiment_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-            hyper_parameters
-        ]
+        experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[benchmark]
+        experiment_hyper_parameters = (
+            commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[hyper_parameters]
+        )
 
         data_reader = commons.get_reader_from_benchmark(
             benchmark_config=experiment_benchmark.config,
@@ -970,12 +1086,7 @@ def print_results(
         )
 
         urm_test = interaction_data_splits.sp_urm_test
-        num_test_users = cast(
-            int,
-            np.sum(
-                np.ediff1d(urm_test.indptr) >= 1
-            )
-        )
+        num_test_users = cast(int, np.sum(np.ediff1d(urm_test.indptr) >= 1))
 
         folder_path_export_latex = DIR_ACCURACY_METRICS_BASELINES_LATEX.format(
             benchmark=experiment_benchmark.benchmark.value,
@@ -1019,7 +1130,7 @@ def print_results(
             beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
             all_metrics_list=ALL_METRICS_LIST,
             cutoffs_list=RESULT_EXPORT_CUTOFFS,
-            export_experiments_folder_path=folder_path_export_latex
+            export_experiments_folder_path=folder_path_export_latex,
         )
 
         results_re_ranking = _print_impressions_re_ranking_metrics(
@@ -1042,10 +1153,15 @@ def print_results(
             baseline_experiment_cases_interface=baseline_experiment_cases_interface,
             baseline_experiment_benchmark=experiment_benchmark,
             baseline_experiment_hyper_parameters=experiment_hyper_parameters,
-            interaction_data_splits=interaction_data_splits, num_test_users=num_test_users,
-            accuracy_metrics_list=ACCURACY_METRICS_LIST, beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
-            all_metrics_list=ALL_METRICS_LIST, cutoffs_list=RESULT_EXPORT_CUTOFFS,
-            knn_similarity_list=knn_similarity_list, export_experiments_folder_path=folder_path_export_latex)
+            interaction_data_splits=interaction_data_splits,
+            num_test_users=num_test_users,
+            accuracy_metrics_list=ACCURACY_METRICS_LIST,
+            beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
+            all_metrics_list=ALL_METRICS_LIST,
+            cutoffs_list=RESULT_EXPORT_CUTOFFS,
+            knn_similarity_list=knn_similarity_list,
+            export_experiments_folder_path=folder_path_export_latex,
+        )
 
         results_user_profiles = _print_impressions_user_profiles_metrics(
             user_profiles_experiment_cases_interface=user_profiles_experiment_cases_interface,
@@ -1063,11 +1179,13 @@ def print_results(
         )
 
         _results_to_pandas(
-            df_baselines=results_baselines.df_results,
-            df_heuristics=results_heuristics.df_results,
-            df_re_ranking=results_re_ranking.df_results,
-            df_ablation_re_ranking=results_ablation_re_ranking.df_results,
-            df_user_profiles=results_user_profiles.df_results,
+            dfs=[
+                results_baselines.df_results,
+                results_heuristics.df_results,
+                results_re_ranking.df_results,
+                results_ablation_re_ranking.df_results,
+                results_user_profiles.df_results,
+            ],
             results_name="accuracy-metrics",
             folder_path_latex=folder_path_export_latex,
             folder_path_csv=folder_path_export_csv,
@@ -1075,11 +1193,13 @@ def print_results(
         )
 
         _results_to_pandas(
-            df_baselines=results_baselines.df_times,
-            df_heuristics=results_heuristics.df_times,
-            df_re_ranking=results_re_ranking.df_times,
-            df_ablation_re_ranking=results_ablation_re_ranking.df_times,
-            df_user_profiles=results_user_profiles.df_times,
+            dfs=[
+                results_baselines.df_times,
+                results_heuristics.df_times,
+                results_re_ranking.df_times,
+                results_ablation_re_ranking.df_times,
+                results_user_profiles.df_times,
+            ],
             results_name="times",
             folder_path_latex=folder_path_export_latex,
             folder_path_csv=folder_path_export_csv,
@@ -1087,11 +1207,13 @@ def print_results(
         )
 
         _results_to_pandas(
-            df_baselines=results_baselines.df_hyper_params,
-            df_heuristics=results_heuristics.df_hyper_params,
-            df_re_ranking=results_re_ranking.df_hyper_params,
-            df_ablation_re_ranking=results_ablation_re_ranking.df_hyper_params,
-            df_user_profiles=results_user_profiles.df_hyper_params,
+            dfs=[
+                results_baselines.df_hyper_params,
+                results_heuristics.df_hyper_params,
+                results_re_ranking.df_hyper_params,
+                results_ablation_re_ranking.df_hyper_params,
+                results_user_profiles.df_hyper_params,
+            ],
             results_name="hyper-parameters",
             folder_path_latex=folder_path_export_latex,
             folder_path_csv=folder_path_export_csv,
@@ -1100,4 +1222,8 @@ def print_results(
 
         logger.info(
             f"Successfully finished exporting accuracy and beyond-accuracy results to LaTeX"
+            f"Files are located at three locations (CSV, latex, parquet):"
+            f"\n\t* {folder_path_export_csv}"
+            f"\n\t* {folder_path_export_latex}"
+            f"\n\t* {folder_path_export_parquet}"
         )
