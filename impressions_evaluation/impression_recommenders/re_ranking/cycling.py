@@ -67,44 +67,110 @@ def compute_presentation_score(
     return sp_presentation_scores
 
 
-sp_presentation_score = compute_presentation_score(
+def compute_cycling_recommender_score(
+    list_user_ids: list[int],
+    list_item_ids: Optional[list[int]],
+    arr_recommender_scores: np.ndarray,
+    matrix_presentation_scores: sp.csr_matrix,
+    num_score_users: int,
+    num_score_items: int,
+) -> np.ndarray:
+    assert (num_score_users, num_score_items) == arr_recommender_scores.shape
+
+    arr_scores_presentation: np.ndarray = matrix_presentation_scores[
+        list_user_ids, :
+    ].toarray()
+
+    assert (num_score_users, num_score_items) == arr_scores_presentation.shape
+
+    # arr_scores_presentation only holds integer values, while arr_recommender_scores hold real values. We will scale
+    # them to the range [0,...,0.99] in this way, the integer value denotes the presentation score and the decimal
+    # position denotes the other recommender's score. In case of ties in presentation score (integers), the
+    # difference will be given other recommender's score (decimals).
+    # Formula for normalization can be seen here: https://stackoverflow.com/a/50305307
+    start = 0.0
+    end = 0.99
+    width = end - start
+    arr_norm_scores_relevance = (
+        arr_recommender_scores - arr_recommender_scores.min()
+    ) / arr_recommender_scores.ptp() * width + start
+
+    # We do a similar normalization to the `arr_scores_presentation` array.
+    # In this case, we want to keep the range positive, while keeping the order that may exist with negative values.
+    # Hence, we sum all the array by the abs(minimum value) + 1 to ensure the range [1,..., inf].
+    arr_norm_scores_presentation = (
+        arr_scores_presentation + np.abs(arr_scores_presentation.min()) + 1
+    )
+
+    arr_new_item_scores = arr_norm_scores_presentation + arr_norm_scores_relevance
+
+    # Note: `rank_data_by_row` requires that the most important array are place right-most in the tuple. In  this
+    # case, we want to sort first by `arr_scores_presentation` and then by `arr_recommender_scores`.
+    # In the case of cycling, the presentation score is sorted in ascending order (least seen items are given a
+    # higher score). relevance scores are sorted in descending order.
+    # The hyper-parameter optimizer assigns a `sign` to indicate if for these datasets impressions are negative or
+    # positive. If we want to reproduce the results of the original paper, then we must set sign as negative.
+    # arr_new_item_scores = rank_data_by_row(
+    #     keys=(arr_recommender_scores, arr_scores_presentation)
+    # )
+
+    # If we are computing scores to a specific set of items, then we must set items outside this set to np.NINF,
+    # so they are not
+    if list_item_ids is not None:
+        arr_mask_items = np.zeros_like(arr_new_item_scores, dtype=np.bool8)
+        arr_mask_items[:, list_item_ids] = True
+
+        # If the item is in `list_item_ids`, then keep the value from `new_item_scores`.
+        # Else, set to -inf.
+        arr_new_item_scores = np.where(
+            arr_mask_items,
+            arr_new_item_scores,
+            np.NINF,
+        )
+
+    assert (num_score_users, num_score_items) == arr_new_item_scores.shape
+
+    return arr_new_item_scores
+
+
+_sp_presentation_score = compute_presentation_score(
     uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32),
     weight=3,
     sign=1,
 )
 assert np.array_equal(
     sp.csr_matrix([[1, 2], [1, 1], [2, 2]], dtype=np.float32).data,
-    sp_presentation_score.data,
+    _sp_presentation_score.data,
 )
 
-sp_presentation_score = compute_presentation_score(
+_sp_presentation_score = compute_presentation_score(
     uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32),
     weight=5,
     sign=1,
 )
 assert np.array_equal(
     sp.csr_matrix([[1, 2], [4, 1], [1, 1]], dtype=np.float32).data,
-    sp_presentation_score.data,
+    _sp_presentation_score.data,
 )
 
-sp_presentation_score = compute_presentation_score(
+_sp_presentation_score = compute_presentation_score(
     uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32),
     weight=3,
     sign=-1,
 )
 assert np.array_equal(
     sp.csr_matrix([[-1, -2], [-1, -1], [-2, -2]], dtype=np.float32).data,
-    sp_presentation_score.data,
+    _sp_presentation_score.data,
 )
 
-sp_presentation_score = compute_presentation_score(
+_sp_presentation_score = compute_presentation_score(
     uim_frequency=sp.csr_matrix([[1, 2], [4, 5], [7, 8]], dtype=np.float32),
     weight=5,
     sign=-1,
 )
 assert np.array_equal(
     sp.csr_matrix([[-1, -2], [-4, -1], [-1, -1]], dtype=np.float32).data,
-    sp_presentation_score.data,
+    _sp_presentation_score.data,
 )
 
 
@@ -174,40 +240,17 @@ class CyclingRecommender(AbstractExtendedBaseRecommender):
                 items_to_compute=items_to_compute,
             )
         )
-        arr_scores_presentation: np.ndarray = self._matrix_presentation_scores[
-            user_id_array, :
-        ].toarray()
 
-        assert (num_score_users, num_score_items) == arr_scores_presentation.shape
-        assert (num_score_users, num_score_items) == arr_scores_relevance.shape
-
-        # Note: `rank_data_by_row` requires that the most important array are place right-most in the tuple. In  this
-        # case, we want to sort first by `arr_scores_presentation` and then by `arr_scores_relevance`.
-        # In the case of cycling, the presentation score is sorted in ascending order (least seen items are given a
-        # higher score). relevance scores are sorted in descending order.
-        # The hyper-parameter optimizer assigns a `sign` to indicate if for these datasets impressions are negative or
-        # positive. If we want to reproduce the results of the original paper, then we must set sign as negative.
-        new_item_scores = rank_data_by_row(
-            keys=(arr_scores_relevance, arr_scores_presentation)
+        arr_new_item_scores = compute_cycling_recommender_score(
+            list_user_ids=user_id_array,
+            list_item_ids=items_to_compute,
+            num_score_users=num_score_users,
+            num_score_items=num_score_items,
+            arr_recommender_scores=arr_scores_relevance,
+            matrix_presentation_scores=self._matrix_presentation_scores,
         )
 
-        # If we are computing scores to a specific set of items, then we must set items outside this set to np.NINF,
-        # so they are not
-        if items_to_compute is not None:
-            arr_mask_items = np.zeros_like(new_item_scores, dtype=np.bool8)
-            arr_mask_items[:, items_to_compute] = True
-
-            # If the item is in `items_to_compute`, then keep the value from `new_item_scores`.
-            # Else, set to -inf.
-            new_item_scores = np.where(
-                arr_mask_items,
-                new_item_scores,
-                np.NINF,
-            )
-
-        assert (num_score_users, num_score_items) == new_item_scores.shape
-
-        return new_item_scores
+        return arr_new_item_scores
 
     def fit(
         self,
