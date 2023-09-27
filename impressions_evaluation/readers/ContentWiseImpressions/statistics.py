@@ -3,17 +3,23 @@ This module reads, processes, splits, creates impressiosn features, and saves in
 dataset.
 
 """
-from typing import cast
+import os
+from typing import cast, Sequence, Union, Literal
 
 import numpy as np
 import pandas as pd
 import sparse
 import impressions_evaluation.readers.ContentWiseImpressionsReader as cw_impressions_reader
 
+import matplotlib.axes
+import matplotlib.pyplot as plt
+import tikzplotlib
+
+from recsys_framework_extensions.data.io import DataIO
 from tqdm import tqdm
 import logging
 
-
+plt.style.use("ggplot")
 tqdm.pandas()
 
 
@@ -237,5 +243,1133 @@ def content_wise_impressions_statistics_full_dataset() -> dict:
     return statistics
 
 
-def content_wise_impressions_statistics_non_duplicates_dataset():
-    ...
+def compute_popularity(
+    df: pd.DataFrame,
+    column: Union[str, Sequence[str]],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    # df = df.sort_values(
+    #     by=column,
+    #     ascending=True,
+    # )
+    col_popularity = (
+        df[column]
+        .value_counts(
+            normalize=False,
+            sort=True,
+            ascending=False,
+        )
+        .to_frame(name="count")  # Creates column "count"
+        .reset_index(drop=False)  # Creates column with name `column`
+        .reset_index(drop=False)  # Creates column `index`
+    )
+    col_popularity_perc = (
+        df[column]
+        .value_counts(
+            normalize=True,
+            sort=True,
+            ascending=False,
+        )
+        .to_frame(name="count")  # Creates column "count"
+        .reset_index(drop=False)  # Creates column with name `column`
+        .reset_index(drop=False)  # Creates column `index`
+    )
+
+    return col_popularity, col_popularity_perc
+
+
+def plot_popularity(
+    *,
+    df: pd.DataFrame,
+    dir_results: str,
+    x_data: str,
+    y_data: str,
+    x_label: str,
+    y_label: str,
+    name: str,
+    x_scale: Literal["linear", "log"] = "linear",
+    y_scale: Literal["linear", "log"] = "log",
+) -> None:
+    # TODO: Add hot, middle, and long tail lines as in "Multistakeholder Recommender Systems" page 663, year 2022 Figure 2.
+    # This is, two lines, one at 80% and another at 60% interactions.
+    # df = df.sort_values(
+    #     by=y_data,
+    #     ascending=ascending,
+    #     ignore_index=True,
+    #     inplace=False,
+    # )
+
+    plt.plot(
+        x_data,
+        y_data,
+        data=df,
+    )
+    plt.xlabel(f"{x_label} Rank")
+    plt.ylabel(y_label)
+    plt.xscale(x_scale)
+    plt.yscale(y_scale)
+
+    tikzplotlib.clean_figure()
+    tikzplotlib.save(
+        os.path.join(dir_results, f"plot-{name}.tikz"),
+        encoding="utf-8",
+        textsize=9,
+    )
+
+    plt.show()
+
+
+def plot_dates(
+    dir_results: str,
+    df: pd.DataFrame,
+    x_data: str,
+    y_data: str,
+    x_date: bool,
+    y_date: bool,
+    x_label: str,
+    y_label: str,
+    name: str,
+) -> None:
+    # TODO: do not plot all dates in the x-ticks. Plot every 15 days or so. Replace dots by lines? it may work.
+    plt.plot_date(
+        x_data,
+        y_data,
+        data=df,
+        xdate=x_date,
+        ydate=y_date,
+    )
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.yscale("linear")
+    plt.yscale("linear")
+
+    tikzplotlib.save(
+        os.path.join(dir_results, f"plot-{name}.tikz"),
+        encoding="utf-8",
+        textsize=9,
+    )
+
+    plt.show()
+
+
+def compute_popularity_interactions(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_all: pd.DataFrame,
+    df_interactions_only_null_impressions: pd.DataFrame,
+    df_interactions_only_non_null_impressions: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    if all(
+        filename in dict_results
+        for filename in [
+            "user_pop_interactions_all",
+            "user_pop_interactions_null_impressions",
+            "user_pop_interactions_non_null_impressions",
+            "item_pop_interactions_all",
+            "item_pop_interactions_null_impressions",
+            "item_pop_interactions_non_null_impressions",
+            "series_pop_interactions_all",
+            "series_pop_interactions_null_impressions",
+            "series_pop_interactions_non_null_impressions",
+        ]
+    ):
+        logger.warning(
+            "Skipping function %(function)s because all keys in the dictionary already exist.",
+            {"function": compute_popularity_interactions.__name__},
+        )
+        return {}
+
+    user_pop_all, user_pop_perc_all = compute_popularity(
+        df=df_interactions_all,
+        column="user_id",
+    )
+    user_pop_null, user_pop_perc_null = compute_popularity(
+        df=df_interactions_only_null_impressions,
+        column="user_id",
+    )
+    user_pop_non_null, user_pop_perc_non_null = compute_popularity(
+        df=df_interactions_only_non_null_impressions,
+        column="user_id",
+    )
+    for df, name in zip(
+        [user_pop_all, user_pop_null, user_pop_non_null],
+        [
+            "user_popularity_interactions_all",
+            "user_popularity_interactions_null_impressions",
+            "user_popularity_interactions_non_null_impressions",
+        ],
+    ):
+        plot_popularity(
+            df=df,
+            dir_results=dir_results,
+            x_data="index",
+            y_data="count",
+            x_label=r"Users",
+            y_label=r"\# of interactions",
+            name=name,
+        )
+
+    item_pop_all, item_pop_perc_all = compute_popularity(
+        df=df_interactions_all,
+        column="item_id",
+    )
+    item_pop_null, item_pop_perc_null = compute_popularity(
+        df=df_interactions_only_null_impressions,
+        column="item_id",
+    )
+    item_pop_non_null, item_pop_perc_non_null = compute_popularity(
+        df=df_interactions_only_non_null_impressions,
+        column="item_id",
+    )
+    for df, name in zip(
+        [item_pop_all, item_pop_null, item_pop_non_null],
+        [
+            "item_popularity_interactions_all",
+            "item_popularity_interactions_null_impressions",
+            "item_popularity_interactions_non_null_impressions",
+        ],
+    ):
+        plot_popularity(
+            df=df,
+            dir_results=dir_results,
+            x_data="index",
+            y_data="count",
+            x_label=r"Items",
+            y_label=r"\# of interactions",
+            name=name,
+        )
+
+    series_pop_all, series_pop_perc_all = compute_popularity(
+        df=df_interactions_all,
+        column="series_id",
+    )
+    series_pop_null, series_pop_perc_null = compute_popularity(
+        df=df_interactions_only_null_impressions,
+        column="series_id",
+    )
+    series_pop_non_null, series_pop_perc_non_null = compute_popularity(
+        df=df_interactions_only_non_null_impressions,
+        column="series_id",
+    )
+    for df, name in zip(
+        [series_pop_all, series_pop_null, series_pop_non_null],
+        [
+            "series_popularity_interactions_all",
+            "series_popularity_interactions_null_impressions",
+            "series_popularity_interactions_non_null_impressions",
+        ],
+    ):
+        plot_popularity(
+            df=df,
+            dir_results=dir_results,
+            x_data="index",
+            y_data="count",
+            x_label=r"Series",
+            y_label=r"\# of interactions",
+            name=name,
+        )
+
+    return {
+        "user_pop_interactions_all": user_pop_all,
+        "user_pop_interactions_null_impressions": user_pop_null,
+        "user_pop_interactions_non_null_impressions": user_pop_non_null,
+        "item_pop_interactions_all": item_pop_all,
+        "item_pop_interactions_null_impressions": item_pop_null,
+        "item_pop_interactions_non_null_impressions": item_pop_non_null,
+        "series_pop_interactions_all": series_pop_all,
+        "series_pop_interactions_null_impressions": series_pop_null,
+        "series_pop_interactions_non_null_impressions": series_pop_non_null,
+    }
+
+
+def compute_popularity_impressions_contextual(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_only_non_null_impressions: pd.DataFrame,
+    df_impressions_contextual: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    if all(
+        filename in dict_results
+        for filename in [
+            "series_pop_impressions_contextual_with_interactions",
+            "series_pop_impressions_contextual",
+        ]
+    ):
+        logger.warning(
+            "Skipping function %(function)s because all keys in the dictionary already exist.",
+            {"function": compute_popularity_impressions_contextual.__name__},
+        )
+        return {}
+
+    df_interactions_with_contextual_impressions = (
+        df_interactions_only_non_null_impressions[
+            ["user_id", "recommendation_id"]
+        ].merge(
+            right=df_impressions_contextual,
+            how="inner",
+            left_on="recommendation_id",
+            right_index=True,
+        )
+    )
+
+    df_interactions_with_contextual_impressions = (
+        df_interactions_with_contextual_impressions[
+            ["recommended_series_list"]
+        ].explode(
+            column="recommended_series_list",
+            ignore_index=True,
+        )
+    )
+
+    df_only_impressions_contextual = df_impressions_contextual[
+        ["recommended_series_list"]
+    ].explode(
+        column="recommended_series_list",
+        ignore_index=True,
+    )
+
+    (
+        series_pop_impressions_contextual_with_interactions,
+        series_pop_perc_impressions_contextual_with_interactions,
+    ) = compute_popularity(
+        df=df_interactions_with_contextual_impressions,
+        column="recommended_series_list",
+    )
+    (
+        series_pop_impressions_contextual,
+        series_pop_perc_impressions_contextual,
+    ) = compute_popularity(
+        df=df_only_impressions_contextual,
+        column="recommended_series_list",
+    )
+
+    for df, name in zip(
+        [
+            series_pop_impressions_contextual_with_interactions,
+            series_pop_impressions_contextual,
+        ],
+        [
+            "series_popularity_impressions_contextual_with_interactions",
+            "series_popularity_impressions_contextual",
+        ],
+    ):
+        plot_popularity(
+            df=df,
+            dir_results=dir_results,
+            x_data="index",
+            y_data="count",
+            x_label=r"Series",
+            y_label=r"\# of impressions",
+            name=name,
+        )
+
+    return {
+        "series_pop_impressions_contextual_with_interactions": series_pop_impressions_contextual_with_interactions,
+        "series_pop_impressions_contextual": series_pop_impressions_contextual,
+    }
+
+
+def compute_popularity_impressions_global(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_impressions_global: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    if all(
+        filename in dict_results
+        for filename in [
+            "series_pop_impressions_global",
+        ]
+    ):
+        logger.warning(
+            "Skipping function %(function)s because all keys in the dictionary already exist.",
+            {"function": compute_popularity_impressions_global.__name__},
+        )
+        return {}
+
+    df_impressions_global = df_impressions_global[["recommended_series_list"]].explode(
+        column="recommended_series_list",
+        ignore_index=True,
+    )
+
+    (
+        series_pop_impressions_global,
+        series_pop_perc_impressions_global,
+    ) = compute_popularity(
+        df=df_impressions_global,
+        column="recommended_series_list",
+    )
+
+    for df, name in zip(
+        [
+            series_pop_impressions_global,
+        ],
+        [
+            "series_popularity_impressions_global",
+        ],
+    ):
+        plot_popularity(
+            df=df,
+            dir_results=dir_results,
+            x_data="index",
+            y_data="count",
+            x_label=r"Series",
+            y_label=r"\# of impressions",
+            name=name,
+        )
+
+    return {
+        "series_pop_impressions_global": series_pop_impressions_global,
+    }
+
+
+def compute_correlation_interactions_impressions(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+) -> dict[str, pd.DataFrame]:
+    if all(
+        filename in dict_results
+        for filename in [
+            "series_pop_corr_pearson",
+            "series_pop_corr_kendall",
+            "series_pop_corr_spearman",
+        ]
+    ):
+        logger.warning(
+            "Skipping function %(function)s because all keys in the dictionary already exist.",
+            {"function": compute_correlation_interactions_impressions.__name__},
+        )
+        return {}
+
+    assert "series_pop_interactions_all" in dict_results
+    assert "series_pop_impressions_contextual" in dict_results
+    assert "series_pop_impressions_global" in dict_results
+
+    df_series_pop_interactions_all = (
+        dict_results["series_pop_interactions_all"]
+        .set_index("series_id")
+        .rename(
+            columns={
+                "count": "count_interactions",
+                "index": "index_interactions",
+            }
+        )
+    )
+    df_series_pop_impressions_contextual = (
+        dict_results["series_pop_impressions_contextual"]
+        .set_index("recommended_series_list")
+        .rename(
+            columns={
+                "count": "count_impressions_contextual",
+                "index": "index_impressions_contextual",
+            }
+        )
+    )
+    df_series_pop_impressions_global = (
+        dict_results["series_pop_impressions_global"]
+        .set_index("recommended_series_list")
+        .rename(
+            columns={
+                "count": "count_impressions_global",
+                "index": "index_impressions_global",
+            }
+        )
+    )
+
+    df_series_pop = (
+        df_series_pop_interactions_all.merge(
+            right=df_series_pop_impressions_contextual,
+            left_index=True,
+            right_index=True,
+            how="outer",
+            suffixes=("", ""),
+        )
+        .merge(
+            right=df_series_pop_impressions_global,
+            left_index=True,
+            right_index=True,
+            how="outer",
+            suffixes=("", ""),
+        )
+        .fillna(
+            {
+                "count_interactions": 0,
+                "count_impressions_contextual": 0,
+                "count_impressions_global": 0,
+            }
+        )
+        .astype(
+            {
+                "count_interactions": np.int32,
+                "count_impressions_contextual": np.int32,
+                "count_impressions_global": np.int32,
+            }
+        )
+    )
+
+    df_series_pop_corr_pearson = df_series_pop[
+        [
+            "count_interactions",
+            "count_impressions_contextual",
+            "count_impressions_global",
+        ]
+    ].corr(
+        method="pearson",
+    )
+    df_series_pop_corr_kendall = df_series_pop[
+        [
+            "count_interactions",
+            "count_impressions_contextual",
+            "count_impressions_global",
+        ]
+    ].corr(
+        method="kendall",
+    )
+
+    df_series_pop_corr_spearman = df_series_pop[
+        [
+            "count_interactions",
+            "count_impressions_contextual",
+            "count_impressions_global",
+        ]
+    ].corr(
+        method="spearman",
+    )
+
+    df_series_pop_corr_pearson.to_csv(
+        path_or_buf=os.path.join(dir_results, "table-series_pop_corr_pearson.csv"),
+        sep=";",
+        float_format="%.4f",
+        header=True,
+        index=True,
+        encoding="utf-8",
+        decimal=",",
+    )
+
+    df_series_pop_corr_kendall.to_csv(
+        path_or_buf=os.path.join(dir_results, "table-series_pop_corr_kendall.csv"),
+        sep=";",
+        float_format="%.4f",
+        header=True,
+        index=True,
+        encoding="utf-8",
+        decimal=",",
+    )
+
+    df_series_pop_corr_spearman.to_csv(
+        path_or_buf=os.path.join(dir_results, "table-series_pop_corr_spearman.csv"),
+        sep=";",
+        float_format="%.4f",
+        header=True,
+        index=True,
+        encoding="utf-8",
+        decimal=",",
+    )
+
+    return {
+        "series_pop_corr_pearson": df_series_pop_corr_pearson,
+        "series_pop_corr_kendall": df_series_pop_corr_kendall,
+        "series_pop_corr_spearman": df_series_pop_corr_spearman,
+    }
+
+
+def compute_daily_hourly_number_of_interactions(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_all: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    # if all(
+    #     filename in dict_results
+    #     for filename in ["num_interactions_by_date", "num_interactions_by_hour"]
+    # ):
+    #     return {}
+
+    df_num_interactions_by_date = (
+        df_interactions_all.groupby(
+            by="date",
+        )["series_id"]
+        .count()
+        .to_frame()
+        .reset_index(drop=False)
+        .rename(
+            columns={
+                "index": "date",
+                "series_id": "count",
+            }
+        )
+        .sort_values(
+            by="date",
+            ascending=True,
+            ignore_index=True,
+            inplace=False,
+        )
+    )
+    df_num_interactions_by_date["date"] = df_num_interactions_by_date["date"].astype(
+        str
+    )
+
+    df_num_interactions_by_hour = (
+        df_interactions_all.groupby(
+            by="hour",
+        )["series_id"]
+        .count()
+        .to_frame()
+        .reset_index(drop=False)
+        .rename(
+            columns={
+                "index": "hour",
+                "series_id": "count",
+            }
+        )
+        .sort_values(
+            by="hour",
+            ascending=True,
+            ignore_index=True,
+            inplace=False,
+        )
+    )
+
+    for df, x_data, x_label, x_date, name in [
+        (
+            df_num_interactions_by_date,
+            "date",
+            r"Date",
+            True,
+            "num_interactions_by_date",
+        ),
+        (
+            df_num_interactions_by_hour,
+            "hour",
+            r"Hour",
+            False,
+            "num_interactions_by_hours",
+        ),
+    ]:
+        plot_dates(
+            dir_results=dir_results,
+            df=df,
+            name=name,
+            x_data=x_data,
+            y_data="count",
+            x_label=x_label,
+            y_label=r"\# of interactions",
+            x_date=x_date,
+            y_date=False,
+        )
+
+    return {
+        "num_interactions_by_date": df_num_interactions_by_date,
+        "num_interactions_by_hour": df_num_interactions_by_hour,
+    }
+
+
+def compute_daily_hourly_number_of_impressions(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_only_non_null_impressions: pd.DataFrame,
+    df_impressions_contextual: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    # if all(
+    #     filename in dict_results
+    #     for filename in ["num_impressions_by_date", "num_impressions_by_hour"]
+    # ):
+    #     return {}
+
+    df_interactions_with_impressions_contextual = (
+        df_interactions_only_non_null_impressions.merge(
+            right=df_impressions_contextual,
+            on="recommendation_id",
+            how="inner",
+            suffixes=("", ""),
+        )
+    )
+
+    df_num_impressions_by_date = (
+        df_interactions_with_impressions_contextual.groupby(
+            by="date",
+        )["recommendation_list_length"]
+        .sum()
+        .to_frame()
+        .reset_index(drop=False)
+        .rename(
+            columns={
+                "index": "date",
+                "recommendation_list_length": "count",
+            }
+        )
+        .sort_values(
+            by="date",
+            ascending=True,
+            ignore_index=True,
+            inplace=False,
+        )
+    )
+    df_num_impressions_by_date["date"] = df_num_impressions_by_date["date"].astype(str)
+
+    df_num_impressions_by_hour = (
+        df_interactions_with_impressions_contextual.groupby(
+            by="hour",
+        )["recommendation_list_length"]
+        .sum()
+        .to_frame()
+        .reset_index(drop=False)
+        .rename(
+            columns={
+                "index": "hour",
+                "recommendation_list_length": "count",
+            }
+        )
+        .sort_values(
+            by="hour",
+            ascending=True,
+            ignore_index=True,
+            inplace=False,
+        )
+    )
+
+    for df, x_data, x_label, x_date, name in [
+        (
+            df_num_impressions_by_date,
+            "date",
+            r"Date",
+            True,
+            "num_impressions_by_date",
+        ),
+        (
+            df_num_impressions_by_hour,
+            "hour",
+            r"Hour",
+            False,
+            "num_impressions_by_hours",
+        ),
+    ]:
+        plot_dates(
+            dir_results=dir_results,
+            df=df,
+            name=name,
+            x_data=x_data,
+            y_data="count",
+            x_label=x_label,
+            y_label=r"\# of impressions",
+            x_date=x_date,
+            y_date=False,
+        )
+
+    return {
+        "num_impressions_by_date": df_num_impressions_by_date,
+        "num_impressions_by_hour": df_num_impressions_by_hour,
+    }
+
+
+def compute_ctr(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_all: pd.DataFrame,
+    df_interactions_only_non_null_impressions: pd.DataFrame,
+    df_impressions_contextual_all: pd.DataFrame,
+    df_impressions_contextual_only_non_null_impressions: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    # TODO: Generate plots for day of week and hour of day.
+    if all(
+        filename in dict_results
+        for filename in [
+            # Uni-dimensional
+            "num_int_num_imp_ctr_user_all",
+            "num_int_num_imp_ctr_date_all",
+            "num_int_num_imp_ctr_series_all",
+            "num_int_num_imp_ctr_user_only_non_null",
+            "num_int_num_imp_ctr_date_only_non_null",
+            "num_int_num_imp_ctr_series_only_non_null",
+            # two-dimensional
+            "num_int_num_imp_ctr_user_series_all",
+            "num_int_num_imp_ctr_date_user_all",
+            "num_int_num_imp_ctr_date_series_all",
+            "num_int_num_imp_ctr_user_series_only_non_null",
+            "num_int_num_imp_ctr_date_user_only_non_null",
+            "num_int_num_imp_ctr_date_series_only_non_null",
+        ]
+    ):
+        return {}
+
+    results = {}
+    for df_int, df_imp, name, labels, cols_group_by in [
+        # Uni-dimensional computations
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "user_all",
+            ["Users"],
+            ["user_id"],
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "date_all",
+            ["Dates"],
+            ["date"],
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "series_all",
+            ["Series"],
+            ["series_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "user_only_non_null",
+            ["Users"],
+            ["user_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "date_only_non_null",
+            ["Dates"],
+            ["date"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "series_only_non_null",
+            ["Series"],
+            ["series_id"],
+        ),
+        # two-dimensional computations
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "user_series_all",
+            ["Users", "Series"],
+            ["user_id", "series_id"],
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "date_user_all",
+            ["Dates", "Users"],
+            ["date", "user_id"],
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "date_series_all",
+            ["Dates", "Series"],
+            ["date", "series_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "user_series_only_non_null",
+            ["Users", "Series"],
+            ["user_id", "series_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "date_user_only_non_null",
+            ["Dates", "Users"],
+            ["date", "user_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "date_series_only_non_null",
+            ["Dates", "Series"],
+            ["date", "series_id"],
+        ),
+    ]:
+        df_num_int = (
+            df_int.groupby(
+                by=cols_group_by,  # ["user_id", "series_id"],
+                as_index=False,
+            )["item_id"]
+            .count()
+            .rename(columns={"item_id": "num_interactions"})
+        )
+        df_num_imp = (
+            df_imp.groupby(
+                by=cols_group_by,  # ["user_id", "series_id"],
+                as_index=False,
+            )["item_id"]
+            .count()
+            .rename(columns={"item_id": "num_impressions"})
+        )
+        df_num_int_num_imp = (
+            pd.merge(
+                left=df_num_int,
+                right=df_num_imp,
+                on=cols_group_by,
+                how="outer",
+                left_on=None,
+                right_on=None,
+                left_index=False,
+                right_index=False,
+                suffixes=("", ""),
+                sort=False,
+            )
+            .fillna({"num_interactions": 0, "num_impressions": 0})
+            .astype({"num_interactions": np.int32, "num_impressions": np.int32})
+        )
+        df_num_int_num_imp["ctr"] = (
+            df_num_int_num_imp["num_interactions"]
+            / df_num_int_num_imp["num_impressions"]
+        )
+
+        if "date" in cols_group_by and len(cols_group_by) == 1:
+            plot_dates(
+                dir_results,
+                x_data=cols_group_by[0],
+                y_data="ctr",
+                x_label=labels[0],
+                y_label="Click-through rate",
+                x_date=True,
+                y_date=False,
+                df=df_num_int_num_imp,
+                name=f"ctr-{name}",
+            )
+        elif "date" not in cols_group_by and len(cols_group_by) == 1:
+            df_pop = df_num_int_num_imp.sort_values(
+                by="ctr",
+                axis="rows",
+                ascending=False,
+                inplace=False,
+                ignore_index=True,
+            )
+            df_pop[cols_group_by[0]] = np.arange(
+                start=0,
+                stop=df_pop.shape[0],
+                step=1,
+            )
+
+            plot_popularity(
+                df=df_pop,
+                dir_results=dir_results,
+                x_data=cols_group_by[0],
+                y_data="ctr",
+                x_label=labels[0],
+                y_label="Click-through rate (CTR)",
+                x_scale="linear",
+                y_scale="linear",
+                name=f"ctr-{name}",
+            )
+        else:
+            pass
+
+        results[f"num_int_num_imp_ctr_{name}"] = df_num_int_num_imp
+
+    return results
+
+
+def transform_dataframes_add_date_time_hour_to_interactions(
+    *,
+    dfs: list[pd.DataFrame],
+) -> list[pd.DataFrame]:
+    new_dfs = []
+    for df in dfs:
+        df = df.reset_index(
+            drop=False,
+        )
+        df["datetime"] = pd.to_datetime(
+            df["utc_ts_milliseconds"],
+            errors="raise",
+            utc=True,
+            unit="ms",
+        )
+        df["date"] = df["datetime"].dt.date
+        df["time"] = df["datetime"].dt.time
+        df["hour"] = df["datetime"].dt.hour
+        df["month"] = df["datetime"].dt.month
+
+        new_dfs.append(df)
+
+    return new_dfs
+
+
+def transform_dataframes_for_ctr_computation(
+    *,
+    df_interactions_all: pd.DataFrame,
+    df_interactions_only_null_impressions: pd.DataFrame,
+    df_interactions_only_non_null_impressions: pd.DataFrame,
+    df_impressions_contextual: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    df_impressions_contextual = df_impressions_contextual.reset_index(
+        drop=False,
+    )
+
+    # This dataframe holds all recorded impressions without interactions (useful when comparing with only interactions from contextual impressions)
+    # at the same time, the dataframe holds repeated impressions if a user interacted more than once with the same impression.
+    df_impressions_contextual_only_non_null_impressions = (
+        df_interactions_all.merge(
+            right=df_impressions_contextual,
+            on="recommendation_id",
+            how="left",
+            suffixes=("", ""),
+        )
+        .explode(column="recommended_series_list")
+        .dropna(inplace=False, ignore_index=True)
+        .drop(columns=["series_id"])
+        .rename(columns={"recommended_series_list": "series_id"})[
+            # the `item_id` column is to make aggregations, not used at all in computations.
+            ["date", "hour", "user_id", "series_id", "item_id"]
+        ]
+    )
+
+    # This dataframe holds impressions on interactions outside and inside contextual impressions.
+    # As for those interactions outside contextual impressions we do not have the corresponding impression,
+    # we at least count the interaction as one impression.
+    # This must not be done on the other dataframe because the other has the impression on interacted items.
+    # In this case, the only dataframe we must use is `df_interactions_only_null_impressions`.
+    # If not, we're counting impressions twice (one on the contextual impression and one on the interaction)
+    df_impressions_contextual_all = pd.concat(
+        objs=[
+            df_interactions_only_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+        ],
+        axis="index",
+        ignore_index=True,
+    )[
+        # the `item_id` column is to make aggregations, not used at all in computations.
+        ["date", "hour", "user_id", "series_id", "item_id"]
+    ]
+
+    # Remove unnecessary columns on interactions
+    # This dataframe holds all interactions
+    df_interactions_all = df_interactions_all[
+        # the `recommendation_id` column is used in the merge.
+        # the `item_id` column is to make aggregations, not used at all in computations.
+        ["date", "hour", "user_id", "series_id", "item_id"]
+    ]
+
+    # This dataframe holds ony interactions on contextual impressions.
+    df_interactions_only_non_null_impressions = df_interactions_only_non_null_impressions[
+        # the `recommendation_id` column is used in the merge.
+        # the `item_id` column is to make aggregations, not used at all in computations.
+        ["date", "hour", "user_id", "series_id", "item_id"]
+    ]
+
+    return (
+        df_interactions_all,
+        df_interactions_only_non_null_impressions,
+        df_impressions_contextual_all,
+        df_impressions_contextual_only_non_null_impressions,
+    )
+
+
+def contentwise_impressions_compute_statistics_thesis(
+    dir_results: str,
+) -> dict:
+    filename = "statistics_thesis_content_wise_impressions.zip"
+
+    try:
+        dict_results: dict[str, pd.DataFrame] = DataIO.s_load_data(
+            folder_path=dir_results,
+            file_name=filename,
+        )
+    except FileNotFoundError:
+        dict_results = {}
+
+    config = cw_impressions_reader.ContentWiseImpressionsConfig()
+
+    cw_impressions_raw_data = cw_impressions_reader.ContentWiseImpressionsRawData(
+        config=config,
+    )
+
+    df_interactions_all: pd.DataFrame = cw_impressions_raw_data.interactions.compute()
+    df_interactions_only_null_impressions: pd.DataFrame = df_interactions_all[
+        df_interactions_all["recommendation_id"] == -1
+    ]
+    df_interactions_only_non_null_impressions: pd.DataFrame = df_interactions_all[
+        df_interactions_all["recommendation_id"] >= 0
+    ]
+
+    df_impressions_contextual = cw_impressions_raw_data.impressions.compute()
+    df_impressions_global = (
+        cw_impressions_raw_data.impressions_non_direct_link.compute()
+    )
+
+    (
+        df_interactions_all,
+        df_interactions_only_null_impressions,
+        df_interactions_only_non_null_impressions,
+    ) = transform_dataframes_add_date_time_hour_to_interactions(
+        dfs=[
+            df_interactions_all,
+            df_interactions_only_null_impressions,
+            df_interactions_only_non_null_impressions,
+        ]
+    )
+
+    results = compute_popularity_interactions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_all=df_interactions_all,
+        df_interactions_only_null_impressions=df_interactions_only_null_impressions,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+    )
+    dict_results.update(results)
+
+    results = compute_popularity_impressions_contextual(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+        df_impressions_contextual=df_impressions_contextual,
+    )
+    dict_results.update(results)
+
+    results = compute_popularity_impressions_global(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_impressions_global=df_impressions_global,
+    )
+    dict_results.update(results)
+
+    results = compute_correlation_interactions_impressions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+    )
+    dict_results.update(results)
+
+    results = compute_daily_hourly_number_of_interactions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_all=df_interactions_all,
+    )
+    dict_results.update(results)
+
+    results = compute_daily_hourly_number_of_impressions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+        df_impressions_contextual=df_impressions_contextual,
+    )
+    dict_results.update(results)
+
+    (
+        df_interactions_all,
+        df_interactions_only_non_null_impressions,
+        df_impressions_contextual_all,
+        df_impressions_contextual_only_non_null_impressions,
+    ) = transform_dataframes_for_ctr_computation(
+        df_interactions_all=df_interactions_all,
+        df_interactions_only_null_impressions=df_interactions_only_null_impressions,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+        df_impressions_contextual=df_impressions_contextual,
+    )
+
+    results = compute_ctr(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_all=df_interactions_all,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+        df_impressions_contextual_all=df_impressions_contextual_all,
+        df_impressions_contextual_only_non_null_impressions=df_impressions_contextual_only_non_null_impressions,
+    )
+    dict_results.update(results)
+
+    DataIO.s_save_data(
+        folder_path=dir_results,
+        file_name=filename,
+        data_dict_to_save=dict_results,
+    )
+
+    return dict_results
