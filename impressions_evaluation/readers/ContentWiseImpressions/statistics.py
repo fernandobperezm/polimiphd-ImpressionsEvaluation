@@ -301,34 +301,63 @@ def plot_popularity(
     name: str,
     x_scale: Literal["linear", "log"] = "linear",
     y_scale: Literal["linear", "log"] = "log",
+    x_err: Optional[str] = None,
+    y_err: Optional[str] = None,
 ) -> None:
     # TODO: Add hot, middle, and long tail lines as in "Multistakeholder Recommender Systems" page 663, year 2022 Figure 2.
-    # This is, two lines, one at 80% and another at 60% interactions.
-    # df = df.sort_values(
-    #     by=y_data,
-    #     ascending=ascending,
-    #     ignore_index=True,
-    #     inplace=False,
-    # )
+    #  This is, two lines, one at 80% and another at 60% interactions.
 
-    plt.plot(
-        x_data,
-        y_data,
-        data=df,
+    fig: plt.Figure
+    ax: plt.Axes
+
+    fig, ax = plt.subplots(
+        nrows=1,
+        ncols=1,
+        figsize=(
+            SIZE_INCHES_WIDTH,
+            SIZE_INCHES_HEIGHT,
+        ),  # Must be (width, height) by the docs.
+        layout="compressed",
     )
-    plt.xlabel(f"{x_label} Rank")
-    plt.ylabel(y_label)
-    plt.xscale(x_scale)
-    plt.yscale(y_scale)
 
-    tikzplotlib.clean_figure()
+    # TODO: Replace dots by lines? it may work.
+    # ax.plot(x_data, y_data, data=df)
+    ax.errorbar(x=x_data, y=y_data, xerr=x_err, yerr=y_err, data=df)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_xscale(x_scale)
+    ax.set_yscale(y_scale)
+
+    plot_name = "pop" if x_err is None and y_err is None else "pop_error"
+
+    tikzplotlib.clean_figure(fig=fig)
     tikzplotlib.save(
-        os.path.join(dir_results, f"plot-pop-{name}.tikz"),
+        os.path.join(dir_results, f"plot-{plot_name}-{name}.tikz"),  # cannot be kwarg!
+        fig,  # cannot be kwarg!
         encoding="utf-8",
         textsize=9,
     )
 
-    plt.show()
+    fig.show()
+
+    # plt.plot(
+    #     x_data,
+    #     y_data,
+    #     data=df,
+    # )
+    # plt.xlabel(f"{x_label} Rank")
+    # plt.ylabel(y_label)
+    # plt.xscale(x_scale)
+    # plt.yscale(y_scale)
+    #
+    # tikzplotlib.clean_figure()
+    # tikzplotlib.save(
+    #     os.path.join(dir_results, f"plot-pop-{name}.tikz"),
+    #     encoding="utf-8",
+    #     textsize=9,
+    # )
+    #
+    # plt.show()
 
 
 def plot_dates(
@@ -343,71 +372,93 @@ def plot_dates(
     y_label: str,
     name: str,
 ) -> None:
-    # TODO: do not plot all dates in the x-ticks. Plot every 15 days or so. Replace dots by lines? it may work.
-    # fig: plt.Figure
-    # ax: plt.Axes
+    fig: plt.Figure
+    ax: plt.Axes
 
-    # hfmt = dates.DateFormatter("%Y/%m/%d")
-
-    # fig, ax = plt.subplots(
-    #     nrows=1,
-    #     ncols=1,
-    #     figsize=(
-    #         SIZE_INCHES_WIDTH,
-    #         SIZE_INCHES_HEIGHT,
-    #     ),  # Must be (width, height) by the docs.
-    #     layout="compressed",
-    # )
-
-    # if x_date:
-    #     ax.xaxis.axis_date()
-    # if y_date:
-    #     ax.yaxis.axis_date()
-    #
-    # ax.plot(
-    #     x_data,
-    #     y_data,
-    #     data=df,
-    # )
-    #
-    # ax.set_xlabel(x_label)
-    # ax.set_ylabel(y_label)
-    # ax.set_xscale("linear")
-    # ax.set_yscale("linear")
-    # if x_date:
-    #     ax.xaxis.set_major_formatter(hfmt)
-    # if y_date:
-    #     ax.yaxis.set_major_formatter(hfmt)
-    #
-    # tikzplotlib.clean_figure(fig=fig)
-    # tikzplotlib.save(
-    #     os.path.join(dir_results, f"plot-date-{name}.tikz"),  # cannot be kwarg!
-    #     fig,  # cannot be kwarg!
-    #     encoding="utf-8",
-    #     textsize=9,
-    # )
-
-    plt.plot_date(
-        x_data,
-        y_data,
-        data=df,
-        xdate=x_date,
-        ydate=y_date,
+    fig, ax = plt.subplots(
+        nrows=1,
+        ncols=1,
+        figsize=(
+            SIZE_INCHES_WIDTH,
+            SIZE_INCHES_HEIGHT,
+        ),  # Must be (width, height) by the docs.
+        layout="compressed",
     )
-    plt.xlabel(x_label)
-    plt.ylabel(y_label)
-    plt.xscale("linear")
-    plt.yscale("linear")
-    plt.figure()
 
-    tikzplotlib.clean_figure()
+    # NOTE FOR THE FUTURE: despite this method being deprecated, the migration to the newer method is annoying and may break. One thing to remember is to NEVER set the `scale` of the axis that is of type `date`, i.e., DO NOT CALL `ax.set_xscale("linear")` when the X axis contains dates -- calling it causes the plot to print dates as integers.
+    # TODO: do not plot all dates in the x-ticks. Plot every 15 days or so.
+    # TODO: Replace dots by lines? it may work.
+    ax.plot_date(x_data, y_data, data=df, xdate=x_date, ydate=y_date)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    # If one axis is of type `date` then the other must be linear, log, etc.
+    if x_date:
+        ax.set_yscale("linear")
+    if y_date:
+        ax.set_xscale("linear")
+
     tikzplotlib.save(
         os.path.join(dir_results, f"plot-date-{name}.tikz"),  # cannot be kwarg!
+        fig,  # cannot be kwarg!
         encoding="utf-8",
         textsize=9,
     )
 
-    plt.show()
+    fig.show()
+
+
+def plot_dates_with_error_bars(
+    *,
+    dir_results: str,
+    df: pd.DataFrame,
+    x_data: str,
+    y_data: str,
+    x_date: bool,
+    y_date: bool,
+    x_label: str,
+    y_label: str,
+    name: str,
+    x_err: Optional[str] = None,
+    y_err: Optional[str] = None,
+) -> None:
+    fig: plt.Figure
+    ax: plt.Axes
+
+    fig, ax = plt.subplots(
+        nrows=1,
+        ncols=1,
+        figsize=(
+            SIZE_INCHES_WIDTH,
+            SIZE_INCHES_HEIGHT,
+        ),  # Must be (width, height) by the docs.
+        layout="compressed",
+    )
+
+    # NOTE FOR THE FUTURE: despite this method being deprecated, the migration to the newer method is annoying and may break. One thing to remember is to NEVER set the `scale` of the axis that is of type `date`, i.e., DO NOT CALL `ax.set_xscale("linear")` when the X axis contains dates -- calling it causes the plot to print dates as integers.
+    if x_date:
+        ax.xaxis_date(None)
+    if y_date:
+        ax.yaxis_date(None)
+
+    # TODO: do not plot all dates in the x-ticks. Plot every 15 days or so.
+    # TODO: Replace dots by lines? it may work.
+    ax.errorbar(x=x_data, y=y_data, yerr=y_err, x_err=x_err, data=df)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    # If one axis is of type `date` then the other must be linear, log, etc.
+    if x_date:
+        ax.set_yscale("linear")
+    if y_date:
+        ax.set_xscale("linear")
+
+    tikzplotlib.save(
+        os.path.join(dir_results, f"plot-date_errors-{name}.tikz"),  # cannot be kwarg!
+        fig,  # cannot be kwarg!
+        encoding="utf-8",
+        textsize=9,
+    )
+
+    fig.show()
 
 
 def plot_barplot(
@@ -1405,57 +1456,60 @@ def compute_ctr_1d(
     if all(
         filename in dict_results
         for filename in [
-            # Uni-dimensional
-            "num_int_num_imp_ctr_user_all",
-            "num_int_num_imp_ctr_date_all",
-            "num_int_num_imp_ctr_series_all",
-            "num_int_num_imp_ctr_user_only_non_null",
-            "num_int_num_imp_ctr_date_only_non_null",
-            "num_int_num_imp_ctr_series_only_non_null",
+            "ctr_1d_user_all",
+            "ctr_1d_date_all",
+            "ctr_1d_series_all",
+            "ctr_1d_user_only_non_null",
+            "ctr_1d_date_only_non_null",
+            "ctr_1d_series_only_non_null",
         ]
     ):
+        logger.warning(
+            "Skipping function %(function)s because all keys in the dictionary already exist.",
+            {"function": compute_ctr_1d.__name__},
+        )
         return {}
 
     cases = [
         (
             df_interactions_all,
             df_impressions_contextual_all,
-            "user_all",
+            "ctr_1d_user_all",
             "Users",
             "user_id",
         ),
         (
             df_interactions_all,
             df_impressions_contextual_all,
-            "date_all",
+            "ctr_1d_date_all",
             "Dates",
             "date",
         ),
         (
             df_interactions_all,
             df_impressions_contextual_all,
-            "series_all",
+            "ctr_1d_series_all",
             "Series",
             "series_id",
         ),
         (
             df_interactions_only_non_null_impressions,
             df_impressions_contextual_only_non_null_impressions,
-            "user_only_non_null",
+            "ctr_1d_user_only_non_null",
             "Users",
             "user_id",
         ),
         (
             df_interactions_only_non_null_impressions,
             df_impressions_contextual_only_non_null_impressions,
-            "date_only_non_null",
+            "ctr_1d_date_only_non_null",
             "Dates",
             "date",
         ),
         (
             df_interactions_only_non_null_impressions,
             df_impressions_contextual_only_non_null_impressions,
-            "series_only_non_null",
+            "ctr_1d_series_only_non_null",
             "Series",
             "series_id",
         ),
@@ -1471,20 +1525,25 @@ def compute_ctr_1d(
 
         x_data = col_group_by
         y_data = "ctr"
-        x_label = label
+        x_err = None
+        y_err = None
+        x_label = f"{label} rank"
         y_label = "Click-through rate (CTR)"
-        plot_name = f"ctr_1d_{name}"
+        x_scale: Literal["linear"] = "linear"
+        y_scale: Literal["linear"] = "linear"
         if "date" == x_data:
-            plot_dates(
+            plot_dates_with_error_bars(
                 df=df_num_int_num_imp,
                 dir_results=dir_results,
                 x_data=x_data,
                 y_data=y_data,
+                x_err=x_err,
+                y_err=y_err,
                 x_label=x_label,
                 y_label=y_label,
                 x_date=True,
                 y_date=False,
-                name=plot_name,
+                name=name,
             )
         elif "date" != y_data:
             df_pop = df_num_int_num_imp.sort_values(
@@ -1507,14 +1566,14 @@ def compute_ctr_1d(
                 y_data=y_data,
                 x_label=x_label,
                 y_label=y_label,
-                x_scale="linear",
-                y_scale="linear",
-                name=plot_name,
+                x_scale=x_scale,
+                y_scale=y_scale,
+                name=name,
             )
         else:
             pass
 
-        results[f"ctr_1d_{name}"] = df_num_int_num_imp
+        results[name] = df_num_int_num_imp
 
     return results
 
@@ -1531,42 +1590,45 @@ def compute_ctr_2d(
     if all(
         filename in dict_results
         for filename in [
-            # two-dimensional
             # TODO: We must compute the average of the right-most (e.g., on user_series, compute the series mean) and
             #  then use those means+std_dev to create error bars. May be more informative than the uni-dimensional.
-            "num_int_num_imp_ctr_user_series_all",
-            "num_int_num_imp_ctr_user_date_all",
+            "ctr_2d_user_series_all",
+            "ctr_2d_user_date_all",
             #
-            "num_int_num_imp_ctr_series_user_all",
-            "num_int_num_imp_ctr_series_date_all",
+            "ctr_2d_series_user_all",
+            "ctr_2d_series_date_all",
             #
-            "num_int_num_imp_ctr_date_user_all",
-            "num_int_num_imp_ctr_date_series_all",
+            "ctr_2d_date_user_all",
+            "ctr_2d_date_series_all",
             #
-            "num_int_num_imp_ctr_user_date_only_non_null",
-            "num_int_num_imp_ctr_user_series_only_non_null",
+            "ctr_2d_user_date_only_non_null",
+            "ctr_2d_user_series_only_non_null",
             #
-            "num_int_num_imp_ctr_series_user_only_non_null",
-            "num_int_num_imp_ctr_series_date_only_non_null",
+            "ctr_2d_series_user_only_non_null",
+            "ctr_2d_series_date_only_non_null",
             #
-            "num_int_num_imp_ctr_date_user_only_non_null",
-            "num_int_num_imp_ctr_date_series_only_non_null",
+            "ctr_2d_date_user_only_non_null",
+            "ctr_2d_date_series_only_non_null",
         ]
     ):
+        logger.warning(
+            "Skipping function %(function)s because all keys in the dictionary already exist.",
+            {"function": compute_ctr_2d.__name__},
+        )
         return {}
 
     cases = [
         (
             df_interactions_all,
             df_impressions_contextual_all,
-            "user_series_all",
+            "ctr_2d_user_series_all",
             ["Users", "Series"],
             ["user_id", "series_id"],
         ),
         (
             df_interactions_all,
             df_impressions_contextual_all,
-            "user_date_all",
+            "ctr_2d_user_date_all",
             ["Users", "Dates"],
             ["user_id", "date"],
         ),
@@ -1574,14 +1636,14 @@ def compute_ctr_2d(
         (
             df_interactions_all,
             df_impressions_contextual_all,
-            "series_user_all",
+            "ctr_2d_series_user_all",
             ["Series", "Users"],
             ["series_id", "user_id"],
         ),
         (
             df_interactions_all,
             df_impressions_contextual_all,
-            "series_date",
+            "ctr_2d_series_date_all",
             ["Series", "Dates"],
             ["series_id", "date"],
         ),
@@ -1589,14 +1651,14 @@ def compute_ctr_2d(
         (
             df_interactions_all,
             df_impressions_contextual_all,
-            "date_user_all",
+            "ctr_2d_date_user_all",
             ["Dates", "Users"],
             ["date", "user_id"],
         ),
         (
             df_interactions_all,
             df_impressions_contextual_all,
-            "date_series_all",
+            "ctr_2d_date_series_all",
             ["Dates", "Series"],
             ["date", "series_id"],
         ),
@@ -1605,14 +1667,14 @@ def compute_ctr_2d(
         (
             df_interactions_only_non_null_impressions,
             df_impressions_contextual_only_non_null_impressions,
-            "user_series_only_non_null",
+            "ctr_2d_user_series_only_non_null",
             ["Users", "Series"],
             ["user_id", "series_id"],
         ),
         (
             df_interactions_only_non_null_impressions,
             df_impressions_contextual_only_non_null_impressions,
-            "user_date_only_non_null",
+            "ctr_2d_user_date_only_non_null",
             ["Users", "Dates"],
             ["user_id", "date"],
         ),
@@ -1620,14 +1682,14 @@ def compute_ctr_2d(
         (
             df_interactions_only_non_null_impressions,
             df_impressions_contextual_only_non_null_impressions,
-            "series_user_only_non_null",
+            "ctr_2d_series_user_only_non_null",
             ["Series", "Users"],
             ["series_id", "user_id"],
         ),
         (
             df_interactions_only_non_null_impressions,
             df_impressions_contextual_only_non_null_impressions,
-            "series_date",
+            "ctr_2d_series_date_only_non_null",
             ["Series", "Dates"],
             ["series_id", "date"],
         ),
@@ -1635,14 +1697,14 @@ def compute_ctr_2d(
         (
             df_interactions_only_non_null_impressions,
             df_impressions_contextual_only_non_null_impressions,
-            "date_user_only_non_null",
+            "ctr_2d_date_user_only_non_null",
             ["Dates", "Users"],
             ["date", "user_id"],
         ),
         (
             df_interactions_only_non_null_impressions,
             df_impressions_contextual_only_non_null_impressions,
-            "date_series_only_non_null",
+            "ctr_2d_date_series_only_non_null",
             ["Dates", "Series"],
             ["date", "series_id"],
         ),
@@ -1670,31 +1732,38 @@ def compute_ctr_2d(
         label_second: str
         label_first, label_second = labels
 
-        df_ctr_2d_mean_std = df_num_int_num_imp.groupby(
-            by=col_first,
-            as_index=False,
-        )["ctr"].agg(
-            ["mean", "std"],
+        df_ctr_2d_mean_std = (
+            df_num_int_num_imp.groupby(
+                by=col_first,
+                as_index=False,
+            )["ctr"]
+            .agg(
+                ["mean", "std"],
+            )
+            .fillna({"std": 0.0})  # some std is nan.
         )
 
         x_data = col_first
         y_data = "mean"
+        x_err = None
+        y_err = None  # "std"
         x_label = label_first
-        y_label = "Mean click-through rate (CTR)"
-        plot_name = f"ctr-{name}"
-        if "date" in cols_group_by:
-            plot_dates(
+        y_label = f"Mean click-through rate\n{col_second}"
+        if "date" == x_data:
+            plot_dates_with_error_bars(
                 dir_results=dir_results,
                 df=df_ctr_2d_mean_std,
                 x_data=x_data,
                 y_data=y_data,
+                x_err=x_err,
+                y_err=y_err,
                 x_label=x_label,
                 y_label=y_label,
-                x_date="date" in col_first,
-                y_date="date" in col_second,
-                name=plot_name,
+                x_date=True,
+                y_date=False,
+                name=name,
             )
-        elif "date" not in cols_group_by:
+        elif "date" != x_data:
             df_pop = df_ctr_2d_mean_std.sort_values(
                 by=y_data,
                 axis="rows",
@@ -1702,11 +1771,7 @@ def compute_ctr_2d(
                 inplace=False,
                 ignore_index=True,
             )
-            df_pop[x_data] = np.arange(
-                start=0,
-                stop=df_pop.shape[0],
-                step=1,
-            )
+            df_pop[x_data] = np.arange(start=0, stop=df_pop.shape[0], step=1)
 
             plot_popularity(
                 df=df_pop,
@@ -1717,12 +1782,14 @@ def compute_ctr_2d(
                 y_label=y_label,
                 x_scale="linear",
                 y_scale="linear",
-                name=plot_name,
+                x_err=x_err,
+                y_err=y_err,
+                name=name,
             )
         else:
             pass
 
-        results[f"ctr_2d_{name}"] = df_ctr_2d_mean_std
+        results[name] = df_ctr_2d_mean_std
 
     return results
 
@@ -1783,193 +1850,204 @@ def compute_ctr_3d(
     if all(
         filename in dict_results
         for filename in [
-            # Uni-dimensional
-            "num_int_num_imp_ctr_user_all",
-            "num_int_num_imp_ctr_date_all",
-            "num_int_num_imp_ctr_series_all",
-            "num_int_num_imp_ctr_user_only_non_null",
-            "num_int_num_imp_ctr_date_only_non_null",
-            "num_int_num_imp_ctr_series_only_non_null",
-            # two-dimensional
-            # TODO: We must compute the average of the right-most (e.g., on user_series, compute the series mean) and
-            #  then use those means+std_dev to create error bars. May be more informative than the uni-dimensional.
-            "num_int_num_imp_ctr_user_series_all",
-            "num_int_num_imp_ctr_date_user_all",
-            "num_int_num_imp_ctr_date_series_all",
-            "num_int_num_imp_ctr_user_series_only_non_null",
-            "num_int_num_imp_ctr_date_user_only_non_null",
-            "num_int_num_imp_ctr_date_series_only_non_null",
+            "ctr_3d_user_series_date_all",
+            "ctr_3d_user_series_date_only_non_null_impressions",
+            "ctr_3d_user_date_series_all",
+            "ctr_3d_user_date_series_only_non_null_impressions",
+            #
+            "ctr_3d_series_user_date_all",
+            "ctr_3d_series_user_date_only_non_null_impressions",
+            "ctr_3d_series_date_user_all",
+            "ctr_3d_series_date_user_only_non_null_impressions",
+            #
+            "ctr_3d_date_user_series_all",
+            "ctr_3d_date_user_series_only_non_null_impressions",
+            "ctr_3d_date_series_user_all",
+            "ctr_3d_date_series_user_only_non_null_impressions",
         ]
     ):
+        logger.warning(
+            "Skipping function %(function)s because all keys in the dictionary already exist.",
+            {"function": compute_ctr_3d.__name__},
+        )
         return {}
 
+    cases = [
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "ctr_3d_user_series_date_all",
+            ["Users", "Series", "Date"],
+            ["user_id", "series_id", "date"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "ctr_3d_user_series_date_only_non_null_impressions",
+            ["Users", "Series", "Date"],
+            ["user_id", "series_id", "date"],
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "ctr_3d_user_date_series_all",
+            ["Users", "Date", "Series"],
+            ["user_id", "date", "series_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "ctr_3d_user_date_series_only_non_null_impressions",
+            ["Users", "Date", "Series"],
+            ["user_id", "date", "series_id"],
+        ),
+        #
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "ctr_3d_series_user_date_all",
+            ["Series", "Users", "Date"],
+            ["series_id", "user_id", "date"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "ctr_3d_series_user_date_only_non_null_impressions",
+            ["Series", "Users", "Date"],
+            ["series_id", "user_id", "date"],
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "ctr_3d_series_date_user_all",
+            ["Series", "Date", "Users"],
+            ["series_id", "date", "user_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "ctr_3d_series_date_user_only_non_null_impressions",
+            ["Series", "Date", "Users"],
+            ["series_id", "date", "user_id"],
+        ),
+        #
+        #
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "ctr_3d_date_user_series_all",
+            ["Date", "Users", "Series"],
+            ["date", "user_id", "series_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "ctr_3d_date_user_series_only_non_null_impressions",
+            ["Date", "Users", "Series"],
+            ["date", "user_id", "series_id"],
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "ctr_3d_date_series_user_all",
+            ["Date", "Series", "Users"],
+            ["date", "series_id", "user_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "ctr_3d_date_series_user_only_non_null_impressions",
+            ["Date", "Series", "Users"],
+            ["date", "series_id", "user_id"],
+        ),
+    ]
+
     results = {}
-    for df_int, df_imp, name, labels, cols_group_by in [
-        # Uni-dimensional computations
-        (
-            df_interactions_all,
-            df_impressions_contextual_all,
-            "user_all",
-            ["Users"],
-            ["user_id"],
-        ),
-        (
-            df_interactions_all,
-            df_impressions_contextual_all,
-            "date_all",
-            ["Dates"],
-            ["date"],
-        ),
-        (
-            df_interactions_all,
-            df_impressions_contextual_all,
-            "series_all",
-            ["Series"],
-            ["series_id"],
-        ),
-        (
-            df_interactions_only_non_null_impressions,
-            df_impressions_contextual_only_non_null_impressions,
-            "user_only_non_null",
-            ["Users"],
-            ["user_id"],
-        ),
-        (
-            df_interactions_only_non_null_impressions,
-            df_impressions_contextual_only_non_null_impressions,
-            "date_only_non_null",
-            ["Dates"],
-            ["date"],
-        ),
-        (
-            df_interactions_only_non_null_impressions,
-            df_impressions_contextual_only_non_null_impressions,
-            "series_only_non_null",
-            ["Series"],
-            ["series_id"],
-        ),
-        # two-dimensional computations
-        (
-            df_interactions_all,
-            df_impressions_contextual_all,
-            "user_series_all",
-            ["Users", "Series"],
-            ["user_id", "series_id"],
-        ),
-        (
-            df_interactions_all,
-            df_impressions_contextual_all,
-            "date_user_all",
-            ["Dates", "Users"],
-            ["date", "user_id"],
-        ),
-        (
-            df_interactions_all,
-            df_impressions_contextual_all,
-            "date_series_all",
-            ["Dates", "Series"],
-            ["date", "series_id"],
-        ),
-        (
-            df_interactions_only_non_null_impressions,
-            df_impressions_contextual_only_non_null_impressions,
-            "user_series_only_non_null",
-            ["Users", "Series"],
-            ["user_id", "series_id"],
-        ),
-        (
-            df_interactions_only_non_null_impressions,
-            df_impressions_contextual_only_non_null_impressions,
-            "date_user_only_non_null",
-            ["Dates", "Users"],
-            ["date", "user_id"],
-        ),
-        (
-            df_interactions_only_non_null_impressions,
-            df_impressions_contextual_only_non_null_impressions,
-            "date_series_only_non_null",
-            ["Dates", "Series"],
-            ["date", "series_id"],
-        ),
-    ]:
-        df_num_int = (
-            df_int.groupby(
-                by=cols_group_by,  # ["user_id", "series_id"],
-                as_index=False,
-            )["item_id"]
-            .count()
-            .rename(columns={"item_id": "num_interactions"})
-        )
-        df_num_imp = (
-            df_imp.groupby(
-                by=cols_group_by,  # ["user_id", "series_id"],
-                as_index=False,
-            )["item_id"]
-            .count()
-            .rename(columns={"item_id": "num_impressions"})
-        )
-        df_num_int_num_imp = (
-            pd.merge(
-                left=df_num_int,
-                right=df_num_imp,
-                on=cols_group_by,
-                how="outer",
-                left_on=None,
-                right_on=None,
-                left_index=False,
-                right_index=False,
-                suffixes=("", ""),
-                sort=False,
-            )
-            .fillna({"num_interactions": 0, "num_impressions": 0})
-            .astype({"num_interactions": np.int32, "num_impressions": np.int32})
-        )
-        df_num_int_num_imp["ctr"] = (
-            df_num_int_num_imp["num_interactions"]
-            / df_num_int_num_imp["num_impressions"]
+    for df_int, df_imp, name, labels, cols_group_by in cases:
+        df_num_int_num_imp = _compute_num_int_num_imp_ctr(
+            cols_group_by=cols_group_by,
+            df_int=df_int,
+            df_imp=df_imp,
         )
 
-        if "date" in cols_group_by and len(cols_group_by) == 1:
-            plot_dates(
-                dir_results,
-                x_data=cols_group_by[0],
-                y_data="ctr",
-                x_label=labels[0],
-                y_label="Click-through rate",
+        col_first: str
+        col_second: str
+        col_third: str
+        col_first, col_second, col_third = cols_group_by
+
+        label_first: str
+        label_second: str
+        label_third: str
+        label_first, label_second, label_third = labels
+
+        df_ctr_mean_std = (
+            df_num_int_num_imp.groupby(
+                by=[col_first, col_second],
+                as_index=False,
+            )["ctr"]
+            .agg(["mean"])
+            .rename(columns={"mean": "mean_ctr"})
+        )
+
+        df_ctr_3d_mean_stddev = df_ctr_mean_std.groupby(
+            by=col_first,
+            as_index=False,
+        )[
+            "mean_ctr"
+        ].agg(["mean", "std"])
+
+        x_data = col_first
+        y_data = "mean"
+        x_err = None
+        y_err = None  # "std"
+        x_label = label_first
+        y_label = f"Mean click-through rate\n{col_second} - {col_third}"
+
+        if "date" == x_data:
+            plot_dates_with_error_bars(
+                dir_results=dir_results,
+                df=df_ctr_3d_mean_stddev,
+                x_data=x_data,
+                y_data=y_data,
+                x_err=x_err,
+                y_err=y_err,
+                x_label=x_label,
+                y_label=y_label,
                 x_date=True,
                 y_date=False,
-                df=df_num_int_num_imp,
-                name=f"ctr-{name}",
+                name=name,
             )
-        elif "date" not in cols_group_by and len(cols_group_by) == 1:
-            df_pop = df_num_int_num_imp.sort_values(
-                by="ctr",
+        elif "date" != x_data:
+            df_pop = df_ctr_3d_mean_stddev.sort_values(
+                by=y_data,
                 axis="rows",
                 ascending=False,
                 inplace=False,
                 ignore_index=True,
             )
-            df_pop[cols_group_by[0]] = np.arange(
+            df_pop[x_data] = np.arange(
                 start=0,
                 stop=df_pop.shape[0],
                 step=1,
             )
 
             plot_popularity(
-                df=df_pop,
                 dir_results=dir_results,
-                x_data=cols_group_by[0],
-                y_data="ctr",
-                x_label=labels[0],
-                y_label="Click-through rate (CTR)",
+                df=df_pop,
+                x_data=x_data,
+                y_data=y_data,
+                x_err=x_err,
+                y_err=y_err,
+                x_label=x_label,
+                y_label=y_label,
                 x_scale="linear",
                 y_scale="linear",
-                name=f"ctr-{name}",
+                name=f"{name} rank",
             )
         else:
             pass
 
-        results[f"num_int_num_imp_ctr_{name}"] = df_num_int_num_imp
+        results[name] = df_ctr_3d_mean_stddev
 
     return results
 
@@ -1989,7 +2067,7 @@ def transform_dataframes_add_date_time_hour_to_interactions(
             utc=True,
             unit="ms",
         )
-        df["date"] = df["datetime"].dt.date  # .dt.strftime("%Y/%m/%d")
+        df["date"] = df["datetime"].dt.date
         df["time"] = df["datetime"].dt.time
         df["hour"] = df["datetime"].dt.hour
         df["month"] = df["datetime"].dt.month
@@ -2081,6 +2159,8 @@ def contentwise_impressions_compute_statistics_thesis(
         )
     except FileNotFoundError:
         dict_results = {}
+
+    logger.info(f"starting script after loading previously exported info.")
 
     config = cw_impressions_reader.ContentWiseImpressionsConfig()
 
@@ -2175,7 +2255,7 @@ def contentwise_impressions_compute_statistics_thesis(
     #     df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
     # )
     # dict_results.update(results)
-    #
+
     (
         df_interactions_all,
         df_interactions_only_non_null_impressions,
@@ -2199,6 +2279,16 @@ def contentwise_impressions_compute_statistics_thesis(
     dict_results.update(results)
 
     results = compute_ctr_2d(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_all=df_interactions_all,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+        df_impressions_contextual_all=df_impressions_contextual_all,
+        df_impressions_contextual_only_non_null_impressions=df_impressions_contextual_only_non_null_impressions,
+    )
+    dict_results.update(results)
+
+    results = compute_ctr_3d(
         dir_results=dir_results,
         dict_results=dict_results,
         df_interactions_all=df_interactions_all,
