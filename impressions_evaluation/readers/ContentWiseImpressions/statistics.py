@@ -3,12 +3,16 @@ This module reads, processes, splits, creates impressiosn features, and saves in
 dataset.
 
 """
+import enum
 import os
-from typing import cast, Sequence, Union, Literal
+import typing
+from typing import cast, Sequence, Union, Literal, Optional
 
 import numpy as np
 import pandas as pd
 import sparse
+from matplotlib import dates
+
 import impressions_evaluation.readers.ContentWiseImpressionsReader as cw_impressions_reader
 
 import matplotlib.axes
@@ -22,8 +26,17 @@ import logging
 plt.style.use("ggplot")
 tqdm.pandas()
 
+SIZE_INCHES_WIDTH = 5.7  # equals to 14.48 cm
+SIZE_INCHES_HEIGHT = 2.5  # equals to 6.35 cm
 
 logger = logging.getLogger(__name__)
+
+
+class InteractionType(enum.Enum):
+    View = 0
+    Detail = 1
+    Rate = 2
+    Purchase = 3
 
 
 def _set_unique_items(
@@ -310,7 +323,7 @@ def plot_popularity(
 
     tikzplotlib.clean_figure()
     tikzplotlib.save(
-        os.path.join(dir_results, f"plot-{name}.tikz"),
+        os.path.join(dir_results, f"plot-pop-{name}.tikz"),
         encoding="utf-8",
         textsize=9,
     )
@@ -319,6 +332,7 @@ def plot_popularity(
 
 
 def plot_dates(
+    *,
     dir_results: str,
     df: pd.DataFrame,
     x_data: str,
@@ -330,6 +344,49 @@ def plot_dates(
     name: str,
 ) -> None:
     # TODO: do not plot all dates in the x-ticks. Plot every 15 days or so. Replace dots by lines? it may work.
+    # fig: plt.Figure
+    # ax: plt.Axes
+
+    # hfmt = dates.DateFormatter("%Y/%m/%d")
+
+    # fig, ax = plt.subplots(
+    #     nrows=1,
+    #     ncols=1,
+    #     figsize=(
+    #         SIZE_INCHES_WIDTH,
+    #         SIZE_INCHES_HEIGHT,
+    #     ),  # Must be (width, height) by the docs.
+    #     layout="compressed",
+    # )
+
+    # if x_date:
+    #     ax.xaxis.axis_date()
+    # if y_date:
+    #     ax.yaxis.axis_date()
+    #
+    # ax.plot(
+    #     x_data,
+    #     y_data,
+    #     data=df,
+    # )
+    #
+    # ax.set_xlabel(x_label)
+    # ax.set_ylabel(y_label)
+    # ax.set_xscale("linear")
+    # ax.set_yscale("linear")
+    # if x_date:
+    #     ax.xaxis.set_major_formatter(hfmt)
+    # if y_date:
+    #     ax.yaxis.set_major_formatter(hfmt)
+    #
+    # tikzplotlib.clean_figure(fig=fig)
+    # tikzplotlib.save(
+    #     os.path.join(dir_results, f"plot-date-{name}.tikz"),  # cannot be kwarg!
+    #     fig,  # cannot be kwarg!
+    #     encoding="utf-8",
+    #     textsize=9,
+    # )
+
     plt.plot_date(
         x_data,
         y_data,
@@ -339,11 +396,160 @@ def plot_dates(
     )
     plt.xlabel(x_label)
     plt.ylabel(y_label)
+    plt.xscale("linear")
     plt.yscale("linear")
-    plt.yscale("linear")
+    plt.figure()
 
+    tikzplotlib.clean_figure()
     tikzplotlib.save(
-        os.path.join(dir_results, f"plot-{name}.tikz"),
+        os.path.join(dir_results, f"plot-date-{name}.tikz"),  # cannot be kwarg!
+        encoding="utf-8",
+        textsize=9,
+    )
+
+    plt.show()
+
+
+def plot_barplot(
+    *,
+    df: Union[pd.DataFrame, Sequence[tuple[pd.DataFrame, str]]],
+    dir_results: str,
+    x_data: str,
+    y_data: str,
+    x_label: str,
+    y_label: str,
+    ticks_labels: Optional[Sequence[str]],
+    name: str,
+    log: bool = False,
+    align: Literal["center", "edge"] = "center",
+) -> None:
+    if isinstance(df, pd.DataFrame):
+        plt.bar(
+            x_data,
+            y_data,
+            data=df,
+            log=log,
+            tick_label=ticks_labels,
+            align=align,
+        )
+        # plt.xlabel(x_label)
+        # plt.ylabel(y_label)
+
+    else:
+        width = 0.25
+        multiplier = 0
+        for df_single, label in df:
+            offset = width * multiplier
+            rects = plt.bar(
+                df_single[x_data] + offset,
+                df_single[y_data],
+                width=width,
+                label=label,
+                log=log,
+                # tick_label=ticks_labels,
+                # align=align,
+            )
+            multiplier += 1
+            # plt.bar_label(rects, padding=3)
+
+    tikzplotlib.clean_figure()
+    tikzplotlib.save(
+        os.path.join(dir_results, f"plot-bar-{name}.tikz"),
+        encoding="utf-8",
+        textsize=9,
+    )
+
+    plt.show()
+
+
+def plot_histogram(
+    *,
+    df: pd.DataFrame,
+    dir_results: str,
+    x_data: str,
+    x_label: str,
+    y_label: str,
+    name: str,
+    bins: Optional[int] = None,
+    hist_type: Literal["bar", "step"] = "bar",
+    log: bool = False,
+) -> None:
+    plt.hist(
+        x_data,
+        data=df,
+        bins=bins,
+        histtype=hist_type,
+        log=log,
+    )
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+
+    tikzplotlib.clean_figure()
+    tikzplotlib.save(
+        os.path.join(dir_results, f"plot-hist-{name}.tikz"),
+        encoding="utf-8",
+        textsize=9,
+    )
+
+    plt.show()
+
+
+def plot_boxplot(
+    *,
+    df: Optional[pd.DataFrame],
+    dir_results: str,
+    x_data: Union[str, list[np.ndarray]],
+    x_labels: Sequence[str],
+    y_label: str,
+    name: str,
+    vert: bool = True,
+) -> None:
+    plt.boxplot(
+        x_data,
+        data=df,
+        vert=vert,
+        labels=x_labels,
+    )
+    plt.ylabel(y_label)
+
+    tikzplotlib.clean_figure()
+    tikzplotlib.save(
+        os.path.join(dir_results, f"plot-box-{name}.tikz"),
+        encoding="utf-8",
+        textsize=9,
+    )
+
+    plt.show()
+
+
+def plot_violinplot(
+    *,
+    df: Optional[pd.DataFrame],
+    dir_results: str,
+    x_data: Union[str, list[np.ndarray]],
+    x_labels: Sequence[str],
+    y_label: str,
+    name: str,
+    vert: bool = True,
+    show_means: bool = False,
+    show_extrema: bool = True,
+    show_medians: bool = True,
+) -> None:
+    plt.violinplot(
+        x_data,
+        data=df,
+        vert=vert,
+        showmeans=show_means,
+        showextrema=show_extrema,
+        showmedians=show_medians,
+    )
+    plt.xticks(np.arange(1, len(x_labels) + 1), labels=x_labels)
+    plt.xlim(0.25, len(x_labels) + 0.75)
+    plt.ylabel(y_label)
+
+    tikzplotlib.clean_figure()
+    tikzplotlib.save(
+        os.path.join(dir_results, f"plot-violin-{name}.tikz"),
         encoding="utf-8",
         textsize=9,
     )
@@ -959,7 +1165,613 @@ def compute_daily_hourly_number_of_impressions(
     }
 
 
-def compute_ctr(
+def compute_vision_factor(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_all: pd.DataFrame,
+    df_interactions_only_null_impressions: pd.DataFrame,
+    df_interactions_only_non_null_impressions: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    if all(
+        filename in dict_results
+        for filename in [
+            "vision_factor_all",
+            "vision_factor_only_null_impressions",
+            "vision_factor_only_non_null_impressions",
+        ]
+    ):
+        return {}
+
+    df_interactions_all = df_interactions_all[
+        (df_interactions_all["interaction_type"] == InteractionType.View.value)
+        & (df_interactions_all["vision_factor"] >= 0.0)
+    ]
+    df_interactions_only_null_impressions = df_interactions_only_null_impressions[
+        (
+            df_interactions_only_null_impressions["interaction_type"]
+            == InteractionType.View.value
+        )
+        & (df_interactions_only_null_impressions["vision_factor"] >= 0.0)
+    ]
+    df_interactions_only_non_null_impressions = (
+        df_interactions_only_non_null_impressions[
+            (
+                df_interactions_only_non_null_impressions["interaction_type"]
+                == InteractionType.View.value
+            )
+            & (df_interactions_only_non_null_impressions["vision_factor"] >= 0.0)
+        ]
+    )
+
+    for df, name in [
+        (df_interactions_all, "all"),
+        (df_interactions_only_null_impressions, "only_null_impressions"),
+        (df_interactions_only_non_null_impressions, "only_non_null_impressions"),
+    ]:
+        plot_histogram(
+            df=df,
+            dir_results=dir_results,
+            x_data="vision_factor",
+            x_label="Vision factor",
+            y_label="Frequency",
+            name=name,
+            hist_type="bar",
+            log=True,
+            bins=20,
+        )
+
+    plot_boxplot(
+        df=None,
+        dir_results=dir_results,
+        x_data=[
+            df_interactions_all["vision_factor"].to_numpy(),
+            df_interactions_only_null_impressions["vision_factor"].to_numpy(),
+            df_interactions_only_non_null_impressions["vision_factor"].to_numpy(),
+        ],
+        x_labels=[
+            "All \ninteractions",
+            "Outside \ncontextual impressions",
+            "Inside \ncontextual impressions",
+        ],
+        y_label="Vision factor",
+        name="vision_factor_datasets",
+        vert=True,
+    )
+
+    plot_violinplot(
+        df=None,
+        dir_results=dir_results,
+        x_data=[
+            df_interactions_all["vision_factor"].to_numpy(),
+            df_interactions_only_null_impressions["vision_factor"].to_numpy(),
+            df_interactions_only_non_null_impressions["vision_factor"].to_numpy(),
+        ],
+        x_labels=[
+            "All \ninteractions",
+            "Outside \ncontextual impressions",
+            "Inside \ncontextual impressions",
+        ],
+        y_label="Vision factor",
+        name="vision_factor_datasets",
+        vert=True,
+        show_means=True,
+        show_extrema=True,
+        show_medians=True,
+    )
+
+    return {
+        "vision_factor_all": df_interactions_all["vision_factor"].to_frame(),
+        "vision_factor_only_null_impressions": df_interactions_only_null_impressions[
+            "vision_factor"
+        ].to_frame(),
+        "vision_factor_only_non_null_impressions": df_interactions_only_non_null_impressions[
+            "vision_factor"
+        ].to_frame(),
+    }
+
+
+def compute_ratings(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_all: pd.DataFrame,
+    df_interactions_only_null_impressions: pd.DataFrame,
+    df_interactions_only_non_null_impressions: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    if all(
+        filename in dict_results
+        for filename in [
+            "explicit_rating_all",
+            "explicit_rating_only_null_impressions",
+            "explicit_rating_only_non_null_impressions",
+        ]
+    ):
+        return {}
+
+    df_interactions_all = (
+        df_interactions_all[
+            (df_interactions_all["interaction_type"] == InteractionType.Rate.value)
+            & (df_interactions_all["explicit_rating"] >= 0.0)
+        ]["explicit_rating"]
+        .value_counts(ascending=False)
+        .sort_index()
+        .reset_index(drop=False)
+        .assign(
+            label=lambda df: df["explicit_rating"].apply(
+                lambda val: f"{val:.1f}",
+                convert_dtype=True,
+            )
+        )
+    )
+
+    df_interactions_only_null_impressions = (
+        df_interactions_only_null_impressions[
+            (
+                df_interactions_only_null_impressions["interaction_type"]
+                == InteractionType.Rate.value
+            )
+            & (df_interactions_only_null_impressions["explicit_rating"] >= 0.0)
+        ]["explicit_rating"]
+        .value_counts(ascending=False)
+        .sort_index()
+        .reset_index(drop=False)
+        .assign(
+            label=lambda df: df["explicit_rating"].apply(
+                lambda val: f"{val:.1f}",
+                convert_dtype=True,
+            )
+        )
+    )
+
+    df_interactions_only_non_null_impressions = (
+        df_interactions_only_non_null_impressions[
+            (
+                df_interactions_only_non_null_impressions["interaction_type"]
+                == InteractionType.Rate.value
+            )
+            & (df_interactions_only_non_null_impressions["explicit_rating"] >= 0.0)
+        ]["explicit_rating"]
+        .value_counts(ascending=False)
+        .sort_index()
+        .reset_index(drop=False)
+        .assign(
+            label=lambda df: df["explicit_rating"].apply(
+                lambda val: f"{val:.1f}",
+                convert_dtype=True,
+            )
+        )
+    )
+    df_interactions_only_non_null_impressions[
+        "label"
+    ] = df_interactions_only_non_null_impressions["explicit_rating"].apply(
+        lambda val: f"{val:.1f}",
+        convert_dtype=True,
+    )
+
+    for df, name in [
+        (df_interactions_all, "explicit_ratings_all"),
+        (
+            df_interactions_only_null_impressions,
+            "explicit_ratings_only_null_impressions",
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            "explicit_ratings_only_non_null_impressions",
+        ),
+    ]:
+        plot_barplot(
+            df=df,
+            dir_results=dir_results,
+            x_data="explicit_rating",
+            y_data="count",
+            x_label="Rating",
+            y_label="Count",
+            ticks_labels=df["label"],
+            name=name,
+            log=True,
+        )
+
+    plot_barplot(
+        df=[
+            (df_interactions_all, "All interactions"),
+            (df_interactions_only_null_impressions, "Outside\nimpressions"),
+            (df_interactions_only_non_null_impressions, "Inside\nimpressions"),
+        ],
+        dir_results=dir_results,
+        x_data="explicit_rating",
+        y_data="count",
+        x_label="Rating",
+        y_label="Count",
+        ticks_labels=df_interactions_all["label"],
+        name="explicit_ratings_datasets",
+        log=True,
+    )
+
+    return {
+        "explicit_rating_all": df_interactions_all,
+        "explicit_rating_only_null_impressions": df_interactions_only_null_impressions,
+        "explicit_rating_only_non_null_impressions": df_interactions_only_non_null_impressions,
+    }
+
+
+def compute_ctr_1d(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_all: pd.DataFrame,
+    df_interactions_only_non_null_impressions: pd.DataFrame,
+    df_impressions_contextual_all: pd.DataFrame,
+    df_impressions_contextual_only_non_null_impressions: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    # TODO: Generate plots for day of week and hour of day.
+    if all(
+        filename in dict_results
+        for filename in [
+            # Uni-dimensional
+            "num_int_num_imp_ctr_user_all",
+            "num_int_num_imp_ctr_date_all",
+            "num_int_num_imp_ctr_series_all",
+            "num_int_num_imp_ctr_user_only_non_null",
+            "num_int_num_imp_ctr_date_only_non_null",
+            "num_int_num_imp_ctr_series_only_non_null",
+        ]
+    ):
+        return {}
+
+    cases = [
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "user_all",
+            "Users",
+            "user_id",
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "date_all",
+            "Dates",
+            "date",
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "series_all",
+            "Series",
+            "series_id",
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "user_only_non_null",
+            "Users",
+            "user_id",
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "date_only_non_null",
+            "Dates",
+            "date",
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "series_only_non_null",
+            "Series",
+            "series_id",
+        ),
+    ]
+
+    results = {}
+    for df_int, df_imp, name, label, col_group_by in cases:
+        df_num_int_num_imp = _compute_num_int_num_imp_ctr(
+            cols_group_by=col_group_by,
+            df_imp=df_imp,
+            df_int=df_int,
+        )
+
+        x_data = col_group_by
+        y_data = "ctr"
+        x_label = label
+        y_label = "Click-through rate (CTR)"
+        plot_name = f"ctr_1d_{name}"
+        if "date" == x_data:
+            plot_dates(
+                df=df_num_int_num_imp,
+                dir_results=dir_results,
+                x_data=x_data,
+                y_data=y_data,
+                x_label=x_label,
+                y_label=y_label,
+                x_date=True,
+                y_date=False,
+                name=plot_name,
+            )
+        elif "date" != y_data:
+            df_pop = df_num_int_num_imp.sort_values(
+                by=y_data,
+                axis="rows",
+                ascending=False,
+                inplace=False,
+                ignore_index=True,
+            )
+            df_pop[x_data] = np.arange(
+                start=0,
+                stop=df_pop.shape[0],
+                step=1,
+            )
+
+            plot_popularity(
+                df=df_pop,
+                dir_results=dir_results,
+                x_data=x_data,
+                y_data=y_data,
+                x_label=x_label,
+                y_label=y_label,
+                x_scale="linear",
+                y_scale="linear",
+                name=plot_name,
+            )
+        else:
+            pass
+
+        results[f"ctr_1d_{name}"] = df_num_int_num_imp
+
+    return results
+
+
+def compute_ctr_2d(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_all: pd.DataFrame,
+    df_interactions_only_non_null_impressions: pd.DataFrame,
+    df_impressions_contextual_all: pd.DataFrame,
+    df_impressions_contextual_only_non_null_impressions: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    # TODO: Generate plots for day of week and hour of day.
+    if all(
+        filename in dict_results
+        for filename in [
+            # two-dimensional
+            # TODO: We must compute the average of the right-most (e.g., on user_series, compute the series mean) and
+            #  then use those means+std_dev to create error bars. May be more informative than the uni-dimensional.
+            "num_int_num_imp_ctr_user_series_all",
+            "num_int_num_imp_ctr_user_date_all",
+            #
+            "num_int_num_imp_ctr_series_user_all",
+            "num_int_num_imp_ctr_series_date_all",
+            #
+            "num_int_num_imp_ctr_date_user_all",
+            "num_int_num_imp_ctr_date_series_all",
+            #
+            "num_int_num_imp_ctr_user_date_only_non_null",
+            "num_int_num_imp_ctr_user_series_only_non_null",
+            #
+            "num_int_num_imp_ctr_series_user_only_non_null",
+            "num_int_num_imp_ctr_series_date_only_non_null",
+            #
+            "num_int_num_imp_ctr_date_user_only_non_null",
+            "num_int_num_imp_ctr_date_series_only_non_null",
+        ]
+    ):
+        return {}
+
+    cases = [
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "user_series_all",
+            ["Users", "Series"],
+            ["user_id", "series_id"],
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "user_date_all",
+            ["Users", "Dates"],
+            ["user_id", "date"],
+        ),
+        #
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "series_user_all",
+            ["Series", "Users"],
+            ["series_id", "user_id"],
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "series_date",
+            ["Series", "Dates"],
+            ["series_id", "date"],
+        ),
+        #
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "date_user_all",
+            ["Dates", "Users"],
+            ["date", "user_id"],
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "date_series_all",
+            ["Dates", "Series"],
+            ["date", "series_id"],
+        ),
+        #
+        #
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "user_series_only_non_null",
+            ["Users", "Series"],
+            ["user_id", "series_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "user_date_only_non_null",
+            ["Users", "Dates"],
+            ["user_id", "date"],
+        ),
+        #
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "series_user_only_non_null",
+            ["Series", "Users"],
+            ["series_id", "user_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "series_date",
+            ["Series", "Dates"],
+            ["series_id", "date"],
+        ),
+        #
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "date_user_only_non_null",
+            ["Dates", "Users"],
+            ["date", "user_id"],
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "date_series_only_non_null",
+            ["Dates", "Series"],
+            ["date", "series_id"],
+        ),
+    ]
+
+    results = {}
+
+    df_int: pd.DataFrame
+    df_imp: pd.DataFrame
+    name: str
+    labels: list[str]
+    cols_group_by: list[str]
+    for df_int, df_imp, name, labels, cols_group_by in cases:
+        df_num_int_num_imp = _compute_num_int_num_imp_ctr(
+            cols_group_by=cols_group_by,
+            df_imp=df_imp,
+            df_int=df_int,
+        )
+
+        col_first: str
+        col_second: str
+        col_first, col_second = cols_group_by
+
+        label_first: str
+        label_second: str
+        label_first, label_second = labels
+
+        df_ctr_2d_mean_std = df_num_int_num_imp.groupby(
+            by=col_first,
+            as_index=False,
+        )["ctr"].agg(
+            ["mean", "std"],
+        )
+
+        x_data = col_first
+        y_data = "mean"
+        x_label = label_first
+        y_label = "Mean click-through rate (CTR)"
+        plot_name = f"ctr-{name}"
+        if "date" in cols_group_by:
+            plot_dates(
+                dir_results=dir_results,
+                df=df_ctr_2d_mean_std,
+                x_data=x_data,
+                y_data=y_data,
+                x_label=x_label,
+                y_label=y_label,
+                x_date="date" in col_first,
+                y_date="date" in col_second,
+                name=plot_name,
+            )
+        elif "date" not in cols_group_by:
+            df_pop = df_ctr_2d_mean_std.sort_values(
+                by=y_data,
+                axis="rows",
+                ascending=False,
+                inplace=False,
+                ignore_index=True,
+            )
+            df_pop[x_data] = np.arange(
+                start=0,
+                stop=df_pop.shape[0],
+                step=1,
+            )
+
+            plot_popularity(
+                df=df_pop,
+                dir_results=dir_results,
+                x_data=x_data,
+                y_data=y_data,
+                x_label=x_label,
+                y_label=y_label,
+                x_scale="linear",
+                y_scale="linear",
+                name=plot_name,
+            )
+        else:
+            pass
+
+        results[f"ctr_2d_{name}"] = df_ctr_2d_mean_std
+
+    return results
+
+
+def _compute_num_int_num_imp_ctr(
+    *,
+    cols_group_by: Union[str, list[str]],
+    df_imp: pd.DataFrame,
+    df_int: pd.DataFrame,
+) -> pd.DataFrame:
+    df_num_int = (
+        df_int.groupby(
+            by=cols_group_by,
+            as_index=False,
+        )["item_id"]
+        .count()
+        .rename(columns={"item_id": "num_interactions"})
+    )
+    df_num_imp = (
+        df_imp.groupby(
+            by=cols_group_by,
+            as_index=False,
+        )["item_id"]
+        .count()
+        .rename(columns={"item_id": "num_impressions"})
+    )
+    df_num_int_num_imp = (
+        pd.merge(
+            left=df_num_int,
+            right=df_num_imp,
+            on=cols_group_by,
+            how="outer",
+            left_on=None,
+            right_on=None,
+            left_index=False,
+            right_index=False,
+            suffixes=("", ""),
+            sort=False,
+        )
+        .fillna({"num_interactions": 0, "num_impressions": 0})
+        .astype({"num_interactions": np.int32, "num_impressions": np.int32})
+    )
+    df_num_int_num_imp["ctr"] = (
+        df_num_int_num_imp["num_interactions"] / df_num_int_num_imp["num_impressions"]
+    )
+    return df_num_int_num_imp
+
+
+def compute_ctr_3d(
     dir_results: str,
     dict_results: dict[str, pd.DataFrame],
     df_interactions_all: pd.DataFrame,
@@ -979,6 +1791,8 @@ def compute_ctr(
             "num_int_num_imp_ctr_date_only_non_null",
             "num_int_num_imp_ctr_series_only_non_null",
             # two-dimensional
+            # TODO: We must compute the average of the right-most (e.g., on user_series, compute the series mean) and
+            #  then use those means+std_dev to create error bars. May be more informative than the uni-dimensional.
             "num_int_num_imp_ctr_user_series_all",
             "num_int_num_imp_ctr_date_user_all",
             "num_int_num_imp_ctr_date_series_all",
@@ -1175,7 +1989,7 @@ def transform_dataframes_add_date_time_hour_to_interactions(
             utc=True,
             unit="ms",
         )
-        df["date"] = df["datetime"].dt.date
+        df["date"] = df["datetime"].dt.date  # .dt.strftime("%Y/%m/%d")
         df["time"] = df["datetime"].dt.time
         df["hour"] = df["datetime"].dt.hour
         df["month"] = df["datetime"].dt.month
@@ -1299,51 +2113,69 @@ def contentwise_impressions_compute_statistics_thesis(
         ]
     )
 
-    results = compute_popularity_interactions(
-        dir_results=dir_results,
-        dict_results=dict_results,
-        df_interactions_all=df_interactions_all,
-        df_interactions_only_null_impressions=df_interactions_only_null_impressions,
-        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
-    )
-    dict_results.update(results)
-
-    results = compute_popularity_impressions_contextual(
-        dir_results=dir_results,
-        dict_results=dict_results,
-        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
-        df_impressions_contextual=df_impressions_contextual,
-    )
-    dict_results.update(results)
-
-    results = compute_popularity_impressions_global(
-        dir_results=dir_results,
-        dict_results=dict_results,
-        df_impressions_global=df_impressions_global,
-    )
-    dict_results.update(results)
-
-    results = compute_correlation_interactions_impressions(
-        dir_results=dir_results,
-        dict_results=dict_results,
-    )
-    dict_results.update(results)
-
-    results = compute_daily_hourly_number_of_interactions(
-        dir_results=dir_results,
-        dict_results=dict_results,
-        df_interactions_all=df_interactions_all,
-    )
-    dict_results.update(results)
-
-    results = compute_daily_hourly_number_of_impressions(
-        dir_results=dir_results,
-        dict_results=dict_results,
-        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
-        df_impressions_contextual=df_impressions_contextual,
-    )
-    dict_results.update(results)
-
+    # results = compute_popularity_interactions(
+    #     dir_results=dir_results,
+    #     dict_results=dict_results,
+    #     df_interactions_all=df_interactions_all,
+    #     df_interactions_only_null_impressions=df_interactions_only_null_impressions,
+    #     df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+    # )
+    # dict_results.update(results)
+    #
+    # results = compute_popularity_impressions_contextual(
+    #     dir_results=dir_results,
+    #     dict_results=dict_results,
+    #     df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+    #     df_impressions_contextual=df_impressions_contextual,
+    # )
+    # dict_results.update(results)
+    #
+    # results = compute_popularity_impressions_global(
+    #     dir_results=dir_results,
+    #     dict_results=dict_results,
+    #     df_impressions_global=df_impressions_global,
+    # )
+    # dict_results.update(results)
+    #
+    # results = compute_correlation_interactions_impressions(
+    #     dir_results=dir_results,
+    #     dict_results=dict_results,
+    # )
+    # dict_results.update(results)
+    #
+    # results = compute_daily_hourly_number_of_interactions(
+    #     dir_results=dir_results,
+    #     dict_results=dict_results,
+    #     df_interactions_all=df_interactions_all,
+    # )
+    # dict_results.update(results)
+    #
+    # results = compute_daily_hourly_number_of_impressions(
+    #     dir_results=dir_results,
+    #     dict_results=dict_results,
+    #     df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+    #     df_impressions_contextual=df_impressions_contextual,
+    # )
+    # dict_results.update(results)
+    #
+    # results = compute_vision_factor(
+    #     dir_results=dir_results,
+    #     dict_results=dict_results,
+    #     df_interactions_all=df_interactions_all,
+    #     df_interactions_only_null_impressions=df_interactions_only_null_impressions,
+    #     df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+    # )
+    # dict_results.update(results)
+    #
+    # results = compute_ratings(
+    #     dir_results=dir_results,
+    #     dict_results=dict_results,
+    #     df_interactions_all=df_interactions_all,
+    #     df_interactions_only_null_impressions=df_interactions_only_null_impressions,
+    #     df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+    # )
+    # dict_results.update(results)
+    #
     (
         df_interactions_all,
         df_interactions_only_non_null_impressions,
@@ -1356,7 +2188,17 @@ def contentwise_impressions_compute_statistics_thesis(
         df_impressions_contextual=df_impressions_contextual,
     )
 
-    results = compute_ctr(
+    results = compute_ctr_1d(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_all=df_interactions_all,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+        df_impressions_contextual_all=df_impressions_contextual_all,
+        df_impressions_contextual_only_non_null_impressions=df_impressions_contextual_only_non_null_impressions,
+    )
+    dict_results.update(results)
+
+    results = compute_ctr_2d(
         dir_results=dir_results,
         dict_results=dict_results,
         df_interactions_all=df_interactions_all,
