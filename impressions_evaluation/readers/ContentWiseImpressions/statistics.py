@@ -360,54 +360,54 @@ def plot_popularity(
     # plt.show()
 
 
+# def plot_dates(
+#     *,
+#     dir_results: str,
+#     df: pd.DataFrame,
+#     x_data: str,
+#     y_data: str,
+#     x_date: bool,
+#     y_date: bool,
+#     x_label: str,
+#     y_label: str,
+#     name: str,
+# ) -> None:
+#     fig: plt.Figure
+#     ax: plt.Axes
+#
+#     fig, ax = plt.subplots(
+#         nrows=1,
+#         ncols=1,
+#         figsize=(
+#             SIZE_INCHES_WIDTH,
+#             SIZE_INCHES_HEIGHT,
+#         ),  # Must be (width, height) by the docs.
+#         layout="compressed",
+#     )
+#
+#     # NOTE FOR THE FUTURE: despite this method being deprecated, the migration to the newer method is annoying and may break. One thing to remember is to NEVER set the `scale` of the axis that is of type `date`, i.e., DO NOT CALL `ax.set_xscale("linear")` when the X axis contains dates -- calling it causes the plot to print dates as integers.
+#     # TODO: do not plot all dates in the x-ticks. Plot every 15 days or so.
+#     # TODO: Replace dots by lines? it may work.
+#     ax.plot_date(x_data, y_data, data=df, xdate=x_date, ydate=y_date)
+#     ax.set_xlabel(x_label)
+#     ax.set_ylabel(y_label)
+#     # If one axis is of type `date` then the other must be linear, log, etc.
+#     if x_date:
+#         ax.set_yscale("linear")
+#     if y_date:
+#         ax.set_xscale("linear")
+#
+#     tikzplotlib.save(
+#         os.path.join(dir_results, f"plot-date-{name}.tikz"),  # cannot be kwarg!
+#         fig,  # cannot be kwarg!
+#         encoding="utf-8",
+#         textsize=9,
+#     )
+#
+#     fig.show()
+
+
 def plot_dates(
-    *,
-    dir_results: str,
-    df: pd.DataFrame,
-    x_data: str,
-    y_data: str,
-    x_date: bool,
-    y_date: bool,
-    x_label: str,
-    y_label: str,
-    name: str,
-) -> None:
-    fig: plt.Figure
-    ax: plt.Axes
-
-    fig, ax = plt.subplots(
-        nrows=1,
-        ncols=1,
-        figsize=(
-            SIZE_INCHES_WIDTH,
-            SIZE_INCHES_HEIGHT,
-        ),  # Must be (width, height) by the docs.
-        layout="compressed",
-    )
-
-    # NOTE FOR THE FUTURE: despite this method being deprecated, the migration to the newer method is annoying and may break. One thing to remember is to NEVER set the `scale` of the axis that is of type `date`, i.e., DO NOT CALL `ax.set_xscale("linear")` when the X axis contains dates -- calling it causes the plot to print dates as integers.
-    # TODO: do not plot all dates in the x-ticks. Plot every 15 days or so.
-    # TODO: Replace dots by lines? it may work.
-    ax.plot_date(x_data, y_data, data=df, xdate=x_date, ydate=y_date)
-    ax.set_xlabel(x_label)
-    ax.set_ylabel(y_label)
-    # If one axis is of type `date` then the other must be linear, log, etc.
-    if x_date:
-        ax.set_yscale("linear")
-    if y_date:
-        ax.set_xscale("linear")
-
-    tikzplotlib.save(
-        os.path.join(dir_results, f"plot-date-{name}.tikz"),  # cannot be kwarg!
-        fig,  # cannot be kwarg!
-        encoding="utf-8",
-        textsize=9,
-    )
-
-    fig.show()
-
-
-def plot_dates_with_error_bars(
     *,
     dir_results: str,
     df: pd.DataFrame,
@@ -451,8 +451,10 @@ def plot_dates_with_error_bars(
     if y_date:
         ax.set_xscale("linear")
 
+    plot_name = "date" if x_err is None and y_err is None else "date_errors"
+
     tikzplotlib.save(
-        os.path.join(dir_results, f"plot-date_errors-{name}.tikz"),  # cannot be kwarg!
+        os.path.join(dir_results, f"plot-{plot_name}-{name}.tikz"),  # cannot be kwarg!
         fig,  # cannot be kwarg!
         encoding="utf-8",
         textsize=9,
@@ -1444,6 +1446,140 @@ def compute_ratings(
     }
 
 
+def compute_table_ctr(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_all: pd.DataFrame,
+    df_interactions_only_non_null_impressions: pd.DataFrame,
+    df_impressions_contextual_all: pd.DataFrame,
+    df_impressions_contextual_only_non_null_impressions: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    # TODO: Generate plots for day of week and hour of day.
+    if all(
+        filename in dict_results
+        for filename in [
+            "ctr_1d_user_all",
+            "ctr_1d_date_all",
+            "ctr_1d_series_all",
+            "ctr_1d_user_only_non_null",
+            "ctr_1d_date_only_non_null",
+            "ctr_1d_series_only_non_null",
+        ]
+    ):
+        logger.warning(
+            "Skipping function %(function)s because all keys in the dictionary already exist.",
+            {"function": compute_ctr_1d.__name__},
+        )
+        return {}
+
+    cases = [
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "ctr_1d_user_all",
+            "Users",
+            "user_id",
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "ctr_1d_date_all",
+            "Dates",
+            "date",
+        ),
+        (
+            df_interactions_all,
+            df_impressions_contextual_all,
+            "ctr_1d_series_all",
+            "Series",
+            "series_id",
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "ctr_1d_user_only_non_null",
+            "Users",
+            "user_id",
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "ctr_1d_date_only_non_null",
+            "Dates",
+            "date",
+        ),
+        (
+            df_interactions_only_non_null_impressions,
+            df_impressions_contextual_only_non_null_impressions,
+            "ctr_1d_series_only_non_null",
+            "Series",
+            "series_id",
+        ),
+    ]
+
+    results = {}
+    for df_int, df_imp, name, label, col_group_by in cases:
+        df_num_int_num_imp = _compute_num_int_num_imp_ctr(
+            cols_group_by=col_group_by,
+            df_imp=df_imp,
+            df_int=df_int,
+        )
+
+        x_data = col_group_by
+        y_data = "ctr"
+        x_err = None
+        y_err = None
+        x_label = f"{label} rank"
+        y_label = "Click-through rate (CTR)"
+        x_scale: Literal["linear"] = "linear"
+        y_scale: Literal["linear"] = "linear"
+        if "date" == x_data:
+            plot_dates(
+                dir_results=dir_results,
+                df=df_num_int_num_imp,
+                x_data=x_data,
+                y_data=y_data,
+                x_date=True,
+                y_date=False,
+                x_label=x_label,
+                y_label=y_label,
+                name=name,
+                x_err=x_err,
+                y_err=y_err,
+            )
+        elif "date" != y_data:
+            df_pop = df_num_int_num_imp.sort_values(
+                by=y_data,
+                axis="rows",
+                ascending=False,
+                inplace=False,
+                ignore_index=True,
+            )
+            df_pop[x_data] = np.arange(
+                start=0,
+                stop=df_pop.shape[0],
+                step=1,
+            )
+
+            plot_popularity(
+                df=df_pop,
+                dir_results=dir_results,
+                x_data=x_data,
+                y_data=y_data,
+                x_label=x_label,
+                y_label=y_label,
+                x_scale=x_scale,
+                y_scale=y_scale,
+                name=name,
+            )
+        else:
+            pass
+
+        results[name] = df_num_int_num_imp
+
+    return results
+
+
 def compute_ctr_1d(
     dir_results: str,
     dict_results: dict[str, pd.DataFrame],
@@ -1532,18 +1668,18 @@ def compute_ctr_1d(
         x_scale: Literal["linear"] = "linear"
         y_scale: Literal["linear"] = "linear"
         if "date" == x_data:
-            plot_dates_with_error_bars(
-                df=df_num_int_num_imp,
+            plot_dates(
                 dir_results=dir_results,
+                df=df_num_int_num_imp,
                 x_data=x_data,
                 y_data=y_data,
-                x_err=x_err,
-                y_err=y_err,
-                x_label=x_label,
-                y_label=y_label,
                 x_date=True,
                 y_date=False,
+                x_label=x_label,
+                y_label=y_label,
                 name=name,
+                x_err=x_err,
+                y_err=y_err,
             )
         elif "date" != y_data:
             df_pop = df_num_int_num_imp.sort_values(
@@ -1750,18 +1886,18 @@ def compute_ctr_2d(
         x_label = label_first
         y_label = f"Mean click-through rate\n{col_second}"
         if "date" == x_data:
-            plot_dates_with_error_bars(
+            plot_dates(
                 dir_results=dir_results,
                 df=df_ctr_2d_mean_std,
                 x_data=x_data,
                 y_data=y_data,
-                x_err=x_err,
-                y_err=y_err,
-                x_label=x_label,
-                y_label=y_label,
                 x_date=True,
                 y_date=False,
+                x_label=x_label,
+                y_label=y_label,
                 name=name,
+                x_err=x_err,
+                y_err=y_err,
             )
         elif "date" != x_data:
             df_pop = df_ctr_2d_mean_std.sort_values(
@@ -2004,18 +2140,18 @@ def compute_ctr_3d(
         y_label = f"Mean click-through rate\n{col_second} - {col_third}"
 
         if "date" == x_data:
-            plot_dates_with_error_bars(
+            plot_dates(
                 dir_results=dir_results,
                 df=df_ctr_3d_mean_stddev,
                 x_data=x_data,
                 y_data=y_data,
-                x_err=x_err,
-                y_err=y_err,
-                x_label=x_label,
-                y_label=y_label,
                 x_date=True,
                 y_date=False,
+                x_label=x_label,
+                y_label=y_label,
                 name=name,
+                x_err=x_err,
+                y_err=y_err,
             )
         elif "date" != x_data:
             df_pop = df_ctr_3d_mean_stddev.sort_values(
@@ -2193,68 +2329,68 @@ def contentwise_impressions_compute_statistics_thesis(
         ]
     )
 
-    # results = compute_popularity_interactions(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_all=df_interactions_all,
-    #     df_interactions_only_null_impressions=df_interactions_only_null_impressions,
-    #     df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
-    # )
-    # dict_results.update(results)
-    #
-    # results = compute_popularity_impressions_contextual(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
-    #     df_impressions_contextual=df_impressions_contextual,
-    # )
-    # dict_results.update(results)
-    #
-    # results = compute_popularity_impressions_global(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_impressions_global=df_impressions_global,
-    # )
-    # dict_results.update(results)
-    #
-    # results = compute_correlation_interactions_impressions(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    # )
-    # dict_results.update(results)
-    #
-    # results = compute_daily_hourly_number_of_interactions(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_all=df_interactions_all,
-    # )
-    # dict_results.update(results)
-    #
-    # results = compute_daily_hourly_number_of_impressions(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
-    #     df_impressions_contextual=df_impressions_contextual,
-    # )
-    # dict_results.update(results)
-    #
-    # results = compute_vision_factor(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_all=df_interactions_all,
-    #     df_interactions_only_null_impressions=df_interactions_only_null_impressions,
-    #     df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
-    # )
-    # dict_results.update(results)
-    #
-    # results = compute_ratings(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_all=df_interactions_all,
-    #     df_interactions_only_null_impressions=df_interactions_only_null_impressions,
-    #     df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
-    # )
-    # dict_results.update(results)
+    results = compute_popularity_interactions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_all=df_interactions_all,
+        df_interactions_only_null_impressions=df_interactions_only_null_impressions,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+    )
+    dict_results.update(results)
+
+    results = compute_popularity_impressions_contextual(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+        df_impressions_contextual=df_impressions_contextual,
+    )
+    dict_results.update(results)
+
+    results = compute_popularity_impressions_global(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_impressions_global=df_impressions_global,
+    )
+    dict_results.update(results)
+
+    results = compute_correlation_interactions_impressions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+    )
+    dict_results.update(results)
+
+    results = compute_daily_hourly_number_of_interactions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_all=df_interactions_all,
+    )
+    dict_results.update(results)
+
+    results = compute_daily_hourly_number_of_impressions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+        df_impressions_contextual=df_impressions_contextual,
+    )
+    dict_results.update(results)
+
+    results = compute_vision_factor(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_all=df_interactions_all,
+        df_interactions_only_null_impressions=df_interactions_only_null_impressions,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+    )
+    dict_results.update(results)
+
+    results = compute_ratings(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_all=df_interactions_all,
+        df_interactions_only_null_impressions=df_interactions_only_null_impressions,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+    )
+    dict_results.update(results)
 
     (
         df_interactions_all,
@@ -2267,6 +2403,16 @@ def contentwise_impressions_compute_statistics_thesis(
         df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
         df_impressions_contextual=df_impressions_contextual,
     )
+
+    results = compute_table_ctr(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_all=df_interactions_all,
+        df_interactions_only_non_null_impressions=df_interactions_only_non_null_impressions,
+        df_impressions_contextual_all=df_impressions_contextual_all,
+        df_impressions_contextual_only_non_null_impressions=df_impressions_contextual_only_non_null_impressions,
+    )
+    dict_results.update(results)
 
     results = compute_ctr_1d(
         dir_results=dir_results,

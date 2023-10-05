@@ -3523,6 +3523,22 @@ dev = ["pre-commit", "tox"]
 testing = ["pytest", "pytest-benchmark"]
 
 [[package]]
+name = "powerlaw"
+version = "1.5"
+description = "Toolbox for testing if a probability distribution fits a power law"
+optional = false
+python-versions = "*"
+files = [
+    {file = "powerlaw-1.5-py3-none-any.whl", hash = "sha256:633a669573d9fd663d2f452f121117f2d6b2f2c502eca532f9355f733abfec96"},
+]
+
+[package.dependencies]
+matplotlib = "*"
+mpmath = "*"
+numpy = "*"
+scipy = "*"
+
+[[package]]
 name = "prometheus-client"
 version = "0.17.1"
 description = "Python client for the Prometheus monitoring system."
@@ -5474,4 +5490,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "~3.10"
-content-hash = "7693d112f8ab6ae73dca6b8314e60e6fc962b4a2f12744c2c42f418233f67de6"
+content-hash = "8584be5090f12e6e5bb9c5fa0330512c0c5fe0310bdba3737960673393bc6391"
