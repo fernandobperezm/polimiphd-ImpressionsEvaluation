@@ -812,7 +812,7 @@ def compute_metadata_dataset(
     return metadata
 
 
-def compute_number_and_types_of_items(
+def compute_number_unique_items_by_item_type(
     *,
     dir_results: str,
     dict_results: dict[str, pd.DataFrame],
@@ -835,7 +835,7 @@ def compute_number_and_types_of_items(
     ):
         logger.warning(
             "Skipping function %(function)s because all keys in the dictionary already exist.",
-            {"function": compute_number_and_types_of_items.__name__},
+            {"function": compute_number_unique_items_by_item_type.__name__},
         )
         return {}
 
@@ -846,29 +846,21 @@ def compute_number_and_types_of_items(
         (
             df_interactions_with_impressions_all,
             "All",
-            "Series",
-            "series_id",
-            num_unique_series,
-            "series_all",
-        ),
-        (
-            df_interactions_with_impressions_all,
-            "All",
             "Items",
             "item_id",
             num_unique_items,
             "items_all",
         ),
-    ]
-    cases_inside_impressions = [
         (
-            df_interactions_inside_impressions,
-            "Inside contextual impressions",
+            df_interactions_with_impressions_all,
+            "All",
             "Series",
             "series_id",
             num_unique_series,
-            "series_inside_impressions",
+            "series_all",
         ),
+    ]
+    cases_inside_impressions = [
         (
             df_interactions_inside_impressions,
             "Inside contextual impressions",
@@ -877,16 +869,16 @@ def compute_number_and_types_of_items(
             num_unique_items,
             "items_inside_impressions",
         ),
-    ]
-    cases_outside_impressions = [
         (
-            df_interactions_outside_impressions,
-            "Outside contextual impressions",
+            df_interactions_inside_impressions,
+            "Inside contextual impressions",
             "Series",
             "series_id",
             num_unique_series,
-            "series_outside_impressions",
+            "series_inside_impressions",
         ),
+    ]
+    cases_outside_impressions = [
         (
             df_interactions_outside_impressions,
             "Outside contextual impressions",
@@ -894,6 +886,14 @@ def compute_number_and_types_of_items(
             "item_id",
             num_unique_items,
             "items_outside_impressions",
+        ),
+        (
+            df_interactions_outside_impressions,
+            "Outside contextual impressions",
+            "Series",
+            "series_id",
+            num_unique_series,
+            "series_outside_impressions",
         ),
     ]
 
@@ -910,7 +910,6 @@ def compute_number_and_types_of_items(
                 ignore_index=True,
             )
             .groupby(
-                # by=["item_type", "item_type_str"],
                 by=["item_type"],
                 as_index=False,
             )[col]
@@ -955,7 +954,9 @@ def compute_number_and_types_of_items(
                 ascending=False,
             )
             .assign(subset=subset, attribute=attr)
-            .astype({"subset": pd.StringDtype(), "attribute": pd.StringDtype()})
+            .astype({"subset": pd.StringDtype(), "attribute": pd.StringDtype()})[
+                ["subset", "attribute", "item_type_str", "count", "perc"]
+            ]
         )
 
         dfs.append(df_known_and_unknown)
@@ -979,6 +980,192 @@ def compute_number_and_types_of_items(
         decimal=",",
     )
     results["num_unique_items_by_item_type"] = df_results
+
+    return results
+
+
+def compute_number_unique_items_by_interaction_type(
+    *,
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_with_impressions_all: pd.DataFrame,
+    df_interactions_outside_impressions: pd.DataFrame,
+    df_interactions_inside_impressions: pd.DataFrame,
+    metadata: dict[str, Any],
+) -> dict[str, pd.DataFrame]:
+    if all(
+        filename in dict_results
+        for filename in [
+            "num_unique_items_by_interaction_type",
+            "num_unique_items_by_interaction_type-series_all",
+            "num_unique_items_by_interaction_type-items_all",
+            "num_unique_items_by_interaction_type-series_inside_impressions",
+            "num_unique_items_by_interaction_type-items_inside_impressions",
+            "num_unique_items_by_interaction_type-series_outside_impressions",
+            "num_unique_items_by_interaction_type-items_outside_impressions",
+        ]
+    ):
+        logger.warning(
+            "Skipping function %(function)s because all keys in the dictionary already exist.",
+            {"function": compute_number_unique_items_by_interaction_type.__name__},
+        )
+        return {}
+
+    num_unique_series: int = metadata["num_series"]
+    num_unique_items: int = metadata["num_items"]
+
+    column_perc = "perc"
+    column_count = "nunique"
+    column_subset = "subset"
+    column_attribute = "attribute"
+    column_interaction_type = "interaction_type"
+    column_interaction_type_str = "interaction_type_str"
+
+    column_export_count = "Count"
+    column_export_perc = "Percentage"
+    column_export_attribute = "Attribute"
+    column_export_subset = "Dataset subset"
+    column_export_interaction_type_str = "Interaction type"
+
+    cases_all = [
+        (
+            df_interactions_with_impressions_all,
+            "All",
+            "Items",
+            "item_id",
+            num_unique_items,
+            "items_all",
+        ),
+        (
+            df_interactions_with_impressions_all,
+            "All",
+            "Series",
+            "series_id",
+            num_unique_series,
+            "series_all",
+        ),
+    ]
+    cases_inside_impressions = [
+        (
+            df_interactions_inside_impressions,
+            "Inside contextual impressions",
+            "Items",
+            "item_id",
+            num_unique_items,
+            "items_inside_impressions",
+        ),
+        (
+            df_interactions_inside_impressions,
+            "Inside contextual impressions",
+            "Series",
+            "series_id",
+            num_unique_series,
+            "series_inside_impressions",
+        ),
+    ]
+    cases_outside_impressions = [
+        (
+            df_interactions_outside_impressions,
+            "Outside contextual impressions",
+            "Items",
+            "item_id",
+            num_unique_items,
+            "items_outside_impressions",
+        ),
+        (
+            df_interactions_outside_impressions,
+            "Outside contextual impressions",
+            "Series",
+            "series_id",
+            num_unique_series,
+            "series_outside_impressions",
+        ),
+    ]
+
+    cases = cases_all + cases_inside_impressions + cases_outside_impressions
+
+    results = {}
+    dfs = []
+    for df, subset, attr, col, num_unique, name in cases:
+        df_num_unique_items_by_interaction_type: pd.DataFrame = (
+            # We don't remove duplicates of interaction types because an item that has been rated and watched must be
+            # included twice.
+            # The percentage is with respect to the number of unique items not the number of interactions as this is a partial sum on interactions.
+            df.groupby(
+                by=[column_interaction_type],
+                as_index=False,
+            )[col]
+            .agg([column_count])
+            .assign(
+                **{
+                    column_subset: subset,
+                    column_attribute: attr,
+                    column_perc: lambda df_: df_[column_count] / num_unique,
+                    column_interaction_type_str: lambda df_: df_[
+                        column_interaction_type
+                    ].apply(
+                        lambda df_row_item_type: DICT_INTERACTION_TYPE_TO_STR[
+                            df_row_item_type
+                        ],
+                        convert_dtype=True,
+                    ),
+                },
+            )
+            .astype(
+                {
+                    column_perc: np.float32,
+                    column_interaction_type_str: pd.StringDtype(),
+                    column_subset: pd.StringDtype(),
+                    column_attribute: pd.StringDtype(),
+                }
+            )
+            .sort_values(
+                by=[column_count],
+                axis=0,
+                ascending=False,
+            )[
+                [
+                    column_subset,
+                    column_attribute,
+                    column_interaction_type_str,
+                    column_count,
+                    column_perc,
+                ]
+            ]
+            .rename(
+                columns={
+                    column_subset: column_export_subset,
+                    column_attribute: column_export_attribute,
+                    column_interaction_type_str: column_export_interaction_type_str,
+                    column_count: column_export_count,
+                    column_perc: column_export_perc,
+                },
+            )
+        )
+
+        dfs.append(df_num_unique_items_by_interaction_type)
+
+        results[
+            f"num_unique_items_by_interaction_type-{name}"
+        ] = df_num_unique_items_by_interaction_type
+
+    df_results = pd.concat(
+        objs=dfs,
+        axis=0,
+        ignore_index=True,
+    )
+    df_results.to_csv(
+        path_or_buf=os.path.join(
+            dir_results, f"table-num_unique_items_by_interaction_type.csv"
+        ),
+        sep=";",
+        float_format="%.4f",
+        header=True,
+        index=True,
+        encoding="utf-8",
+        decimal=",",
+    )
+    results["num_unique_items_by_interaction_type"] = df_results
 
     return results
 
@@ -1117,7 +1304,9 @@ def compute_number_interactions_by_item_type(
                 ascending=False,
             )
             .assign(subset=subset, attribute=attr)
-            .astype({"subset": pd.StringDtype(), "attribute": pd.StringDtype()})
+            .astype({"subset": pd.StringDtype(), "attribute": pd.StringDtype()})[
+                ["subset", "attribute", "interaction_type_str", "count", "perc"]
+            ]
         )
 
         dfs.append(df_known_and_unknown)
@@ -1145,7 +1334,7 @@ def compute_number_interactions_by_item_type(
     return results
 
 
-def compute_number_and_types_of_interactions(
+def compute_number_of_interactions_by_interaction_type(
     *,
     dir_results: str,
     dict_results: dict[str, pd.DataFrame],
@@ -1167,7 +1356,7 @@ def compute_number_and_types_of_interactions(
     ):
         logger.warning(
             "Skipping function %(function)s because all keys in the dictionary already exist.",
-            {"function": compute_number_and_types_of_interactions.__name__},
+            {"function": compute_number_of_interactions_by_interaction_type.__name__},
         )
         return {}
 
@@ -1243,34 +1432,6 @@ def compute_number_and_types_of_interactions(
                 ),
             )
             .astype({"perc": np.float32, "interaction_type_str": pd.StringDtype()})
-        )
-
-        df_unknown = pd.DataFrame.from_records(
-            data=[
-                {
-                    "interaction_type": ItemType.Unknown.value,
-                    "interaction_type_str": DICT_INTERACTION_TYPE_TO_STR[
-                        InteractionType.Unknown.value
-                    ],
-                    "count": num_interactions - df_known["count"].sum(),
-                    "perc": 1 - df_known["perc"].sum(),
-                }
-            ]
-        ).astype(
-            dtype={
-                "interaction_type": df_known["interaction_type"].dtype,
-                "interaction_type_str": pd.StringDtype(),
-                "count": df_known["count"].dtype,
-                "perc": df_known["perc"].dtype,
-            }
-        )
-
-        df_known_and_unknown = (
-            pd.concat(
-                objs=[df_known, df_unknown],
-                axis=0,
-                ignore_index=True,
-            )
             .sort_values(
                 by=["count"],
                 axis=0,
@@ -1280,7 +1441,7 @@ def compute_number_and_types_of_interactions(
             .astype({"subset": pd.StringDtype(), "attribute": pd.StringDtype()})
         )
 
-        dfs.append(df_known_and_unknown)
+        dfs.append(df_known)
 
         results[f"num_interactions_by_interaction_type-{name}"] = df_known_and_unknown
 
@@ -3441,7 +3602,7 @@ def contentwise_impressions_compute_statistics_thesis(
         ]
     )
 
-    # results = compute_number_and_types_of_items(
+    # results = compute_number_unique_items_by_item_type(
     #     dir_results=dir_results,
     #     dict_results=dict_results,
     #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
@@ -3450,15 +3611,25 @@ def contentwise_impressions_compute_statistics_thesis(
     #     metadata=metadata,
     # )
     # dict_results.update(results)
-    #
-    # results = compute_number_and_types_of_interactions(
+
+    # results = compute_number_unique_items_by_interaction_type(
     #     dir_results=dir_results,
     #     dict_results=dict_results,
     #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
     #     df_interactions_outside_impressions=df_interactions_outside_impressions,
     #     df_interactions_inside_impressions=df_interactions_inside_impressions,
+    #     metadata=metadata,
     # )
     # dict_results.update(results)
+
+    results = compute_number_of_interactions_by_interaction_type(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+        df_interactions_outside_impressions=df_interactions_outside_impressions,
+        df_interactions_inside_impressions=df_interactions_inside_impressions,
+    )
+    dict_results.update(results)
 
     results = compute_number_interactions_by_item_type(
         dir_results=dir_results,
