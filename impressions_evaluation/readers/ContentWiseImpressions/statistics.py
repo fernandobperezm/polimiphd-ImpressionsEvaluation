@@ -1829,6 +1829,8 @@ def compute_temporal_distribution_of_interactions(
 
     results = {}
 
+    list_basic_statistics = []
+
     for df, col, x_data, x_label, x_date, name in cases:
         df_dates = (
             df.groupby(
@@ -1865,6 +1867,25 @@ def compute_temporal_distribution_of_interactions(
 
         results[name] = df_dates
 
+        if col in {"month", "hour", "minute"}:
+            logger.debug(f"Processing column {col}")
+
+            arr_data = df_dates[col].to_numpy()
+
+            dict_statistics = _compute_basic_statistics(
+                arr_data=arr_data,
+                data_discrete=True,
+                name=name,
+            )
+            list_basic_statistics.append(dict_statistics)
+
+        else:
+            arr_data = (
+                pd.to_datetime(df_dates[col])
+                .dt.strftime(date_format="%Y-%m-%d")
+                .to_numpy()
+            )
+
         plot_dates(
             dir_results=dir_results,
             df=df_dates,
@@ -1877,7 +1898,23 @@ def compute_temporal_distribution_of_interactions(
             y_date=False,
         )
 
-    return {**results}
+    df_results = pd.DataFrame.from_records(data=list_basic_statistics)
+    df_results.to_csv(
+        path_or_buf=os.path.join(
+            dir_results, "table_statistics_temporal_distribution_interactions.csv"
+        ),
+        index=True,
+        header=True,
+        sep=";",
+        encoding="utf-8",
+        decimal=",",
+        float_format="%.4f",
+    )
+
+    return {
+        "table_statistics_temporal_distribution_interactions": df_results,
+        **results,
+    }
 
 
 def compute_popularity_impressions_contextual(
