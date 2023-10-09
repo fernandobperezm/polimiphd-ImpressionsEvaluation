@@ -66,6 +66,32 @@ DICT_INTERACTION_TYPE_TO_STR = {
     InteractionType.Unknown.value: "Unknown",
 }
 
+DICT_DAY_OF_WEEK_TO_STR = {
+    0: "Monday",
+    1: "Tuesday",
+    2: "Wednesday",
+    3: "Thursday",
+    4: "Friday",
+    5: "Saturday",
+    6: "Sunday",
+}
+
+
+DICT_MONTH_TO_STR = {
+    0: "January",
+    1: "February",
+    2: "March",
+    3: "April",
+    4: "May",
+    5: "June",
+    6: "July",
+    7: "August",
+    8: "September",
+    9: "October",
+    10: "November",
+    11: "December",
+}
+
 
 def _set_unique_items(
     *,
@@ -220,6 +246,18 @@ def _compute_basic_statistics(
         tuple[float, float],
         results_powerlaw.distribution_compare("power_law", "exponential"),
     )
+    results_powerlaw_truncated_powerlaw = cast(
+        tuple[float, float],
+        results_powerlaw.distribution_compare("power_law", "truncated_power_law"),
+    )
+    results_powerlaw_stretched_exponential = cast(
+        tuple[float, float],
+        results_powerlaw.distribution_compare("power_law", "stretched_exponential"),
+    )
+    results_powerlaw_lognormal_positive = cast(
+        tuple[float, float],
+        results_powerlaw.distribution_compare("power_law", "lognormal_positive"),
+    )
 
     return {
         "name": name,
@@ -236,10 +274,25 @@ def _compute_basic_statistics(
         "kurtosis": results_kurtosis,
         "powerlaw_xmin": results_powerlaw.xmin,
         "powerlaw_alpha": results_powerlaw.alpha,
+        "powerlaw_sigma": results_powerlaw.sigma,
         "powerlaw_lognormal_likelihood": results_powerlaw_lognormal[0],
         "powerlaw_lognormal_pvalue": results_powerlaw_lognormal[1],
         "powerlaw_exponential_likelihood": results_powerlaw_exponential[0],
         "powerlaw_exponential_pvalue": results_powerlaw_exponential[1],
+        "powerlaw_truncated_powerlaw_likelihood": results_powerlaw_truncated_powerlaw[
+            0
+        ],
+        "powerlaw_truncated_powerlaw_pvalue": results_powerlaw_truncated_powerlaw[1],
+        "powerlaw_stretched_exponential_likelihood": results_powerlaw_stretched_exponential[
+            0
+        ],
+        "powerlaw_stretched_exponential_pvalue": results_powerlaw_stretched_exponential[
+            1
+        ],
+        "powerlaw_lognormal_positive_likelihood": results_powerlaw_lognormal_positive[
+            0
+        ],
+        "powerlaw_lognormal_positive_pvalue": results_powerlaw_lognormal_positive[1],
         **{
             f"quantile_percent_{q:.2f}": r
             for q, r in zip(list_quantiles, results_quantile)
@@ -492,6 +545,7 @@ def plot_dates(
     name: str,
     x_err: Optional[str] = None,
     y_err: Optional[str] = None,
+    x_ticks: Optional[np.ndarray] = None,
 ) -> None:
     fig: plt.Figure
     ax: plt.Axes
@@ -514,7 +568,7 @@ def plot_dates(
 
     # TODO: do not plot all dates in the x-ticks. Plot every 15 days or so.
     # TODO: Replace dots by lines? it may work.
-    ax.errorbar(x=x_data, y=y_data, yerr=y_err, x_err=x_err, data=df)
+    ax.errorbar(x=x_data, y=y_data, x_err=x_err, yerr=y_err, data=df)
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     # If one axis is of type `date` then the other must be linear, log, etc.
@@ -522,6 +576,8 @@ def plot_dates(
         ax.set_yscale("linear")
     if y_date:
         ax.set_xscale("linear")
+    if x_ticks is not None:
+        ax.set_xticks(x_ticks)
 
     plot_name = "date" if x_err is None and y_err is None else "date_errors"
 
@@ -755,6 +811,68 @@ def plot_violinplot(
     )
 
     fig.show()
+
+
+def plot_cdf_pdf_ccdf(
+    *,
+    dir_results: str,
+    df: pd.DataFrame,
+    x_data: str,
+    x_label: str,
+    name: str,
+) -> None:
+    fig: plt.Figure
+    ax: plt.Axes
+
+    arr_data = df[x_data].to_numpy()
+
+    cases = [
+        (
+            powerlaw.plot_pdf,
+            "pdf",
+            "PDF",
+            {"linear_bins": False},
+        ),
+        (
+            powerlaw.plot_cdf,
+            "cdf",
+            r"CDF - $\Pr{\left(X < x\right)}$",
+            {"survival": False},
+        ),
+        (
+            powerlaw.plot_ccdf,
+            "ccdf",
+            r"CCDF - $\Pr{\left(X \geq x\right)}$",
+            {"survival": True},
+        ),
+    ]
+
+    for func, plot_name, y_label, kwargs in cases:
+        fig, ax = plt.subplots(
+            nrows=1,
+            ncols=1,
+            figsize=(
+                SIZE_INCHES_WIDTH,
+                SIZE_INCHES_HEIGHT,
+            ),  # Must be (width, height) by the docs.
+            layout="compressed",
+        )
+
+        ax = func(data=arr_data.copy(), ax=ax, **kwargs)
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+
+        tikzplotlib.clean_figure(fig=fig)
+        tikzplotlib.save(
+            os.path.join(
+                dir_results, f"plot-{plot_name}-{name}.tikz"
+            ),  # cannot be kwargs.
+            fig,  # cannot be kwargs.
+            encoding="utf-8",
+            textsize=9,
+        )
+
+        fig.show()
 
 
 def compute_metadata_dataset(
@@ -1196,6 +1314,19 @@ def compute_number_interactions_by_item_type(
         )
         return {}
 
+    column_perc = "perc"
+    column_count = "count"
+    column_subset = "subset"
+    column_attribute = "attribute"
+    column_item_type = "item_type"
+    column_item_type_str = "item_type_str"
+
+    column_export_count = "Count"
+    column_export_perc = "Percentage"
+    column_export_attribute = "Attribute"
+    column_export_subset = "Dataset subset"
+    column_export_item_type_str = "Interaction type"
+
     cases_all = [
         (
             df_interactions_with_impressions_all,
@@ -1203,13 +1334,6 @@ def compute_number_interactions_by_item_type(
             "Items",
             "item_id",
             "items_all",
-        ),
-        (
-            df_interactions_with_impressions_all,
-            "All",
-            "Series",
-            "series_id",
-            "series_all",
         ),
     ]
     cases_inside_impressions = [
@@ -1220,13 +1344,6 @@ def compute_number_interactions_by_item_type(
             "item_id",
             "items_inside_impressions",
         ),
-        (
-            df_interactions_inside_impressions,
-            "Inside contextual impressions",
-            "Series",
-            "series_id",
-            "series_inside_impressions",
-        ),
     ]
     cases_outside_impressions = [
         (
@@ -1235,13 +1352,6 @@ def compute_number_interactions_by_item_type(
             "Items",
             "item_id",
             "items_outside_impressions",
-        ),
-        (
-            df_interactions_outside_impressions,
-            "Outside contextual impressions",
-            "Series",
-            "series_id",
-            "series_outside_impressions",
         ),
     ]
 
@@ -1253,65 +1363,59 @@ def compute_number_interactions_by_item_type(
         num_interactions = df.shape[0]
 
         df_known: pd.DataFrame = (
-            df.drop_duplicates(
-                subset=[col],
-                keep="first",
-                inplace=False,
-                ignore_index=True,
-            )
-            .groupby(
-                by=["item_type"],
+            df.groupby(
+                by=[column_item_type],
                 as_index=False,
             )[col]
-            .agg(["count"])
+            .agg([column_count])
             .assign(
-                perc=lambda df_: df_["count"] / num_interactions,
-                item_type_str=lambda df_: df_["item_type"].apply(
-                    lambda df_row_item_type: DICT_ITEM_TYPE_TO_STR[df_row_item_type],
-                    convert_dtype=True,
-                ),
+                **{
+                    column_subset: subset,
+                    column_attribute: attr,
+                    column_perc: lambda df_: df_[column_count] / num_interactions,
+                    column_item_type_str: lambda df_: df_[column_item_type].apply(
+                        lambda df_row_item_type: DICT_ITEM_TYPE_TO_STR[
+                            df_row_item_type
+                        ],
+                        convert_dtype=True,
+                    ),
+                },
             )
-            .astype({"perc": np.float32, "item_type_str": pd.StringDtype()})
-        )
-
-        df_unknown = pd.DataFrame.from_records(
-            data=[
+            .astype(
                 {
-                    "item_type": ItemType.Unknown.value,
-                    "item_type_str": DICT_ITEM_TYPE_TO_STR[ItemType.Unknown.value],
-                    "count": num_interactions - df_known["count"].sum(),
-                    "perc": 1 - df_known["perc"].sum(),
+                    column_perc: np.float32,
+                    column_item_type_str: pd.StringDtype(),
+                    column_subset: pd.StringDtype(),
+                    column_attribute: pd.StringDtype(),
                 }
-            ]
-        ).astype(
-            dtype={
-                "item_type": df_known["item_type"].dtype,
-                "item_type_str": df_known["item_type_str"].dtype,
-                "count": df_known["count"].dtype,
-                "perc": df_known["perc"].dtype,
-            }
-        )
-
-        df_known_and_unknown = (
-            pd.concat(
-                objs=[df_known, df_unknown],
-                axis=0,
-                ignore_index=True,
             )
             .sort_values(
-                by=["count"],
+                by=[column_count],
                 axis=0,
                 ascending=False,
-            )
-            .assign(subset=subset, attribute=attr)
-            .astype({"subset": pd.StringDtype(), "attribute": pd.StringDtype()})[
-                ["subset", "attribute", "interaction_type_str", "count", "perc"]
+            )[
+                [
+                    column_subset,
+                    column_attribute,
+                    column_item_type_str,
+                    column_count,
+                    column_perc,
+                ]
             ]
+            .rename(
+                columns={
+                    column_subset: column_export_subset,
+                    column_attribute: column_export_attribute,
+                    column_item_type_str: column_export_item_type_str,
+                    column_count: column_export_count,
+                    column_perc: column_export_perc,
+                },
+            )
         )
 
-        dfs.append(df_known_and_unknown)
+        dfs.append(df_known)
 
-        results[f"num_interactions_by_item_type-{name}"] = df_known_and_unknown
+        results[f"num_interactions_by_item_type-{name}"] = df_known
 
     df_results = pd.concat(
         objs=dfs,
@@ -1360,14 +1464,20 @@ def compute_number_of_interactions_by_interaction_type(
         )
         return {}
 
+    column_perc = "perc"
+    column_count = "count"
+    column_subset = "subset"
+    column_attribute = "attribute"
+    column_interaction_type = "interaction_type"
+    column_interaction_type_str = "interaction_type_str"
+
+    column_export_count = "Count"
+    column_export_perc = "Percentage"
+    column_export_attribute = "Attribute"
+    column_export_subset = "Dataset subset"
+    column_export_interaction_type_str = "Interaction type"
+
     cases_all = [
-        (
-            df_interactions_with_impressions_all,
-            "All",
-            "Series",
-            "series_id",
-            "series_all",
-        ),
         (
             df_interactions_with_impressions_all,
             "All",
@@ -1380,26 +1490,12 @@ def compute_number_of_interactions_by_interaction_type(
         (
             df_interactions_inside_impressions,
             "Inside contextual impressions",
-            "Series",
-            "series_id",
-            "series_inside_impressions",
-        ),
-        (
-            df_interactions_inside_impressions,
-            "Inside contextual impressions",
             "Items",
             "item_id",
             "items_inside_impressions",
         ),
     ]
     cases_outside_impressions = [
-        (
-            df_interactions_outside_impressions,
-            "Outside contextual impressions",
-            "Series",
-            "series_id",
-            "series_outside_impressions",
-        ),
         (
             df_interactions_outside_impressions,
             "Outside contextual impressions",
@@ -1418,32 +1514,60 @@ def compute_number_of_interactions_by_interaction_type(
 
         df_known: pd.DataFrame = (
             df.groupby(
-                by=["interaction_type"],
+                by=[column_interaction_type],
                 as_index=False,
             )[col]
-            .agg(["count"])
+            .agg([column_count])
             .assign(
-                perc=lambda df_: df_["count"] / num_interactions,
-                interaction_type_str=lambda df_: df_["interaction_type"].apply(
-                    lambda df_row_interaction_type: DICT_INTERACTION_TYPE_TO_STR[
-                        df_row_interaction_type
-                    ],
-                    convert_dtype=True,
-                ),
+                **{
+                    column_subset: subset,
+                    column_attribute: attr,
+                    column_perc: lambda df_: df_[column_count] / num_interactions,
+                    column_interaction_type_str: lambda df_: df_[
+                        column_interaction_type
+                    ].apply(
+                        lambda df_row_interaction_type: DICT_INTERACTION_TYPE_TO_STR[
+                            df_row_interaction_type
+                        ],
+                        convert_dtype=True,
+                    ),
+                },
             )
-            .astype({"perc": np.float32, "interaction_type_str": pd.StringDtype()})
+            .astype(
+                {
+                    column_perc: np.float32,
+                    column_interaction_type_str: pd.StringDtype(),
+                    column_subset: pd.StringDtype(),
+                    column_attribute: pd.StringDtype(),
+                }
+            )
             .sort_values(
-                by=["count"],
+                by=[column_count],
                 axis=0,
                 ascending=False,
+            )[
+                [
+                    column_subset,
+                    column_attribute,
+                    column_interaction_type_str,
+                    column_count,
+                    column_perc,
+                ]
+            ]
+            .rename(
+                columns={
+                    column_subset: column_export_subset,
+                    column_attribute: column_export_attribute,
+                    column_interaction_type_str: column_export_interaction_type_str,
+                    column_count: column_export_count,
+                    column_perc: column_export_perc,
+                },
             )
-            .assign(subset=subset, attribute=attr)
-            .astype({"subset": pd.StringDtype(), "attribute": pd.StringDtype()})
         )
 
         dfs.append(df_known)
 
-        results[f"num_interactions_by_interaction_type-{name}"] = df_known_and_unknown
+        results[f"num_interactions_by_interaction_type-{name}"] = df_known
 
     df_results = pd.concat(
         objs=dfs,
@@ -1469,22 +1593,23 @@ def compute_number_of_interactions_by_interaction_type(
 def compute_popularity_interactions(
     dir_results: str,
     dict_results: dict[str, pd.DataFrame],
-    df_interactions_all: pd.DataFrame,
+    df_interactions_with_impressions_all: pd.DataFrame,
     df_interactions_outside_impressions: pd.DataFrame,
-    df_interactions_only_non_null_impressions: pd.DataFrame,
+    df_interactions_inside_impressions: pd.DataFrame,
 ) -> dict[str, pd.DataFrame]:
     if all(
         filename in dict_results
         for filename in [
-            "user_pop_interactions_all",
-            "user_pop_interactions_null_impressions",
-            "user_pop_interactions_non_null_impressions",
-            "item_pop_interactions_all",
-            "item_pop_interactions_null_impressions",
-            "item_pop_interactions_non_null_impressions",
-            "series_pop_interactions_all",
-            "series_pop_interactions_null_impressions",
-            "series_pop_interactions_non_null_impressions",
+            "table_popularity_interactions",
+            "popularity_interactions_user_all",
+            "popularity_interactions_item_all",
+            "popularity_interactions_series_all",
+            "popularity_interactions_user_inside_impressions",
+            "popularity_interactions_item_inside_impressions",
+            "popularity_interactions_series_inside_impressions",
+            "popularity_interactions_user_outside_impressions",
+            "popularity_interactions_item_outside_impressions",
+            "popularity_interactions_series_outside_impressions",
         ]
     ):
         logger.warning(
@@ -1493,120 +1618,281 @@ def compute_popularity_interactions(
         )
         return {}
 
-    user_pop_all, user_pop_perc_all = compute_popularity(
-        df=df_interactions_all,
-        column="user_id",
-    )
-    user_pop_null, user_pop_perc_null = compute_popularity(
-        df=df_interactions_outside_impressions,
-        column="user_id",
-    )
-    user_pop_non_null, user_pop_perc_non_null = compute_popularity(
-        df=df_interactions_only_non_null_impressions,
-        column="user_id",
-    )
-    for df, name in zip(
-        [user_pop_all, user_pop_null, user_pop_non_null],
-        [
-            "user_popularity_interactions_all",
-            "user_popularity_interactions_null_impressions",
-            "user_popularity_interactions_non_null_impressions",
-        ],
-    ):
-        plot_popularity(
+    cases_users = [
+        (
+            df_interactions_with_impressions_all,
+            "user_id",
+            "popularity_interactions_user_all",
+            r"Rank of users",
+            r"\# of interactions",
+        ),
+        (
+            df_interactions_outside_impressions,
+            "user_id",
+            "popularity_interactions_user_outside_impressions",
+            r"Rank of users",
+            r"\# of interactions",
+        ),
+        (
+            df_interactions_inside_impressions,
+            "user_id",
+            "popularity_interactions_user_inside_impressions",
+            r"Rank of users",
+            r"\# of interactions",
+        ),
+    ]
+
+    cases_items = [
+        (
+            df_interactions_with_impressions_all,
+            "item_id",
+            "popularity_interactions_item_all",
+            r"Rank of items",
+            r"\# of interactions",
+        ),
+        (
+            df_interactions_outside_impressions,
+            "item_id",
+            "popularity_interactions_item_outside_impressions",
+            r"Rank of items",
+            r"\# of interactions",
+        ),
+        (
+            df_interactions_inside_impressions,
+            "item_id",
+            "popularity_interactions_item_inside_impressions",
+            r"Rank of items",
+            r"\# of interactions",
+        ),
+    ]
+
+    cases_series = [
+        (
+            df_interactions_with_impressions_all,
+            "series_id",
+            "popularity_interactions_series_all",
+            r"Rank of series",
+            r"\# of interactions",
+        ),
+        (
+            df_interactions_outside_impressions,
+            "series_id",
+            "popularity_interactions_series_outside_impressions",
+            r"Rank of series",
+            r"\# of interactions",
+        ),
+        (
+            df_interactions_inside_impressions,
+            "series_id",
+            "popularity_interactions_series_inside_impressions",
+            "Rank of series",
+            r"\# of interactions",
+        ),
+    ]
+
+    cases = cases_users + cases_items + cases_series
+    list_basic_statistics = []
+    results = {}
+    for df, col, name, x_label, x_label_pdf in cases:
+        df_pop, df_pop_perc = compute_popularity(
             df=df,
+            column=col,
+        )
+
+        arr_popularity = df_pop["count"].to_numpy()
+        results_basic_statistics = _compute_basic_statistics(
+            arr_data=arr_popularity,
+            data_discrete=True,
+            name=name,
+        )
+        list_basic_statistics.append(results_basic_statistics)
+
+        results[name] = df_pop
+
+        plot_popularity(
+            df=df_pop,
             dir_results=dir_results,
             x_data="index",
             y_data="count",
-            x_label=r"Users",
+            x_label=x_label,
             y_label=r"\# of interactions",
             name=name,
+            x_scale="linear",
+            y_scale="linear",
         )
 
-    item_pop_all, item_pop_perc_all = compute_popularity(
-        df=df_interactions_all,
-        column="item_id",
-    )
-    item_pop_null, item_pop_perc_null = compute_popularity(
-        df=df_interactions_outside_impressions,
-        column="item_id",
-    )
-    item_pop_non_null, item_pop_perc_non_null = compute_popularity(
-        df=df_interactions_only_non_null_impressions,
-        column="item_id",
-    )
-    for df, name in zip(
-        [item_pop_all, item_pop_null, item_pop_non_null],
-        [
-            "item_popularity_interactions_all",
-            "item_popularity_interactions_null_impressions",
-            "item_popularity_interactions_non_null_impressions",
-        ],
-    ):
-        plot_popularity(
-            df=df,
+        plot_cdf_pdf_ccdf(
+            df=df_pop,
             dir_results=dir_results,
-            x_data="index",
-            y_data="count",
-            x_label=r"Items",
-            y_label=r"\# of interactions",
+            x_data="count",
+            x_label=x_label_pdf,
             name=name,
         )
 
-    series_pop_all, series_pop_perc_all = compute_popularity(
-        df=df_interactions_all,
-        column="series_id",
+    df_results = pd.DataFrame.from_records(data=list_basic_statistics)
+    df_results.to_csv(
+        path_or_buf=os.path.join(
+            dir_results, "table_statistics_popularity_interactions.csv"
+        ),
+        index=True,
+        header=True,
+        sep=";",
+        encoding="utf-8",
+        decimal=",",
+        float_format="%.4f",
     )
-    series_pop_null, series_pop_perc_null = compute_popularity(
-        df=df_interactions_outside_impressions,
-        column="series_id",
-    )
-    series_pop_non_null, series_pop_perc_non_null = compute_popularity(
-        df=df_interactions_only_non_null_impressions,
-        column="series_id",
-    )
-    for df, name in zip(
-        [series_pop_all, series_pop_null, series_pop_non_null],
-        [
-            "series_popularity_interactions_all",
-            "series_popularity_interactions_null_impressions",
-            "series_popularity_interactions_non_null_impressions",
-        ],
+
+    return {"table_popularity_interactions": df_results, **results}
+
+
+def compute_temporal_distribution_of_interactions(
+    dir_results: str,
+    dict_results: dict[str, pd.DataFrame],
+    df_interactions_with_impressions_all: pd.DataFrame,
+) -> dict[str, pd.DataFrame]:
+    if all(
+        filename in dict_results
+        for filename in [
+            "num_interactions_by_date_all",
+            "num_interactions_by_hours_all",
+            "num_interactions_by_minute_all",
+            "num_interactions_by_days_in_month_all",
+            "num_interactions_by_day_of_year_all",
+            "num_interactions_by_day_of_week_all",
+            "num_interactions_by_month_all",
+        ]
     ):
-        plot_popularity(
-            df=df,
-            dir_results=dir_results,
-            x_data="index",
-            y_data="count",
-            x_label=r"Series",
-            y_label=r"\# of interactions",
-            name=name,
+        logger.warning(
+            "Skipping function %(function)s because all keys in the dictionary already exist.",
+            {"function": compute_temporal_distribution_of_interactions.__name__},
+        )
+        return {}
+
+    cases = [
+        (
+            df_interactions_with_impressions_all,
+            "date",
+            "date",
+            r"Date",
+            True,
+            "num_interactions_by_date_all",
+        ),
+        (
+            df_interactions_with_impressions_all,
+            "hour",
+            "hour",
+            r"Hour",
+            False,
+            "num_interactions_by_hours_all",
+        ),
+        (
+            df_interactions_with_impressions_all,
+            "minute",
+            "minute",
+            r"Minutes",
+            False,
+            "num_interactions_by_minute_all",
+        ),
+        (
+            df_interactions_with_impressions_all,
+            "days_in_month",
+            "days_in_month",
+            r"Day in month",
+            False,
+            "num_interactions_by_days_in_month_all",
+        ),
+        (
+            df_interactions_with_impressions_all,
+            "day_of_year",
+            "day_of_year",
+            r"Day of year",
+            False,
+            "num_interactions_by_day_of_year_all",
+        ),
+        (
+            df_interactions_with_impressions_all,
+            "day_of_week",
+            "day_name",
+            r"Day of week",
+            False,
+            "num_interactions_by_day_of_week_all",
+        ),
+        (
+            df_interactions_with_impressions_all,
+            "month",
+            "month_name",
+            r"Month",
+            False,
+            "num_interactions_by_month_all",
+        ),
+    ]
+
+    results = {}
+
+    for df, col, x_data, x_label, x_date, name in cases:
+        df_dates = (
+            df.groupby(
+                by=[col],
+                as_index=False,
+            )["series_id"]
+            .agg(["count"])
+            .sort_values(
+                by=col,
+                ascending=True,
+                ignore_index=True,
+                inplace=False,
+            )
         )
 
-    return {
-        "user_pop_interactions_all": user_pop_all,
-        "user_pop_interactions_null_impressions": user_pop_null,
-        "user_pop_interactions_non_null_impressions": user_pop_non_null,
-        "item_pop_interactions_all": item_pop_all,
-        "item_pop_interactions_null_impressions": item_pop_null,
-        "item_pop_interactions_non_null_impressions": item_pop_non_null,
-        "series_pop_interactions_all": series_pop_all,
-        "series_pop_interactions_null_impressions": series_pop_null,
-        "series_pop_interactions_non_null_impressions": series_pop_non_null,
-    }
+        if col == "day_of_week":
+            df_dates[x_data] = (
+                df_dates[col]
+                .apply(
+                    lambda df_row: DICT_DAY_OF_WEEK_TO_STR[df_row],
+                    convert_dtype=True,
+                )
+                .astype(pd.StringDtype())
+            )
+        if col == "month":
+            df_dates[x_data] = (
+                df_dates[col]
+                .apply(
+                    lambda df_row: DICT_MONTH_TO_STR[df_row],
+                    convert_dtype=True,
+                )
+                .astype(pd.StringDtype())
+            )
+
+        results[name] = df_dates
+
+        plot_dates(
+            dir_results=dir_results,
+            df=df_dates,
+            name=name,
+            x_data=x_data,
+            y_data="count",
+            x_label=x_label,
+            y_label=r"\# of interactions",
+            x_date=x_date,
+            y_date=False,
+        )
+
+    return {**results}
 
 
 def compute_popularity_impressions_contextual(
     dir_results: str,
     dict_results: dict[str, pd.DataFrame],
-    df_interactions_only_non_null_impressions: pd.DataFrame,
+    df_interactions_inside_impressions: pd.DataFrame,
     df_impressions_contextual: pd.DataFrame,
 ) -> dict[str, pd.DataFrame]:
     if all(
         filename in dict_results
         for filename in [
-            "series_pop_impressions_contextual_with_interactions",
-            "series_pop_impressions_contextual",
+            "table_popularity_impressions_contextual",
+            "popularity_impressions_contextual_user_with_interactions",
+            "popularity_impressions_contextual_series_with_interactions",
+            "popularity_impressions_contextual_series",
         ]
     ):
         logger.warning(
@@ -1615,24 +1901,11 @@ def compute_popularity_impressions_contextual(
         )
         return {}
 
-    df_interactions_with_contextual_impressions = (
-        df_interactions_only_non_null_impressions[
-            ["user_id", "recommendation_id"]
-        ].merge(
-            right=df_impressions_contextual,
-            how="inner",
-            left_on="recommendation_id",
-            right_index=True,
-        )
-    )
-
-    df_interactions_with_contextual_impressions = (
-        df_interactions_with_contextual_impressions[
-            ["recommended_series_list"]
-        ].explode(
-            column="recommended_series_list",
-            ignore_index=True,
-        )
+    df_impressions_on_interactions = df_interactions_inside_impressions[
+        ["user_id", "recommended_series_list"]
+    ].explode(
+        column="recommended_series_list",
+        ignore_index=True,
     )
 
     df_only_impressions_contextual = df_impressions_contextual[
@@ -1642,45 +1915,84 @@ def compute_popularity_impressions_contextual(
         ignore_index=True,
     )
 
-    (
-        series_pop_impressions_contextual_with_interactions,
-        series_pop_perc_impressions_contextual_with_interactions,
-    ) = compute_popularity(
-        df=df_interactions_with_contextual_impressions,
-        column="recommended_series_list",
-    )
-    (
-        series_pop_impressions_contextual,
-        series_pop_perc_impressions_contextual,
-    ) = compute_popularity(
-        df=df_only_impressions_contextual,
-        column="recommended_series_list",
-    )
+    cases_user = [
+        (
+            df_impressions_on_interactions,
+            "user_id",
+            "Rank of users",
+            "popularity_impressions_contextual_user_with_interactions",
+        ),
+    ]
+    cases_series = [
+        (
+            df_impressions_on_interactions,
+            "recommended_series_list",
+            "Rank of series",
+            "popularity_impressions_contextual_series_with_interactions",
+        ),
+        (
+            df_only_impressions_contextual,
+            "recommended_series_list",
+            "Rank of series",
+            "popularity_impressions_contextual_series",
+        ),
+    ]
 
-    for df, name in zip(
-        [
-            series_pop_impressions_contextual_with_interactions,
-            series_pop_impressions_contextual,
-        ],
-        [
-            "series_popularity_impressions_contextual_with_interactions",
-            "series_popularity_impressions_contextual",
-        ],
-    ):
-        plot_popularity(
+    cases = cases_user + cases_series
+
+    list_basic_statistics = []
+    results = {}
+
+    for df, col, x_label, name in cases:
+        df_pop, df_pop_perc = compute_popularity(
             df=df,
+            column=col,
+        )
+
+        arr_popularity = df_pop["count"].to_numpy()
+        results_basic_statistics = _compute_basic_statistics(
+            arr_data=arr_popularity,
+            data_discrete=True,
+            name=name,
+        )
+        list_basic_statistics.append(results_basic_statistics)
+
+        results[name] = df_pop
+
+        plot_popularity(
+            df=df_pop,
             dir_results=dir_results,
             x_data="index",
             y_data="count",
-            x_label=r"Series",
+            x_label=x_label,
             y_label=r"\# of impressions",
+            name=name,
+            x_scale="linear",
+            y_scale="linear",
+        )
+
+        plot_cdf_pdf_ccdf(
+            df=df_pop,
+            dir_results=dir_results,
+            x_data="count",
+            x_label=r"\# of impressions",
             name=name,
         )
 
-    return {
-        "series_pop_impressions_contextual_with_interactions": series_pop_impressions_contextual_with_interactions,
-        "series_pop_impressions_contextual": series_pop_impressions_contextual,
-    }
+    df_results = pd.DataFrame.from_records(data=list_basic_statistics)
+    df_results.to_csv(
+        path_or_buf=os.path.join(
+            dir_results, "table_statistics_popularity_impressions_contextual.csv"
+        ),
+        index=True,
+        header=True,
+        sep=";",
+        encoding="utf-8",
+        decimal=",",
+        float_format="%.4f",
+    )
+
+    return {"table_popularity_impressions_contextual": df_results, **results}
 
 
 def compute_popularity_impressions_global(
@@ -1883,96 +2195,6 @@ def compute_correlation_interactions_impressions(
         "series_pop_corr_pearson": df_series_pop_corr_pearson,
         "series_pop_corr_kendall": df_series_pop_corr_kendall,
         "series_pop_corr_spearman": df_series_pop_corr_spearman,
-    }
-
-
-def compute_daily_hourly_number_of_interactions(
-    dir_results: str,
-    dict_results: dict[str, pd.DataFrame],
-    df_interactions_all: pd.DataFrame,
-) -> dict[str, pd.DataFrame]:
-    # if all(
-    #     filename in dict_results
-    #     for filename in ["num_interactions_by_date", "num_interactions_by_hour"]
-    # ):
-    #     return {}
-
-    df_num_interactions_by_date = (
-        df_interactions_all.groupby(
-            by="date",
-        )["series_id"]
-        .count()
-        .to_frame()
-        .reset_index(drop=False)
-        .rename(
-            columns={
-                "index": "date",
-                "series_id": "count",
-            }
-        )
-        .sort_values(
-            by="date",
-            ascending=True,
-            ignore_index=True,
-            inplace=False,
-        )
-    )
-    df_num_interactions_by_date["date"] = df_num_interactions_by_date["date"].astype(
-        str
-    )
-
-    df_num_interactions_by_hour = (
-        df_interactions_all.groupby(
-            by="hour",
-        )["series_id"]
-        .count()
-        .to_frame()
-        .reset_index(drop=False)
-        .rename(
-            columns={
-                "index": "hour",
-                "series_id": "count",
-            }
-        )
-        .sort_values(
-            by="hour",
-            ascending=True,
-            ignore_index=True,
-            inplace=False,
-        )
-    )
-
-    for df, x_data, x_label, x_date, name in [
-        (
-            df_num_interactions_by_date,
-            "date",
-            r"Date",
-            True,
-            "num_interactions_by_date",
-        ),
-        (
-            df_num_interactions_by_hour,
-            "hour",
-            r"Hour",
-            False,
-            "num_interactions_by_hours",
-        ),
-    ]:
-        plot_dates(
-            dir_results=dir_results,
-            df=df,
-            name=name,
-            x_data=x_data,
-            y_data="count",
-            x_label=x_label,
-            y_label=r"\# of interactions",
-            x_date=x_date,
-            y_date=False,
-        )
-
-    return {
-        "num_interactions_by_date": df_num_interactions_by_date,
-        "num_interactions_by_hour": df_num_interactions_by_hour,
     }
 
 
@@ -3437,10 +3659,20 @@ def transform_dataframes_add_date_time_hour_to_interactions(
             utc=True,
             unit="ms",
         )
+
         df["date"] = df["datetime"].dt.date
         df["time"] = df["datetime"].dt.time
         df["hour"] = df["datetime"].dt.hour
+        df["minute"] = df["datetime"].dt.minute
+
+        df["days_in_month"] = df["datetime"].dt.days_in_month
+        df["day_of_year"] = df["datetime"].dt.day_of_year
+
         df["month"] = df["datetime"].dt.month
+        df["month_name"] = df["datetime"].dt.month_name()
+
+        df["day_of_week"] = df["datetime"].dt.day_of_week
+        df["day_name"] = df["datetime"].dt.day_name()
 
         new_dfs.append(df)
 
@@ -3622,23 +3854,23 @@ def contentwise_impressions_compute_statistics_thesis(
     # )
     # dict_results.update(results)
 
-    results = compute_number_of_interactions_by_interaction_type(
-        dir_results=dir_results,
-        dict_results=dict_results,
-        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
-        df_interactions_outside_impressions=df_interactions_outside_impressions,
-        df_interactions_inside_impressions=df_interactions_inside_impressions,
-    )
-    dict_results.update(results)
-
-    results = compute_number_interactions_by_item_type(
-        dir_results=dir_results,
-        dict_results=dict_results,
-        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
-        df_interactions_outside_impressions=df_interactions_outside_impressions,
-        df_interactions_inside_impressions=df_interactions_inside_impressions,
-    )
-    dict_results.update(results)
+    # results = compute_number_interactions_by_item_type(
+    #     dir_results=dir_results,
+    #     dict_results=dict_results,
+    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+    #     df_interactions_outside_impressions=df_interactions_outside_impressions,
+    #     df_interactions_inside_impressions=df_interactions_inside_impressions,
+    # )
+    # dict_results.update(results)
+    #
+    # results = compute_number_of_interactions_by_interaction_type(
+    #     dir_results=dir_results,
+    #     dict_results=dict_results,
+    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+    #     df_interactions_outside_impressions=df_interactions_outside_impressions,
+    #     df_interactions_inside_impressions=df_interactions_inside_impressions,
+    # )
+    # dict_results.update(results)
 
     # results = compute_popularity_interactions(
     #     dir_results=dir_results,
@@ -3648,7 +3880,14 @@ def contentwise_impressions_compute_statistics_thesis(
     #     df_interactions_inside_impressions=df_interactions_inside_impressions,
     # )
     # dict_results.update(results)
-    #
+
+    results = compute_temporal_distribution_of_interactions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+    )
+    dict_results.update(results)
+
     # results = compute_popularity_impressions_contextual(
     #     dir_results=dir_results,
     #     dict_results=dict_results,
@@ -3656,7 +3895,7 @@ def contentwise_impressions_compute_statistics_thesis(
     #     df_impressions_contextual=df_impressions_contextual,
     # )
     # dict_results.update(results)
-    #
+
     # results = compute_popularity_impressions_global(
     #     dir_results=dir_results,
     #     dict_results=dict_results,
@@ -3669,14 +3908,7 @@ def contentwise_impressions_compute_statistics_thesis(
     #     dict_results=dict_results,
     # )
     # dict_results.update(results)
-    #
-    # results = compute_daily_hourly_number_of_interactions(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
-    # )
-    # dict_results.update(results)
-    #
+
     # results = compute_daily_hourly_number_of_impressions(
     #     dir_results=dir_results,
     #     dict_results=dict_results,
