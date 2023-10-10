@@ -9,9 +9,11 @@ from tap import Tap
 
 from dotenv import load_dotenv
 
+from impressions_evaluation import configure_logger
 from impressions_evaluation.experiments.print_results import print_results
-
-# from impressions_evaluation.experiments.graph_based.results import print_results
+from impressions_evaluation.experiments.print_statistics import (
+    print_datasets_statistics,
+)
 
 load_dotenv()
 
@@ -34,6 +36,7 @@ from impressions_evaluation.experiments.commons import (
     EHyperParameterTuningParameters,
     RecommenderBaseline,
     ExperimentCasesSignalAnalysisInterface,
+    plot_popularity_of_datasets,
 )
 from impressions_evaluation.experiments.graph_based import (
     run_experiments_sequentially,
@@ -119,7 +122,7 @@ class ConsoleArguments(Tap):
 _TO_USE_BENCHMARKS = [
     Benchmarks.ContentWiseImpressions,
     Benchmarks.MINDSmall,
-    # Benchmarks.FINNNoSlates,
+    Benchmarks.FINNNoSlates,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE = [
@@ -134,7 +137,7 @@ _TO_USE_RECOMMENDERS_BASELINE = [
     #
     # RecommenderBaseline.PURE_SVD,
     RecommenderBaseline.NMF,
-    # RecommenderBaseline.MF_BPR,
+    RecommenderBaseline.MF_BPR,
     #
     # RecommenderBaseline.SLIM_ELASTIC_NET,
     # RecommenderBaseline.SLIM_BPR,
@@ -321,9 +324,8 @@ _TO_PRINT_RECOMMENDERS: list[
 if __name__ == "__main__":
     input_flags = ConsoleArguments().parse_args()
 
+    configure_logger()
     logger = logging.getLogger(__name__)
-    print(__name__, logger)
-    logger.debug("PRINTING INITIAL LOGS")
 
     dask_interface = configure_dask_cluster()
 
@@ -448,11 +450,6 @@ if __name__ == "__main__":
 
     dask_interface.wait_for_jobs()
 
-    # if input_flags.print_evaluation_results:
-    #     print_results(
-    #         results_interface=_TO_PRINT_RECOMMENDERS,
-    #     )
-
     # if input_flags.compute_confidence_intervals:
     #     compute_confidence_intervals(
     #         dask_interface=dask_interface,
@@ -469,17 +466,17 @@ if __name__ == "__main__":
     #     )
     #
     # dask_interface.wait_for_jobs()
-    #
-    # if input_flags.plot_popularity_of_datasets:
-    #     plot_popularity_of_datasets(
-    #         experiments_interface=experiments_interface_baselines
-    #     )
-    #
-    # if input_flags.print_datasets_statistics:
-    #     print_datasets_statistics(
-    #         experiment_cases_interface=experiments_interface_baselines,
-    #     )
-    #
+
+    if input_flags.plot_popularity_of_datasets:
+        plot_popularity_of_datasets(
+            experiments_interface=experiments_interface_baselines
+        )
+
+    if input_flags.print_datasets_statistics:
+        print_datasets_statistics(
+            experiment_cases_interface=experiments_interface_baselines,
+        )
+
     if input_flags.print_evaluation_results:
         print_results(
             baseline_experiment_cases_interface=experiments_interface_baselines,

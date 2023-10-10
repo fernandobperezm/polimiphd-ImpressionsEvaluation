@@ -11,6 +11,7 @@ import logging
 
 from tap import Tap
 
+from impressions_evaluation import configure_logger
 from impressions_evaluation.experiments.commons import (
     create_necessary_folders,
     ExperimentCasesInterface,
@@ -25,6 +26,7 @@ from impressions_evaluation.experiments.graph_based import (
     _run_collaborative_filtering_hyper_parameter_tuning,
     _run_pure_impressions_hyper_parameter_tuning,
     run_experiments_sequentially,
+    _run_frequency_impressions_hyper_parameter_tuning,
 )
 from impressions_evaluation.experiments.graph_based.results import print_results
 
@@ -39,6 +41,9 @@ class ConsoleArguments(Tap):
 
     include_impressions: bool = False
     """If the flag is included, then the script tunes the hyper-parameters of the collaborative+impressions recommenders"""
+
+    include_impressions_frequency: bool = False
+    """If the flag is included, then the script tunes the hyper-parameters of the collaborative+impressions frequency recommenders"""
 
     print_evaluation_results: bool = False
     """Export to CSV and LaTeX the accuracy, beyond-accuracy, optimal hyper-parameters, and scalability metrics of 
@@ -56,23 +61,30 @@ class ConsoleArguments(Tap):
 _TO_USE_BENCHMARKS = [
     Benchmarks.ContentWiseImpressions,
     Benchmarks.MINDSmall,
-    # Benchmarks.FINNNoSlates,
+    Benchmarks.FINNNoSlates,
 ]
 
 
 _TO_USE_RECOMMENDERS_BASELINES = [
-    # RecommenderBaseline.P3_ALPHA,
-    # RecommenderBaseline.RP3_BETA,
-    RecommenderBaseline.LIGHT_GCN,
+    RecommenderBaseline.P3_ALPHA,
+    RecommenderBaseline.RP3_BETA,
+    # RecommenderBaseline.LIGHT_GCN,
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS = [
-    # RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
-    # RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-    # RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
-    # RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-    RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS,
-    RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS,
+    RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
+    RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+    RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
+    RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+    # RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS,
+    # RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS,
+]
+
+_TO_USE_RECOMMENDERS_IMPRESSIONS_FREQUENCY = [
+    RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS_FREQUENCY,
+    RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
+    RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS_FREQUENCY,
+    RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
 ]
 
 _TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS = [
@@ -86,6 +98,10 @@ _TO_USE_TRAINING_FUNCTIONS_BASELINES = [
 
 _TO_USE_TRAINING_FUNCTIONS_PURE_IMPRESSIONS = [
     _run_pure_impressions_hyper_parameter_tuning,
+]
+
+_TO_USE_TRAINING_FUNCTIONS_IMPRESSIONS_FREQUENCY = [
+    _run_frequency_impressions_hyper_parameter_tuning,
 ]
 
 _TO_PRINT_RECOMMENDERS: list[
@@ -149,6 +165,7 @@ _TO_PRINT_RECOMMENDERS: list[
 if __name__ == "__main__":
     input_flags = ConsoleArguments().parse_args()
 
+    configure_logger()
     logger = logging.getLogger(__name__)
 
     common_hyper_parameter_tuning_parameters = HyperParameterTuningParameters()
@@ -165,6 +182,13 @@ if __name__ == "__main__":
         to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
         to_use_recommenders=_TO_USE_RECOMMENDERS_IMPRESSIONS,
         to_use_training_functions=_TO_USE_TRAINING_FUNCTIONS_PURE_IMPRESSIONS,
+    )
+
+    experiments_impressions_frequency_interface = ExperimentCasesInterface(
+        to_use_benchmarks=_TO_USE_BENCHMARKS,
+        to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        to_use_recommenders=_TO_USE_RECOMMENDERS_IMPRESSIONS_FREQUENCY,
+        to_use_training_functions=_TO_USE_TRAINING_FUNCTIONS_IMPRESSIONS_FREQUENCY,
     )
 
     create_necessary_folders(
@@ -185,6 +209,11 @@ if __name__ == "__main__":
     if input_flags.include_impressions:
         run_experiments_sequentially(
             experiment_cases_interface=experiments_impressions_interface,
+        )
+
+    if input_flags.include_impressions_frequency:
+        run_experiments_sequentially(
+            experiment_cases_interface=experiments_impressions_frequency_interface,
         )
 
     if input_flags.print_evaluation_results:
