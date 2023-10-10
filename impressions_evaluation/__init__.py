@@ -4,91 +4,89 @@ import os
 import toml
 
 
-with open(os.path.join(os.getcwd(), "pyproject.toml"), "r") as project_file:
-    pyproject_logs_config = toml.load(f=project_file)["logs"]
+def configure_logger() -> None:
+    """Method used to ensure that we configure the logger config."""
+    with open(os.path.join(os.getcwd(), "pyproject.toml"), "r") as project_file:
+        pyproject_logs_config = toml.load(f=project_file)["logs"]
 
-_dir_logger = os.path.join(
-    os.getcwd(),
-    pyproject_logs_config["dir_logs"],
-    "",
-)
-_filename_logger = os.path.join(
-    _dir_logger,
-    pyproject_logs_config["filename_logs"],
-)
+    _dir_logger = os.path.join(
+        os.getcwd(),
+        pyproject_logs_config["dir_logs"],
+        "",
+    )
+    _filename_logger = os.path.join(
+        _dir_logger,
+        pyproject_logs_config["filename_logs"],
+    )
 
-os.makedirs(_dir_logger, exist_ok=True)
+    os.makedirs(_dir_logger, exist_ok=True)
 
-# Definition of config dict seen at:
-# https://docs.python.org/3.9/library/logging.config.html#dictionary-schema-details
-conf = {
-    "version": 1,
-    "disable_existing_loggers": True,
-    "formatters": {
-        "main_formatter": {
-            "format": "%(process)d|%(asctime)s|%(levelname)s"
-            "|%(name)s|%(module)s|%(filename)s|%(funcName)s|%(lineno)d"
-            "|%(message)s",
-            "validate": True,
-        }
-    },
-    "handlers": {
-        "file": {
-            "class": "logging.FileHandler",
-            "formatter": "main_formatter",
-            "mode": "a",
-            "filename": _filename_logger,
-            "level": logging.DEBUG,
+    # Definition of config dict seen at:
+    # https://docs.python.org/3.9/library/logging.config.html#dictionary-schema-details
+    conf = {
+        "version": 1,
+        "disable_existing_loggers": True,
+        "formatters": {
+            "main_formatter": {
+                "format": "%(process)d|%(asctime)s|%(levelname)s"
+                "|%(name)s|%(module)s|%(filename)s|%(funcName)s|%(lineno)d"
+                "|%(message)s",
+                "validate": True,
+            },
+            "test_formatter": {
+                "format": "%(levelname)s|TEST-FORMATTER|%(message)s",
+                "validate": True,
+            },
         },
-        "console_out": {
-            "class": "logging.StreamHandler",
-            "formatter": "main_formatter",
-            "stream": sys.stdout,
-            "level": logging.DEBUG,
+        "handlers": {
+            "file": {
+                "class": "logging.FileHandler",
+                "formatter": "main_formatter",
+                "mode": "a",
+                "filename": _filename_logger,
+                "level": logging.DEBUG,
+            },
+            "console_out": {
+                "class": "logging.StreamHandler",
+                "formatter": "main_formatter",
+                "stream": sys.stdout,
+                "level": logging.DEBUG,
+            },
+            "console_error": {
+                "class": "logging.StreamHandler",
+                "formatter": "main_formatter",
+                "stream": sys.stderr,
+                "level": logging.WARNING,
+            },
+            "test_out": {
+                "class": "logging.StreamHandler",
+                "formatter": "test_formatter",
+                "stream": sys.stdout,
+                "level": logging.DEBUG,
+            },
         },
-        "console_error": {
-            "class": "logging.StreamHandler",
-            "formatter": "main_formatter",
-            "stream": sys.stderr,
-            "level": logging.WARNING,
+        "loggers": {
+            "__main__": {
+                "level": logging.INFO,
+                "propagate": False,
+                "handlers": ["file", "console_out", "console_error"],
+            },
+            "impressions_evaluation": {
+                "level": logging.INFO,
+                "propagate": False,
+                "handlers": ["file", "console_out", "console_error"],
+            },
+            # If we want to leave the module logging defaults, then leave it commented. Else, to debug logging calls, then uncomment and modify it according to our needs.
+            # "recsys_framework_extensions": {
+            #     "level": logging.CRITICAL,
+            #     "propagate": False,
+            #     "handlers": [
+            #         "file",
+            #         "console_out",
+            #         "console_error",
+            #     ],
+            # },
         },
-    },
-    "loggers": {
-        "impressions_evaluation": {
-            "level": logging.DEBUG,
-            "propagate": False,
-            "handlers": [
-                "file",
-                "console_out",
-                "console_error",
-            ],
-        },
-        "recsys_framework_extensions": {
-            "level": logging.WARNING,
-            "propagate": False,
-            "handlers": [
-                "file",
-                "console_error",
-            ],
-        },
-        "__main__": {
-            "level": logging.DEBUG,
-            "propagate": False,
-            "handlers": [
-                "file",
-                "console_out",
-                "console_error",
-            ],
-        },
-    },
-    "root": {
-        "level": logging.WARNING,
-        "handlers": [
-            "file",
-            "console_out",
-            "console_error",
-        ],
-    },
-}
+    }
 
-logging.config.dictConfig(conf)
+    logging.config.dictConfig(conf)
