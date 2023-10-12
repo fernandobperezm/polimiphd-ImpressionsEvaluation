@@ -1,4 +1,5 @@
 import itertools
+import logging
 import os
 from typing import Type, Optional, cast, Union, Sequence, Literal
 
@@ -17,41 +18,29 @@ from Recommenders.BaseSimilarityMatrixRecommender import (
 )
 from recsys_framework_extensions.data.io import DataIO
 from recsys_framework_extensions.data.mixins import InteractionsDataSplits
-import logging
 from recsys_framework_extensions.plotting import (
     generate_accuracy_and_beyond_metrics_pandas,
     DataFrameResults,
 )
 
-import impressions_evaluation.experiments.commons as commons
 import impressions_evaluation.experiments.baselines as baselines
-import impressions_evaluation.experiments.impression_aware.re_ranking as re_ranking
+import impressions_evaluation.experiments.commons as commons
 import impressions_evaluation.experiments.impression_aware.heuristics as heuristics
+import impressions_evaluation.experiments.impression_aware.re_ranking as re_ranking
 import impressions_evaluation.experiments.impression_aware.user_profiles as user_profiles
-
-from impressions_evaluation.impression_recommenders.heuristics.latest_impressions import (
-    LastImpressionsRecommender,
-)
-from impressions_evaluation.impression_recommenders.heuristics.frequency_and_recency import (
-    FrequencyRecencyRecommender,
-    RecencyRecommender,
-)
-from impressions_evaluation.impression_recommenders.re_ranking.hard_frequency_capping import (
-    HardFrequencyCappingRecommender,
-)
 from impressions_evaluation.impression_recommenders.re_ranking.cycling import (
     CyclingRecommender,
 )
 from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import (
     ImpressionsDiscountingRecommender,
 )
+from impressions_evaluation.impression_recommenders.user_profile.folding import (
+    FoldedMatrixFactorizationRecommender,
+)
 from impressions_evaluation.impression_recommenders.user_profile.weighted import (
     BaseWeightedUserProfileRecommender,
     ItemWeightedUserProfileRecommender,
     UserWeightedUserProfileRecommender,
-)
-from impressions_evaluation.impression_recommenders.user_profile.folding import (
-    FoldedMatrixFactorizationRecommender,
 )
 
 logger = logging.getLogger(__name__)
@@ -695,35 +684,6 @@ def _print_impressions_user_profiles_metrics(
     )
 
 
-def _model_orders(value):
-    if value == "Baseline":
-        return 0
-    if value == "Folded":
-        return 1
-    if value == "Cycling":
-        return 2
-    if value == "Cycling Folded":
-        return 3
-    if value == "Impressions Discounting":
-        return 4
-    if value == "Impressions Discounting Folded":
-        return 5
-    if value == "Item Weighted Profile":
-        return 6
-    if value == "Item Weighted Profile Folded":
-        return 7
-    if value == "User Weighted Profile":
-        return 8
-    if value == "User Weighted Profile Folded":
-        return 9
-    if value == "HFC":
-        return 10
-    if value == "HFC Folded":
-        return 11
-    else:
-        return 20
-
-
 def _process_results_dataframe(
     *,
     dfs: list[pd.DataFrame],
@@ -1127,329 +1087,6 @@ def _export_results_accuracy_metrics(
         )
 
 
-def _results_to_pandas(
-    dfs: list[pd.DataFrame],
-    results_name: str,
-    folder_path_latex: str,
-    folder_path_csv: str,
-    folder_path_parquet: str,
-) -> None:
-    MODEL_COLUMN = "Model"
-    CUTOFF_COLUMN = "Cutoff"
-    MODEL_BASE_COLUMN = "Model Name"
-    MODEL_TYPE_COLUMN = "Model Type"
-    ORDER_COLUMN = "Order"
-
-    df_results: pd.DataFrame = pd.concat(
-        objs=dfs,
-        axis=0,
-        ignore_index=False,  # The index is the list of recommender names.
-    )
-
-    if "accuracy-metrics" == results_name:
-        df_results = (
-            df_results.stack(0, dropna=False)  # Sets the @20 column as index.
-            .reset_index(drop=False)  # Makes the @20 column as another column.
-            .rename(
-                columns={
-                    "level_0": MODEL_COLUMN,
-                    "level_1": CUTOFF_COLUMN,
-                    "algorithm_row_label": MODEL_COLUMN,
-                }
-            )
-        )
-    elif "times" == results_name:
-        import pdb
-
-        pdb.set_trace()
-        df_results = df_results.reset_index(
-            drop=False
-        ).rename(  # Makes the @20 column as another column.
-            columns={
-                "level_0": MODEL_COLUMN,
-                "index": MODEL_COLUMN,
-            }
-        )
-    elif "hyper-parameters" == results_name:
-        import pdb
-
-        pdb.set_trace()
-
-        # Resulting dataframe
-        # Index: (algorithm_row_label, hyperparameter_name)
-        # Columns: [hyperparameter_value]
-        df_results = df_results.reset_index(drop=False).rename(
-            columns={
-                "algorithm_row_label": MODEL_COLUMN,
-                "hyperparameter_name": "Hyper-Parameter",
-                "hyperparameter_value": "Value",
-            }
-        )
-    else:
-        return
-
-    df_results[MODEL_COLUMN] = (
-        df_results[MODEL_COLUMN]
-        .str.replace("HardFrequencyCapping", "HFC")
-        .str.replace("ImpressionsDiscounting", "Impressions Discounting")
-        .str.replace("FrequencyRecency", "Frequency & Recency")
-        .str.replace("LastImpressions", "Last Impressions")
-        .str.replace("ItemWeightedUserProfile", "Impressions as User Profiles")
-        .str.replace("UserWeightedUserProfile", "Impressions as User Profiles")
-        .str.replace("FoldedMF", "Folded")
-        .str.replace("ABLATION UIM FREQUENCY", "Ablation")
-        .str.strip()
-    )
-
-    df_results[MODEL_BASE_COLUMN] = (
-        df_results[MODEL_COLUMN]
-        .str.replace("Recommender", "")
-        .str.replace("HFC", "")
-        .str.replace("Cycling", "")
-        .str.replace("Impressions Discounting", "")
-        .str.replace("KNNCF", "KNN CF")
-        .str.replace("Item Weighted Profile", "")
-        .str.replace("User Weighted Profile", "")
-        .str.replace("Impressions as User Profiles", "")
-        .str.replace("Folded", "")
-        .str.replace("ABLATION UIM FREQUENCY", "")
-        .str.replace("Ablation", "")
-        .str.strip()
-    )
-
-    df_results[MODEL_TYPE_COLUMN] = (
-        df_results[MODEL_COLUMN]
-        .str.replace("asymmetric", "")
-        .str.replace("cosine", "")
-        .str.replace("dice", "")
-        .str.replace("jaccard", "")
-        .str.replace("tversky", "")
-        .str.replace("CF", "")
-        .str.replace("AsySVD", "")
-        .str.replace("BPR", "")
-        .str.replace("FunkSVD", "")
-        .str.replace("ElasticNet", "")
-        .str.replace("ItemKNN", "")
-        .str.replace("UserKNN", "")
-        .str.replace("PureSVD", "")
-        .str.replace("NMF", "")
-        .str.replace("IALS", "")
-        .str.replace("MF", "")
-        .str.replace("MF AsySVD", "")
-        .str.replace("MF BPR", "")
-        .str.replace("MF FunkSVD", "")
-        .str.replace("P3alpha", "")
-        .str.replace("RP3beta", "")
-        .str.replace("SLIM", "")
-        .str.replace("SLIM BPR", "")
-        .str.replace("SLIM ElasticNet", "")
-        .str.replace("EASE R", "")
-        .str.replace("FM", "")
-        .str.replace("Light", "")
-        .str.replace("LightFM", "")
-        .str.replace("MultVAE", "")
-        .str.replace("GlobalEffects", "")
-        .str.replace("Random", "")
-        .str.replace("TopPop", "")
-        .str.replace("Last Impressions", "")
-        .str.replace("Frequency & Recency", "")
-        .str.replace("Recency", "")
-        .str.replace("Item Weighted Profile Folded", "Impressions as User Profiles")
-        .str.replace("User Weighted Profile Folded", "Impressions as User Profiles")
-        .str.replace(
-            "Impressions as User Profiles Folded", "Impressions as User Profiles"
-        )
-        .str.strip()
-    )
-    df_results[MODEL_TYPE_COLUMN] = df_results[MODEL_TYPE_COLUMN].where(
-        df_results[MODEL_TYPE_COLUMN] != "",
-        "Baseline",
-    )
-
-    df_results[ORDER_COLUMN] = df_results[MODEL_TYPE_COLUMN].apply(_model_orders)
-
-    if results_name == "accuracy-metrics":
-        df_results = df_results.sort_values(
-            by=[CUTOFF_COLUMN, MODEL_BASE_COLUMN, ORDER_COLUMN],
-            ascending=True,
-            inplace=False,
-            ignore_index=False,
-        )
-
-        df_results_pivoted = df_results.pivot(
-            index=[MODEL_BASE_COLUMN, MODEL_COLUMN],
-            columns=[CUTOFF_COLUMN],
-            values=[
-                "NDCG",
-                "PRECISION",
-                "RECALL",
-                "F1",
-                "COVERAGE_ITEM",
-                "DIVERSITY_MEAN_INTER_LIST",
-                "DIVERSITY_GINI",
-                "NOVELTY",
-            ],
-        )
-
-        def _sorter_export_table(
-            series_col: pd.Series,
-        ) -> pd.Series:
-            """
-            See: https://stackoverflow.com/a/63902171
-            """
-            reorder: Sequence[Union[str, int]]
-
-            if series_col.name == MODEL_BASE_COLUMN:
-                reorder = [
-                    "Random",
-                    "TopPop",
-                    "Last Impressions",
-                    "Recency",
-                    "Frequency & Recency",
-                    "ItemKNN CF asymmetric",
-                    "ItemKNN CF cosine",
-                    "ItemKNN CF dice",
-                    "ItemKNN CF jaccard",
-                    "ItemKNN CF tversky",
-                    "P3alpha",
-                    "RP3beta",
-                    "UserKNN CF asymmetric",
-                    "UserKNN CF cosine",
-                    "UserKNN CF dice",
-                    "UserKNN CF jaccard",
-                    "UserKNN CF tversky",
-                ]
-            elif series_col.name == MODEL_TYPE_COLUMN:
-                reorder = [
-                    "Baseline",
-                    "Cycling",
-                    "Impressions Discounting",
-                    "Impressions as User Profiles",
-                    "Ablation Impressions Discounting",
-                ]
-            else:
-                raise ValueError(
-                    f"Invalid column name {series_col.name}. "
-                    f"Expected one of 'Model-Centric Taxonomy', 'Data-Centric Taxonomy', 'Signal-Centric Taxonomy', 'Impressions Type', 'Impressions Signal', or 'Recommender Type'"
-                )
-
-            mapper = {name: order for order, name in enumerate(reorder)}
-            return series_col.map(mapper)
-
-        columns_metrics = [
-            "NDCG",
-            "PRECISION",
-            "RECALL",
-            "F1",
-            "COVERAGE_ITEM",
-            "DIVERSITY_MEAN_INTER_LIST",
-            "DIVERSITY_GINI",
-            "NOVELTY",
-        ]
-        columns_index = [
-            MODEL_BASE_COLUMN,
-            MODEL_TYPE_COLUMN,
-        ]
-        df_results_per_cutoff = {
-            cutoff: (
-                df_results[df_results[CUTOFF_COLUMN] == cutoff][
-                    columns_index + columns_metrics
-                ]
-                .set_index(keys=columns_index)
-                .sort_index(ascending=True, inplace=False, key=_sorter_export_table)
-                .astype(np.float64)
-                .copy()
-            )
-            for cutoff in df_results[CUTOFF_COLUMN].unique()
-        }
-
-        df_export = pd.concat(
-            objs=df_results_per_cutoff,
-            axis=1,
-        )
-
-    elif "times" == results_name:
-        import pdb
-
-        pdb.set_trace()
-
-        df_results = df_results.sort_values(
-            by=[MODEL_BASE_COLUMN, ORDER_COLUMN],
-            ascending=True,
-            inplace=False,
-            ignore_index=False,
-        )
-
-        df_results_pivoted = df_results.pivot(
-            index=[MODEL_BASE_COLUMN],
-            columns=[MODEL_TYPE_COLUMN],
-            values=["Train Time", "Recommendation Time", "Recommendation Throughput"],
-        )
-        df_export = df_results
-    else:
-        import pdb
-
-        pdb.set_trace()
-
-        df_results = df_results.sort_values(
-            by=[MODEL_BASE_COLUMN, ORDER_COLUMN],
-            ascending=True,
-            inplace=False,
-            ignore_index=False,
-        )
-        df_results_pivoted = df_results
-        df_export = df_results
-
-    with pd.option_context("max_colwidth", 1000):
-        df_export.to_csv(
-            path_or_buf=os.path.join(folder_path_csv, f"export-{results_name}.csv"),
-            index=True,
-            header=True,
-            encoding="utf-8",
-            na_rep="-",
-            sep=";",
-            decimal=",",
-            float_format="%.4f",
-        )
-
-        df_results_pivoted.to_csv(
-            path_or_buf=os.path.join(folder_path_csv, f"pivot-{results_name}.csv"),
-            index=True,
-            header=True,
-            encoding="utf-8",
-            na_rep="-",
-        )
-
-        df_results.to_csv(
-            path_or_buf=os.path.join(folder_path_csv, f"{results_name}.csv"),
-            index=True,
-            header=True,
-            encoding="utf-8",
-            na_rep="-",
-        )
-
-        #         df_results_pivoted.to_latex(
-        #             buf=os.path.join(folder_path_latex, f"pivot-{results_name}.tex"),
-        #             index=True,
-        #             header=True,
-        #             escape=False,
-        #             float_format="{:.4f}".format,
-        #             encoding="utf-8",
-        #             na_rep="-",
-        #             longtable=True,
-        #         )
-        df_results.to_latex(
-            buf=os.path.join(folder_path_latex, f"{results_name}.tex"),
-            index=True,
-            header=True,
-            escape=False,
-            float_format="{:.4f}".format,
-            encoding="utf-8",
-            na_rep="-",
-            longtable=True,
-        )
-
-
 def process_evaluation_results(
     baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
     impressions_heuristics_experiment_cases_interface: commons.ExperimentCasesInterface,
@@ -1585,21 +1222,6 @@ def process_evaluation_results(
             export_experiments_folder_path=folder_path_export_latex,
         )
 
-        # _results_to_pandas_accuracy_metrics(
-        #     dfs=[
-        #         results_baselines.df_results,
-        #         results_heuristics.df_results,
-        #         results_re_ranking.df_results,
-        #         results_user_profiles.df_results,
-        #         # TODO: UNCOMMENT.
-        #         # results_ablation_re_ranking.df_results,
-        #     ],
-        #     results_name="accuracy-metrics",
-        #     benchmark=benchmark,
-        #     folder_path_csv=folder_path_export_csv,
-        #     folder_path_parquet=folder_path_export_parquet,
-        # )
-
         _process_results_dataframe(
             dfs=[
                 results_baselines.df_results,
@@ -1644,55 +1266,6 @@ def process_evaluation_results(
             folder_path_csv=folder_path_export_csv,
             folder_path_parquet=folder_path_export_parquet,
         )
-
-        # _export_results_accuracy_metrics_one_cutoff_all_metrics(
-        #     results_name="accuracy-metrics",
-        #     folder_path_csv=folder_path_export_csv,
-        #     folder_path_parquet=folder_path_export_parquet,
-        #     cutoff=20,
-        # )
-
-        # _results_to_pandas(
-        #     dfs=[
-        #         results_baselines.df_results,
-        #         results_heuristics.df_results,
-        #         results_re_ranking.df_results,
-        #         results_ablation_re_ranking.df_results,
-        #         results_user_profiles.df_results,
-        #     ],
-        #     results_name="accuracy-metrics",
-        #     folder_path_latex=folder_path_export_latex,
-        #     folder_path_csv=folder_path_export_csv,
-        #     folder_path_parquet=folder_path_export_parquet,
-        # )
-
-        # _results_to_pandas(
-        #     dfs=[
-        #         results_baselines.df_times,
-        #         results_heuristics.df_times,
-        #         results_re_ranking.df_times,
-        #         results_ablation_re_ranking.df_times,
-        #         results_user_profiles.df_times,
-        #     ],
-        #     results_name="times",
-        #     folder_path_latex=folder_path_export_latex,
-        #     folder_path_csv=folder_path_export_csv,
-        #     folder_path_parquet=folder_path_export_parquet,
-        # )
-        #
-        # _results_to_pandas(
-        #     dfs=[
-        #         results_baselines.df_hyper_params,
-        #         results_heuristics.df_hyper_params,
-        #         results_re_ranking.df_hyper_params,
-        #         results_ablation_re_ranking.df_hyper_params,
-        #         results_user_profiles.df_hyper_params,
-        #     ],
-        #     results_name="hyper-parameters",
-        #     folder_path_latex=folder_path_export_latex,
-        #     folder_path_csv=folder_path_export_csv,
-        #     folder_path_parquet=folder_path_export_parquet,
-        # )
 
         logger.info(
             f"Successfully finished exporting accuracy and beyond-accuracy results to LaTeX"
