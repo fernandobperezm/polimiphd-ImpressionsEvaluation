@@ -1,6 +1,6 @@
 import itertools
 import os
-from typing import Type, Optional, cast, Union, Sequence
+from typing import Type, Optional, cast, Union, Sequence, Literal
 
 import Recommenders.Recommender_import_list as recommenders
 import numpy as np
@@ -62,25 +62,35 @@ logger = logging.getLogger(__name__)
 #                                REPRODUCIBILITY VARIABLES                            #
 ####################################################################################################
 ####################################################################################################
-DIR_BASE = os.path.join(
+DIR_RESULTS_MODEL_EVALUATION = os.path.join(
     commons.DIR_RESULTS_EXPORT,
     "model_evaluation",
+    "",
+)
+
+DIR_RESULTS_TO_EXPORT = os.path.join(
+    DIR_RESULTS_MODEL_EVALUATION,
+    "",
+)
+
+DIR_RESULTS_TO_PROCESS = os.path.join(
+    DIR_RESULTS_MODEL_EVALUATION,
     "{benchmark}",
     "{evaluation_strategy}",
     "",
 )
 DIR_CSV_RESULTS = os.path.join(
-    DIR_BASE,
+    DIR_RESULTS_TO_PROCESS,
     "csv",
     "",
 )
 DIR_PARQUET_RESULTS = os.path.join(
-    DIR_BASE,
+    DIR_RESULTS_TO_PROCESS,
     "parquet",
     "",
 )
 DIR_LATEX_RESULTS = os.path.join(
-    DIR_BASE,
+    DIR_RESULTS_TO_PROCESS,
     "latex",
     "",
 )
@@ -95,7 +105,9 @@ DIR_ACCURACY_METRICS_BASELINES_LATEX = os.path.join(
     "",
 )
 
-commons.FOLDERS.add(DIR_BASE)
+commons.FOLDERS.add(DIR_RESULTS_MODEL_EVALUATION)
+commons.FOLDERS.add(DIR_RESULTS_TO_EXPORT)
+commons.FOLDERS.add(DIR_RESULTS_TO_PROCESS)
 commons.FOLDERS.add(DIR_CSV_RESULTS)
 commons.FOLDERS.add(DIR_PARQUET_RESULTS)
 commons.FOLDERS.add(DIR_ACCURACY_METRICS_BASELINES_LATEX)
@@ -104,11 +116,9 @@ commons.FOLDERS.add(DIR_ARTICLE_ACCURACY_METRICS_BASELINES_LATEX)
 RESULT_EXPORT_CUTOFFS = [5, 10, 20, 30, 40, 50, 100]
 
 ACCURACY_METRICS_LIST = [
+    "NDCG",
     "PRECISION",
     "RECALL",
-    "MAP",
-    "MRR",
-    "NDCG",
     "F1",
 ]
 BEYOND_ACCURACY_METRICS_LIST = [
@@ -121,45 +131,6 @@ BEYOND_ACCURACY_METRICS_LIST = [
 ALL_METRICS_LIST = [
     *ACCURACY_METRICS_LIST,
     *BEYOND_ACCURACY_METRICS_LIST,
-]
-
-
-ARTICLE_BASELINES: list[Type[BaseRecommender]] = [
-    recommenders.Random,
-    recommenders.TopPop,
-    recommenders.UserKNNCFRecommender,
-    recommenders.ItemKNNCFRecommender,
-    recommenders.RP3betaRecommender,
-    recommenders.PureSVDRecommender,
-    recommenders.NMFRecommender,
-    recommenders.IALSRecommender,
-    recommenders.SLIMElasticNetRecommender,
-    recommenders.SLIM_BPR_Cython,
-    recommenders.MatrixFactorization_BPR_Cython,
-    recommenders.LightFMCFRecommender,
-    recommenders.MultVAERecommender,
-    # recommenders.EASE_R_Recommender,
-]
-ARTICLE_KNN_SIMILARITY_LIST: list[commons.T_SIMILARITY_TYPE] = [
-    "asymmetric",
-    "asymmetric",
-]
-ARTICLE_CUTOFF = [20]
-ARTICLE_ACCURACY_METRICS_LIST = [
-    "PRECISION",
-    "RECALL",
-    "MRR",
-    "NDCG",
-]
-ARTICLE_BEYOND_ACCURACY_METRICS_LIST = [
-    "NOVELTY",
-    "COVERAGE_ITEM",
-    "DIVERSITY_MEAN_INTER_LIST",
-    "DIVERSITY_GINI",
-]
-ARTICLE_ALL_METRICS_LIST = [
-    *ARTICLE_ACCURACY_METRICS_LIST,
-    *ARTICLE_BEYOND_ACCURACY_METRICS_LIST,
 ]
 
 
@@ -753,46 +724,6 @@ def _model_orders(value):
         return 20
 
 
-def _results_to_pandas_accuracy_metrics(
-    *,
-    dfs: list[pd.DataFrame],
-    results_name: str,
-    benchmark: commons.Benchmarks,
-    folder_path_csv: str,
-    folder_path_parquet: str,
-) -> None:
-    filename = f"{results_name}-non_processed"
-
-    # This creates a dataframe with the following structure:
-    # (dataset, "") | (recommender, "") | (cutoff1, metric1) |... | (cutoff2, metric1) | ... | (cutoff_m, metric_n)
-    df_results_accuracy_metrics: pd.DataFrame = (
-        pd.concat(
-            objs=dfs,
-            axis=0,
-            ignore_index=False,  # The index is the list of recommender names.
-        )
-        .reset_index(drop=False, names=["recommender"])
-        .assign(benchmark=benchmark.value)
-    )
-
-    with pd.option_context("max_colwidth", 1000):
-        df_results_accuracy_metrics.to_csv(
-            path_or_buf=os.path.join(folder_path_csv, f"{filename}.csv"),
-            index=True,
-            header=True,
-            encoding="utf-8",
-            na_rep="-",
-            sep=";",
-            decimal=".",
-        )
-        df_results_accuracy_metrics.to_parquet(
-            path=os.path.join(folder_path_parquet, f"{filename}.parquet"),
-            engine="pyarrow",
-            compression=None,
-            index=True,
-        )
-
-
 def _process_results_dataframe(
     *,
     dfs: list[pd.DataFrame],
@@ -800,7 +731,7 @@ def _process_results_dataframe(
     results_name: str,
     folder_path_csv: str,
     folder_path_parquet: str,
-) -> pd.DataFrame:
+) -> None:
     """
     Saves on disk a dataframe as follows:
     # benchmark | recommender | model_base | model_type | experiment_type | <columns of the dataframe>.
@@ -1005,39 +936,29 @@ def _process_results_dataframe(
             index=True,
         )
 
-    return df_results_accuracy_metrics
-
 
 def _export_results_accuracy_metrics(
     *,
+    df_results: pd.DataFrame,
     results_name: str,
+    cutoffs: Sequence[int],
+    metrics: Sequence[str],
+    order: Literal["cutoff", "metric"],
+    benchmarks: list[commons.Benchmarks],
     folder_path_csv: str,
-    folder_path_parquet: str,
-    cutoff: int | str,
 ) -> None:
     """
     Saves on disk a dataframe as follows:
-    # ...
+    * dataset | recommender | variant | type | (cutoff, metric_1) | ... | (cutoff, metric_n)
     """
-    filename_processed = f"{results_name}-processed"
-    filename_export = f"{results_name}-export"
-
-    # This loads a dataframe with the following structure:
-    # ("", dataset) | ("", recommender) | (cutoff1, metric1) |... | (cutoff2, metric1) | ... | (cutoff_m, metric_n)
-    df_results_accuracy_metrics = pd.read_parquet(
-        path=os.path.join(folder_path_parquet, f"{filename_processed}.parquet"),
-        engine="pyarrow",
-    )
-
-    column_cutoff = str(cutoff)
-
+    column_benchmark_order = "benchmark_order"
     column_model_base_order = "model_base_order"
     column_model_type_order = "model_type_order"
 
     column_benchmark = "benchmark"
     column_model_base = "model_base"
     column_model_type = "model_type"
-    column_experiment_type = "experiment_type"
+    column_experiment_type: str | tuple[str, str] = "experiment_type"
 
     column_export_benchmark = "Dataset"
     column_export_model_base = "Recommender"
@@ -1119,21 +1040,35 @@ def _export_results_accuracy_metrics(
 
         return model_order
 
+    benchmarks_order = {
+        benchmark.value: idx for idx, benchmark in enumerate(benchmarks)
+    }
+
     # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
-    df_results_accuracy_metrics[column_model_base_order] = (
-        df_results_accuracy_metrics[column_model_base]
+    df_results[column_benchmark_order] = (
+        df_results[column_benchmark].map(benchmarks_order).astype(np.int32)
+    )
+
+    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
+    df_results[column_model_base_order] = (
+        df_results[column_model_base]
         .apply(convert_model_base_to_model_base_order, convert_dtype=True)
         .astype(np.float32)
     )
     # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
-    df_results_accuracy_metrics[column_model_type_order] = (
-        df_results_accuracy_metrics[column_model_type]
+    df_results[column_model_type_order] = (
+        df_results[column_model_type]
         .apply(convert_model_type_to_model_type_order, convert_dtype=True)
         .astype(np.int32)
     )
     # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
-    df_results_accuracy_metrics = df_results_accuracy_metrics.sort_values(
-        by=[column_model_base_order, column_model_type_order, column_experiment_type],
+    df_results = df_results.sort_values(
+        by=[
+            column_benchmark_order,
+            column_model_base_order,
+            column_model_type_order,
+            column_experiment_type,
+        ],
         ascending=True,
         inplace=False,
         ignore_index=True,
@@ -1141,13 +1076,33 @@ def _export_results_accuracy_metrics(
 
     # This creates a dataframe
     # benchmark | model_base | model_type | experiment_type | (cutoff, metric_1) | ... | (cutoff, metric_n)
-    df_results_accuracy_metrics = df_results_accuracy_metrics[
+    column_tuple_benchmark = ("benchmark", "")
+    column_tuple_model_base = ("model_base", "")
+    column_tuple_model_type = ("model_type", "")
+    column_tuple_experiment_type = ("experiment_type", "")
+
+    columns_cutoff = [str(cutoff) for cutoff in cutoffs]
+    columns_metrics = [str(metric) for metric in metrics]
+
+    if order == "cutoff":
+        columns_pairs_cutoff_metric = [
+            (cutoff, metric) for cutoff in columns_cutoff for metric in columns_metrics
+        ]
+    elif order == "metric":
+        columns_pairs_cutoff_metric = [
+            (cutoff, metric) for metric in columns_metrics for cutoff in columns_cutoff
+        ]
+
+    else:
+        raise ValueError("")
+
+    df_results = df_results[
         [
-            column_benchmark,
-            column_model_base,
-            column_model_type,
-            column_experiment_type,
-            column_cutoff,
+            column_tuple_benchmark,
+            column_tuple_model_base,
+            column_tuple_model_type,
+            column_tuple_experiment_type,
+            *columns_pairs_cutoff_metric,
         ]
     ].rename(
         columns={
@@ -1158,15 +1113,17 @@ def _export_results_accuracy_metrics(
         }
     )
 
+    filename_export = f"accuracy-metrics-export-{results_name}"
     with pd.option_context("max_colwidth", 1000):
-        df_results_accuracy_metrics.to_csv(
+        df_results.to_csv(
             path_or_buf=os.path.join(folder_path_csv, f"{filename_export}.csv"),
             index=True,
             header=True,
             encoding="utf-8",
             na_rep="-",
             sep=";",
-            decimal=".",
+            decimal=",",
+            float_format="%.4f",
         )
 
 
@@ -1493,7 +1450,7 @@ def _results_to_pandas(
         )
 
 
-def print_results(
+def process_evaluation_results(
     baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
     impressions_heuristics_experiment_cases_interface: commons.ExperimentCasesInterface,
     re_ranking_experiment_cases_interface: commons.ExperimentCasesInterface,
@@ -1688,7 +1645,7 @@ def print_results(
             folder_path_parquet=folder_path_export_parquet,
         )
 
-        # _export_results_accuracy_metrics(
+        # _export_results_accuracy_metrics_one_cutoff_all_metrics(
         #     results_name="accuracy-metrics",
         #     folder_path_csv=folder_path_export_csv,
         #     folder_path_parquet=folder_path_export_parquet,
@@ -1744,3 +1701,92 @@ def print_results(
             f"\n\t* {folder_path_export_latex}"
             f"\n\t* {folder_path_export_parquet}"
         )
+
+
+def export_evaluation_results(
+    benchmarks: list[commons.Benchmarks],
+    hyper_parameters: list[commons.EHyperParameterTuningParameters],
+) -> None:
+    results_accuracy_metrics: list[pd.DataFrame] = []
+    results_times: list[pd.DataFrame] = []
+    results_hyper_parameters: list[pd.DataFrame] = []
+
+    for benchmark, hyper_parameter in itertools.product(benchmarks, hyper_parameters):
+        experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[benchmark]
+        experiment_hyper_parameters = (
+            commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[hyper_parameter]
+        )
+
+        folder_path_results_to_load = DIR_PARQUET_RESULTS.format(
+            benchmark=experiment_benchmark.benchmark.value,
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+        )
+
+        df_results_accuracy = pd.read_parquet(
+            path=os.path.join(
+                folder_path_results_to_load, "accuracy-metrics-non_processed.parquet"
+            ),
+            engine="pyarrow",
+        )
+        df_results_times = pd.read_parquet(
+            path=os.path.join(
+                folder_path_results_to_load, "times-non_processed.parquet"
+            ),
+            engine="pyarrow",
+        )
+        df_results_hyper_parameters = pd.read_parquet(
+            path=os.path.join(
+                folder_path_results_to_load, "hyper-parameters-non_processed.parquet"
+            ),
+            engine="pyarrow",
+        )
+
+        results_accuracy_metrics.append(df_results_accuracy)
+        results_times.append(df_results_times)
+        results_hyper_parameters.append(df_results_hyper_parameters)
+
+    folder_path_results_to_export = DIR_RESULTS_TO_EXPORT
+
+    df_results_accuracy = pd.concat(
+        objs=results_accuracy_metrics,
+        axis=0,
+        ignore_index=True,  # The index should be numeric and have no special meaning.
+    )
+    df_results_times = pd.concat(
+        objs=results_times,
+        axis=0,
+        ignore_index=True,  # The index should be numeric and have no special meaning.
+    )
+    df_results_hyper_parameters = pd.concat(
+        objs=results_hyper_parameters,
+        axis=0,
+        ignore_index=True,  # The index should be numeric and have no special meaning.
+    )
+
+    _export_results_accuracy_metrics(
+        benchmarks=benchmarks,
+        df_results=df_results_accuracy,
+        folder_path_csv=folder_path_results_to_export,
+        cutoffs=[20],
+        metrics=[
+            "NDCG",
+            "PRECISION",
+            "RECALL",
+            "F1",
+            "COVERAGE_ITEM",
+            "DIVERSITY_GINI",
+            "NOVELTY",
+        ],
+        order="cutoff",
+        results_name="one_cutoff-all_metrics",
+    )
+
+    _export_results_accuracy_metrics(
+        benchmarks=benchmarks,
+        df_results=df_results_accuracy,
+        folder_path_csv=folder_path_results_to_export,
+        cutoffs=[5, 10, 20, 50, 100],
+        metrics=["NDCG", "COVERAGE_ITEM"],
+        order="metric",
+        results_name="all_cutoffs-two_metrics",
+    )
