@@ -29,19 +29,29 @@ import impressions_evaluation.experiments.impression_aware.re_ranking as re_rank
 import impressions_evaluation.experiments.impression_aware.heuristics as heuristics
 import impressions_evaluation.experiments.impression_aware.user_profiles as user_profiles
 
+from impressions_evaluation.impression_recommenders.heuristics.latest_impressions import (
+    LastImpressionsRecommender,
+)
+from impressions_evaluation.impression_recommenders.heuristics.frequency_and_recency import (
+    FrequencyRecencyRecommender,
+    RecencyRecommender,
+)
+from impressions_evaluation.impression_recommenders.re_ranking.hard_frequency_capping import (
+    HardFrequencyCappingRecommender,
+)
 from impressions_evaluation.impression_recommenders.re_ranking.cycling import (
     CyclingRecommender,
 )
 from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import (
     ImpressionsDiscountingRecommender,
 )
-from impressions_evaluation.impression_recommenders.user_profile.folding import (
-    FoldedMatrixFactorizationRecommender,
-)
 from impressions_evaluation.impression_recommenders.user_profile.weighted import (
     BaseWeightedUserProfileRecommender,
     ItemWeightedUserProfileRecommender,
     UserWeightedUserProfileRecommender,
+)
+from impressions_evaluation.impression_recommenders.user_profile.folding import (
+    FoldedMatrixFactorizationRecommender,
 )
 
 logger = logging.getLogger(__name__)
@@ -131,6 +141,7 @@ ARTICLE_BASELINES: list[Type[BaseRecommender]] = [
     # recommenders.EASE_R_Recommender,
 ]
 ARTICLE_KNN_SIMILARITY_LIST: list[commons.T_SIMILARITY_TYPE] = [
+    "asymmetric",
     "asymmetric",
 ]
 ARTICLE_CUTOFF = [20]
@@ -734,8 +745,429 @@ def _model_orders(value):
         return 8
     if value == "User Weighted Profile Folded":
         return 9
+    if value == "HFC":
+        return 10
+    if value == "HFC Folded":
+        return 11
     else:
         return 20
+
+
+def _results_to_pandas_accuracy_metrics(
+    *,
+    dfs: list[pd.DataFrame],
+    results_name: str,
+    benchmark: commons.Benchmarks,
+    folder_path_csv: str,
+    folder_path_parquet: str,
+) -> None:
+    filename = f"{results_name}-non_processed"
+
+    # This creates a dataframe with the following structure:
+    # (dataset, "") | (recommender, "") | (cutoff1, metric1) |... | (cutoff2, metric1) | ... | (cutoff_m, metric_n)
+    df_results_accuracy_metrics: pd.DataFrame = (
+        pd.concat(
+            objs=dfs,
+            axis=0,
+            ignore_index=False,  # The index is the list of recommender names.
+        )
+        .reset_index(drop=False, names=["recommender"])
+        .assign(benchmark=benchmark.value)
+    )
+
+    with pd.option_context("max_colwidth", 1000):
+        df_results_accuracy_metrics.to_csv(
+            path_or_buf=os.path.join(folder_path_csv, f"{filename}.csv"),
+            index=True,
+            header=True,
+            encoding="utf-8",
+            na_rep="-",
+            sep=";",
+            decimal=".",
+        )
+        df_results_accuracy_metrics.to_parquet(
+            path=os.path.join(folder_path_parquet, f"{filename}.parquet"),
+            engine="pyarrow",
+            compression=None,
+            index=True,
+        )
+
+
+def _process_results_dataframe(
+    *,
+    dfs: list[pd.DataFrame],
+    benchmark: commons.Benchmarks,
+    results_name: str,
+    folder_path_csv: str,
+    folder_path_parquet: str,
+) -> pd.DataFrame:
+    """
+    Saves on disk a dataframe as follows:
+    # benchmark | recommender | model_base | model_type | experiment_type | <columns of the dataframe>.
+    """
+    filename_non_processed = f"{results_name}-non_processed"
+
+    column_recommender = "recommender"
+    column_benchmark = "benchmark"
+    column_model_base = "model_base"
+    column_model_type = "model_type"
+    column_experiment_type = "experiment_type"
+
+    def normalize_dataframe_accuracy_metrics(df: pd.DataFrame) -> pd.DataFrame:
+        return df.reset_index(
+            drop=False,
+            names=[column_recommender],
+        )
+
+    def normalize_dataframe_times(df: pd.DataFrame) -> pd.DataFrame:
+        return df.reset_index(
+            drop=False,
+            names=[column_recommender],
+        )
+
+    def normalize_dataframe_hyper_parameters(df: pd.DataFrame) -> pd.DataFrame:
+        return (
+            df.reset_index(
+                drop=False,
+            ).rename(columns={"algorithm_row_label": column_recommender})
+            # Force strings in the column because some hyper-parameter values are strings, others are floats or even integers. To avoid clashes when storing the data in parquet it is just easier to convert to string.
+            .astype({"hyperparameter_value": pd.StringDtype()})
+        )
+
+    def convert_recommender_name_to_model_base(recommender_name: str) -> str:
+        # We cannot use the recommender name, eg CyclingRecommender.RECOMMENDER_NAME because this dataframe has the recommender names already pre-processed for printing.
+        if "LastImpressions" in recommender_name:
+            return "Last impression"
+
+        # First FrequencyRecency and then Recency, if not, the latter catches the conditional.
+        if "FrequencyRecency" in recommender_name:
+            return "Frequency & recency"
+        if "Recency" in recommender_name:
+            return "Recency"
+
+        # Folded must be last because we want to ensure that we went through all impression-aware recommenders first.
+        if "FoldedMF" in recommender_name:
+            recommender_name = recommender_name.replace("FoldedMF", "") + " Folded"
+
+        # Covers framework recommenders and removes extra stuff.
+        return (
+            recommender_name
+            # Impression-aware plug-in recommenders -- they are not base recommenders so we set them as empty.
+            .replace("HardFrequencyCapping", "")
+            .replace("Cycling", "")
+            .replace("ImpressionsDiscounting", "")
+            .replace("ItemWeightedUserProfile", "")
+            .replace("UserWeightedUserProfile", "")
+            # Types of experiments
+            # TODO: Think in a better way to do types of experiments.
+            .replace("ABLATION ONLY IMPRESSIONS FEATURES", "")
+            .replace("ABLATION ONLY UIM FREQUENCY", "")
+            .replace("SIGNAL ANALYSIS NEGATIVE ABLATION ONLY UIM FREQUENCY", "")
+            .replace("SIGNAL ANALYSIS POSITIVE ABLATION ONLY UIM FREQUENCY", "")
+            .replace("SIGNAL ANALYSIS SIGN ALL POSITIVE", "")
+            .replace("SIGNAL ANALYSIS SIGN ALL NEGATIVE", "")
+            .replace("SIGNAL ANALYSIS SIGN POSITIVE", "")
+            .replace("SIGNAL ANALYSIS SIGN NEGATIVE", "")
+            .replace("SIGNAL ANALYSIS LESS OR EQUAL THRESHOLD", "")
+            .replace("SIGNAL ANALYSIS GREAT OR EQUAL THRESHOLD", "")
+            # Framework recommenders.
+            .replace("Recommender", "")
+            .replace("KNNCF", "KNN CF")
+            .replace("CF", " ")
+            # Remaining characters
+            .replace("  ", "")
+            .replace("_", "")
+            .strip()
+        )
+
+    def convert_recommender_name_to_model_base_type(recommender_name: str) -> str:
+        # We cannot use the recommender name, eg CyclingRecommender.RECOMMENDER_NAME because this dataframe has the recommender names already pre-processed for printing.
+        if (
+            "LastImpressions" in recommender_name
+            or "Recency" in recommender_name
+            or "FrequencyRecency" in recommender_name
+        ):
+            return "Baseline-IARS"
+
+        if "HardFrequencyCapping" in recommender_name:
+            return "HFC"
+        if "Cycling" in recommender_name:
+            return "Cycling"
+        if "ImpressionsDiscounting" in recommender_name:
+            return "IDF"
+        if "ItemWeightedUserProfile" in recommender_name:
+            return "IUP"
+        if "UserWeightedUserProfile" in recommender_name:
+            return "IUP"
+
+        # Folded must be last because we want to ensure that we went through all impression-aware recommenders first.
+        if "FoldedMF" in recommender_name:
+            return "Baseline"
+
+        # Covers framework recommenders.
+        return "Baseline"
+
+    def convert_recommender_name_to_experiment_type(recommender_name: str) -> str:
+        if "ABLATION ONLY IMPRESSIONS FEATURES" in recommender_name:
+            return "ABLATION OIF"
+
+        if "ABLATION ONLY UIM FREQUENCY" in recommender_name:
+            return "ABLATION UIM"
+
+        if "SIGNAL ANALYSIS NEGATIVE ABLATION ONLY UIM FREQUENCY" in recommender_name:
+            return "SIGNAL ANALYSIS NEGATIVE ABLATION ONLY UIM FREQUENCY"
+
+        if "SIGNAL ANALYSIS NEGATIVE ABLATION ONLY UIM FREQUENCY" in recommender_name:
+            return "SIGNAL ANALYSIS NEGATIVE ABLATION ONLY UIM FREQUENCY"
+
+        if "SIGNAL ANALYSIS POSITIVE ABLATION ONLY UIM FREQUENCY" in recommender_name:
+            return "SIGNAL ANALYSIS POSITIVE ABLATION ONLY UIM FREQUENCY"
+
+        if "SIGNAL ANALYSIS SIGN ALL POSITIVE" in recommender_name:
+            return "SIGNAL ANALYSIS SIGN ALL POSITIVE"
+
+        if "SIGNAL ANALYSIS SIGN ALL NEGATIVE" in recommender_name:
+            return "SIGNAL ANALYSIS SIGN ALL NEGATIVE"
+
+        if "SIGNAL ANALYSIS SIGN POSITIVE" in recommender_name:
+            return "SIGNAL ANALYSIS SIGN POSITIVE"
+
+        if "SIGNAL ANALYSIS SIGN NEGATIVE" in recommender_name:
+            return "SIGNAL ANALYSIS SIGN NEGATIVE"
+
+        if "SIGNAL ANALYSIS LESS OR EQUAL THRESHOLD" in recommender_name:
+            return "SIGNAL ANALYSIS LESS OR EQUAL THRESHOLD"
+
+        if "SIGNAL ANALYSIS GREAT OR EQUAL THRESHOLD" in recommender_name:
+            return "SIGNAL ANALYSIS GREAT OR EQUAL THRESHOLD"
+
+        return ""
+
+    # This creates a dataframe with the following structure:
+    # # benchmark | recommender | model_base | model_type | experiment_type | <columns of the dataframe>.
+    df_results_accuracy_metrics: pd.DataFrame = pd.concat(
+        objs=dfs,
+        axis=0,
+        ignore_index=False,  # The index is the list of recommender names.
+    )
+
+    if results_name == "accuracy-metrics":
+        df_results_accuracy_metrics = normalize_dataframe_accuracy_metrics(
+            df=df_results_accuracy_metrics
+        )
+    elif results_name == "times":
+        df_results_accuracy_metrics = normalize_dataframe_times(
+            df=df_results_accuracy_metrics
+        )
+    elif results_name == "hyper-parameters":
+        df_results_accuracy_metrics = normalize_dataframe_hyper_parameters(
+            df=df_results_accuracy_metrics
+        )
+    else:
+        raise NotImplementedError(
+            f'Currently we only load results of "accuracy-metrics", "times", or "hyper-parameters". Received: {results_name}'
+        )
+
+    df_results_accuracy_metrics[column_benchmark] = benchmark.value
+
+    df_results_accuracy_metrics[column_model_base] = (
+        df_results_accuracy_metrics[column_recommender]
+        .apply(convert_recommender_name_to_model_base, convert_dtype=True)
+        .astype(pd.StringDtype())
+    )
+
+    df_results_accuracy_metrics[column_model_type] = (
+        df_results_accuracy_metrics[column_recommender]
+        .apply(convert_recommender_name_to_model_base_type, convert_dtype=True)
+        .astype(pd.StringDtype())
+    )
+
+    df_results_accuracy_metrics[column_experiment_type] = (
+        df_results_accuracy_metrics[column_recommender]
+        .apply(convert_recommender_name_to_experiment_type, convert_dtype=True)
+        .astype(pd.StringDtype())
+    )
+
+    with pd.option_context("max_colwidth", 1000):
+        df_results_accuracy_metrics.to_csv(
+            path_or_buf=os.path.join(folder_path_csv, f"{filename_non_processed}.csv"),
+            index=True,
+            header=True,
+            encoding="utf-8",
+            na_rep="-",
+            sep=";",
+            decimal=".",
+        )
+        df_results_accuracy_metrics.to_parquet(
+            path=os.path.join(folder_path_parquet, f"{filename_non_processed}.parquet"),
+            engine="pyarrow",
+            compression=None,
+            index=True,
+        )
+
+    return df_results_accuracy_metrics
+
+
+def _export_results_accuracy_metrics(
+    *,
+    results_name: str,
+    folder_path_csv: str,
+    folder_path_parquet: str,
+    cutoff: int | str,
+) -> None:
+    """
+    Saves on disk a dataframe as follows:
+    # ...
+    """
+    filename_processed = f"{results_name}-processed"
+    filename_export = f"{results_name}-export"
+
+    # This loads a dataframe with the following structure:
+    # ("", dataset) | ("", recommender) | (cutoff1, metric1) |... | (cutoff2, metric1) | ... | (cutoff_m, metric_n)
+    df_results_accuracy_metrics = pd.read_parquet(
+        path=os.path.join(folder_path_parquet, f"{filename_processed}.parquet"),
+        engine="pyarrow",
+    )
+
+    column_cutoff = str(cutoff)
+
+    column_model_base_order = "model_base_order"
+    column_model_type_order = "model_type_order"
+
+    column_benchmark = "benchmark"
+    column_model_base = "model_base"
+    column_model_type = "model_type"
+    column_experiment_type = "experiment_type"
+
+    column_export_benchmark = "Dataset"
+    column_export_model_base = "Recommender"
+    column_export_model_type = "Variant"
+    column_export_experiment_type = "Experiment"
+
+    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
+    def convert_model_base_to_model_base_order(model_base: str) -> float:
+        model_base_order = 100.0
+
+        if "Random" in model_base:
+            model_base_order = 0.0
+        if "TopPop" in model_base:
+            model_base_order = 1.0
+
+        if "ItemKNN" in model_base:
+            model_base_order = 2.0
+        if "UserKNN" in model_base:
+            model_base_order = 3.0
+
+        if "P3alpha" in model_base:
+            model_base_order = 4.0
+        if "RP3beta" in model_base:
+            model_base_order = 5.0
+
+        if "PureSVD" in model_base:
+            model_base_order = 6.0
+        if "NMF" in model_base:
+            model_base_order = 7.0
+
+        if "SVD++" in model_base:
+            model_base_order = 8.0
+        if "MF BPR" in model_base:
+            model_base_order = 9.0
+
+        if "SLIM ElasticNet" in model_base:
+            model_base_order = 10.0
+        if "SLIM BPR" in model_base:
+            model_base_order = 11.0
+
+        if "Last impression" in model_base:
+            return 97.0
+        if "Frequency & recency" in model_base:
+            return 99.0
+        if "Recency" in model_base:
+            return 98.0
+
+        if "asymmetric" in model_base:
+            model_base_order += 0.1
+        if "cosine" in model_base:
+            model_base_order += 0.2
+        if "dice" in model_base:
+            model_base_order += 0.3
+        if "jaccard" in model_base:
+            model_base_order += 0.4
+        if "tversky" in model_base:
+            model_base_order += 0.5
+
+        if "Folded" in model_base:
+            model_base_order += 1000.0
+
+        return model_base_order
+
+    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
+    def convert_model_type_to_model_type_order(model_type: str) -> int:
+        model_order = 100
+        if model_type == "Baseline":
+            model_order = 0
+        if model_type == "HFC":
+            model_order = 1
+        if model_type == "Cycling":
+            model_order = 2
+        if model_type == "IDF":
+            model_order = 3
+        if model_type == "IUP":
+            model_order = 4
+        if model_type == "Baseline-IARS":
+            model_order = 10
+
+        return model_order
+
+    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
+    df_results_accuracy_metrics[column_model_base_order] = (
+        df_results_accuracy_metrics[column_model_base]
+        .apply(convert_model_base_to_model_base_order, convert_dtype=True)
+        .astype(np.float32)
+    )
+    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
+    df_results_accuracy_metrics[column_model_type_order] = (
+        df_results_accuracy_metrics[column_model_type]
+        .apply(convert_model_type_to_model_type_order, convert_dtype=True)
+        .astype(np.int32)
+    )
+    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
+    df_results_accuracy_metrics = df_results_accuracy_metrics.sort_values(
+        by=[column_model_base_order, column_model_type_order, column_experiment_type],
+        ascending=True,
+        inplace=False,
+        ignore_index=True,
+    )
+
+    # This creates a dataframe
+    # benchmark | model_base | model_type | experiment_type | (cutoff, metric_1) | ... | (cutoff, metric_n)
+    df_results_accuracy_metrics = df_results_accuracy_metrics[
+        [
+            column_benchmark,
+            column_model_base,
+            column_model_type,
+            column_experiment_type,
+            column_cutoff,
+        ]
+    ].rename(
+        columns={
+            column_benchmark: column_export_benchmark,
+            column_model_base: column_export_model_base,
+            column_model_type: column_export_model_type,
+            column_experiment_type: column_export_experiment_type,
+        }
+    )
+
+    with pd.option_context("max_colwidth", 1000):
+        df_results_accuracy_metrics.to_csv(
+            path_or_buf=os.path.join(folder_path_csv, f"{filename_export}.csv"),
+            index=True,
+            header=True,
+            encoding="utf-8",
+            na_rep="-",
+            sep=";",
+            decimal=".",
+        )
 
 
 def _results_to_pandas(
@@ -752,7 +1184,7 @@ def _results_to_pandas(
     ORDER_COLUMN = "Order"
 
     df_results: pd.DataFrame = pd.concat(
-        dfs,
+        objs=dfs,
         axis=0,
         ignore_index=False,  # The index is the list of recommender names.
     )
@@ -770,6 +1202,9 @@ def _results_to_pandas(
             )
         )
     elif "times" == results_name:
+        import pdb
+
+        pdb.set_trace()
         df_results = df_results.reset_index(
             drop=False
         ).rename(  # Makes the @20 column as another column.
@@ -779,6 +1214,10 @@ def _results_to_pandas(
             }
         )
     elif "hyper-parameters" == results_name:
+        import pdb
+
+        pdb.set_trace()
+
         # Resulting dataframe
         # Index: (algorithm_row_label, hyperparameter_name)
         # Columns: [hyperparameter_value]
@@ -794,6 +1233,7 @@ def _results_to_pandas(
 
     df_results[MODEL_COLUMN] = (
         df_results[MODEL_COLUMN]
+        .str.replace("HardFrequencyCapping", "HFC")
         .str.replace("ImpressionsDiscounting", "Impressions Discounting")
         .str.replace("FrequencyRecency", "Frequency & Recency")
         .str.replace("LastImpressions", "Last Impressions")
@@ -807,6 +1247,7 @@ def _results_to_pandas(
     df_results[MODEL_BASE_COLUMN] = (
         df_results[MODEL_COLUMN]
         .str.replace("Recommender", "")
+        .str.replace("HFC", "")
         .str.replace("Cycling", "")
         .str.replace("Impressions Discounting", "")
         .str.replace("KNNCF", "KNN CF")
@@ -864,7 +1305,8 @@ def _results_to_pandas(
         .str.strip()
     )
     df_results[MODEL_TYPE_COLUMN] = df_results[MODEL_TYPE_COLUMN].where(
-        df_results[MODEL_TYPE_COLUMN] != "", "Baseline"
+        df_results[MODEL_TYPE_COLUMN] != "",
+        "Baseline",
     )
 
     df_results[ORDER_COLUMN] = df_results[MODEL_TYPE_COLUMN].apply(_model_orders)
@@ -970,6 +1412,10 @@ def _results_to_pandas(
         )
 
     elif "times" == results_name:
+        import pdb
+
+        pdb.set_trace()
+
         df_results = df_results.sort_values(
             by=[MODEL_BASE_COLUMN, ORDER_COLUMN],
             ascending=True,
@@ -984,6 +1430,10 @@ def _results_to_pandas(
         )
         df_export = df_results
     else:
+        import pdb
+
+        pdb.set_trace()
+
         df_results = df_results.sort_values(
             by=[MODEL_BASE_COLUMN, ORDER_COLUMN],
             ascending=True,
@@ -1148,21 +1598,6 @@ def print_results(
             export_experiments_folder_path=folder_path_export_latex,
         )
 
-        results_ablation_re_ranking = _print_ablation_impressions_re_ranking_metrics(
-            ablation_re_ranking_experiment_cases_interface=ablation_re_ranking_experiment_cases_interface,
-            baseline_experiment_cases_interface=baseline_experiment_cases_interface,
-            baseline_experiment_benchmark=experiment_benchmark,
-            baseline_experiment_hyper_parameters=experiment_hyper_parameters,
-            interaction_data_splits=interaction_data_splits,
-            num_test_users=num_test_users,
-            accuracy_metrics_list=ACCURACY_METRICS_LIST,
-            beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
-            all_metrics_list=ALL_METRICS_LIST,
-            cutoffs_list=RESULT_EXPORT_CUTOFFS,
-            knn_similarity_list=knn_similarity_list,
-            export_experiments_folder_path=folder_path_export_latex,
-        )
-
         results_user_profiles = _print_impressions_user_profiles_metrics(
             user_profiles_experiment_cases_interface=user_profiles_experiment_cases_interface,
             baseline_experiment_cases_interface=baseline_experiment_cases_interface,
@@ -1178,47 +1613,129 @@ def print_results(
             export_experiments_folder_path=folder_path_export_latex,
         )
 
-        _results_to_pandas(
+        results_ablation_re_ranking = _print_ablation_impressions_re_ranking_metrics(
+            ablation_re_ranking_experiment_cases_interface=ablation_re_ranking_experiment_cases_interface,
+            baseline_experiment_cases_interface=baseline_experiment_cases_interface,
+            baseline_experiment_benchmark=experiment_benchmark,
+            baseline_experiment_hyper_parameters=experiment_hyper_parameters,
+            interaction_data_splits=interaction_data_splits,
+            num_test_users=num_test_users,
+            accuracy_metrics_list=ACCURACY_METRICS_LIST,
+            beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
+            all_metrics_list=ALL_METRICS_LIST,
+            cutoffs_list=RESULT_EXPORT_CUTOFFS,
+            knn_similarity_list=knn_similarity_list,
+            export_experiments_folder_path=folder_path_export_latex,
+        )
+
+        # _results_to_pandas_accuracy_metrics(
+        #     dfs=[
+        #         results_baselines.df_results,
+        #         results_heuristics.df_results,
+        #         results_re_ranking.df_results,
+        #         results_user_profiles.df_results,
+        #         # TODO: UNCOMMENT.
+        #         # results_ablation_re_ranking.df_results,
+        #     ],
+        #     results_name="accuracy-metrics",
+        #     benchmark=benchmark,
+        #     folder_path_csv=folder_path_export_csv,
+        #     folder_path_parquet=folder_path_export_parquet,
+        # )
+
+        _process_results_dataframe(
             dfs=[
                 results_baselines.df_results,
                 results_heuristics.df_results,
                 results_re_ranking.df_results,
-                results_ablation_re_ranking.df_results,
                 results_user_profiles.df_results,
+                # TODO: UNCOMMENT.
+                # results_ablation_re_ranking.df_results,
             ],
             results_name="accuracy-metrics",
-            folder_path_latex=folder_path_export_latex,
+            benchmark=benchmark,
             folder_path_csv=folder_path_export_csv,
             folder_path_parquet=folder_path_export_parquet,
         )
 
-        _results_to_pandas(
+        _process_results_dataframe(
             dfs=[
                 results_baselines.df_times,
                 results_heuristics.df_times,
                 results_re_ranking.df_times,
-                results_ablation_re_ranking.df_times,
                 results_user_profiles.df_times,
+                # TODO: UNCOMMENT.
+                # results_ablation_re_ranking.df_times,
             ],
             results_name="times",
-            folder_path_latex=folder_path_export_latex,
+            benchmark=benchmark,
             folder_path_csv=folder_path_export_csv,
             folder_path_parquet=folder_path_export_parquet,
         )
 
-        _results_to_pandas(
+        _process_results_dataframe(
             dfs=[
                 results_baselines.df_hyper_params,
                 results_heuristics.df_hyper_params,
                 results_re_ranking.df_hyper_params,
-                results_ablation_re_ranking.df_hyper_params,
                 results_user_profiles.df_hyper_params,
+                # TODO: UNCOMMENT
+                # results_ablation_re_ranking.df_hyper_params,
             ],
             results_name="hyper-parameters",
-            folder_path_latex=folder_path_export_latex,
+            benchmark=benchmark,
             folder_path_csv=folder_path_export_csv,
             folder_path_parquet=folder_path_export_parquet,
         )
+
+        # _export_results_accuracy_metrics(
+        #     results_name="accuracy-metrics",
+        #     folder_path_csv=folder_path_export_csv,
+        #     folder_path_parquet=folder_path_export_parquet,
+        #     cutoff=20,
+        # )
+
+        # _results_to_pandas(
+        #     dfs=[
+        #         results_baselines.df_results,
+        #         results_heuristics.df_results,
+        #         results_re_ranking.df_results,
+        #         results_ablation_re_ranking.df_results,
+        #         results_user_profiles.df_results,
+        #     ],
+        #     results_name="accuracy-metrics",
+        #     folder_path_latex=folder_path_export_latex,
+        #     folder_path_csv=folder_path_export_csv,
+        #     folder_path_parquet=folder_path_export_parquet,
+        # )
+
+        # _results_to_pandas(
+        #     dfs=[
+        #         results_baselines.df_times,
+        #         results_heuristics.df_times,
+        #         results_re_ranking.df_times,
+        #         results_ablation_re_ranking.df_times,
+        #         results_user_profiles.df_times,
+        #     ],
+        #     results_name="times",
+        #     folder_path_latex=folder_path_export_latex,
+        #     folder_path_csv=folder_path_export_csv,
+        #     folder_path_parquet=folder_path_export_parquet,
+        # )
+        #
+        # _results_to_pandas(
+        #     dfs=[
+        #         results_baselines.df_hyper_params,
+        #         results_heuristics.df_hyper_params,
+        #         results_re_ranking.df_hyper_params,
+        #         results_ablation_re_ranking.df_hyper_params,
+        #         results_user_profiles.df_hyper_params,
+        #     ],
+        #     results_name="hyper-parameters",
+        #     folder_path_latex=folder_path_export_latex,
+        #     folder_path_csv=folder_path_export_csv,
+        #     folder_path_parquet=folder_path_export_parquet,
+        # )
 
         logger.info(
             f"Successfully finished exporting accuracy and beyond-accuracy results to LaTeX"
