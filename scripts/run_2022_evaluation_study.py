@@ -10,7 +10,10 @@ from tap import Tap
 from dotenv import load_dotenv
 
 from impressions_evaluation import configure_logger
-from impressions_evaluation.experiments.print_results import print_results
+from impressions_evaluation.experiments.print_results import (
+    process_evaluation_results,
+    export_evaluation_results,
+)
 from impressions_evaluation.experiments.print_statistics import (
     print_datasets_statistics,
 )
@@ -135,15 +138,16 @@ _TO_USE_RECOMMENDERS_BASELINE = [
     RecommenderBaseline.P3_ALPHA,
     RecommenderBaseline.RP3_BETA,
     #
-    # RecommenderBaseline.PURE_SVD,
+    RecommenderBaseline.PURE_SVD,
     RecommenderBaseline.NMF,
     RecommenderBaseline.MF_BPR,
+    RecommenderBaseline.SVDpp,
     #
-    # RecommenderBaseline.SLIM_ELASTIC_NET,
-    # RecommenderBaseline.SLIM_BPR,
+    RecommenderBaseline.SLIM_ELASTIC_NET,
+    RecommenderBaseline.SLIM_BPR,
     #
-    # RecommenderBaseline.LIGHT_FM,
-    # RecommenderBaseline.EASE_R,
+    RecommenderBaseline.LIGHT_FM,
+    RecommenderBaseline.EASE_R,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE_FOLDED = [
@@ -478,12 +482,17 @@ if __name__ == "__main__":
         )
 
     if input_flags.print_evaluation_results:
-        print_results(
+        process_evaluation_results(
             baseline_experiment_cases_interface=experiments_interface_baselines,
             impressions_heuristics_experiment_cases_interface=experiments_impressions_heuristics_interface,
             ablation_re_ranking_experiment_cases_interface=experiments_ablation_impressions_re_ranking_interface,
             re_ranking_experiment_cases_interface=experiments_impressions_re_ranking_interface,
             user_profiles_experiment_cases_interface=experiments_impressions_user_profiles_interface,
+        )
+
+        export_evaluation_results(
+            benchmarks=_TO_USE_BENCHMARKS,
+            hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
         )
 
     logger.info(f"Finished running script: {__file__}")
