@@ -702,6 +702,8 @@ def _process_results_dataframe(
     column_benchmark = "benchmark"
     column_model_base = "model_base"
     column_model_type = "model_type"
+    column_model_base_order = "model_base_order"
+    column_model_type_order = "model_type_order"
     column_experiment_type = "experiment_type"
 
     def normalize_dataframe_accuracy_metrics(df: pd.DataFrame) -> pd.DataFrame:
@@ -834,6 +836,85 @@ def _process_results_dataframe(
 
         return ""
 
+    def convert_model_base_to_model_base_order(model_base: str) -> float:
+        model_base_order = 100.0
+
+        if "Random" in model_base:
+            model_base_order = 0.0
+        if "TopPop" in model_base:
+            model_base_order = 1.0
+
+        if "ItemKNN" in model_base:
+            model_base_order = 2.0
+        if "UserKNN" in model_base:
+            model_base_order = 3.0
+
+        if "P3alpha" in model_base:
+            model_base_order = 4.0
+        if "RP3beta" in model_base:
+            model_base_order = 5.0
+
+        if "PureSVD" in model_base:
+            model_base_order = 6.0
+        if "NMF" in model_base:
+            model_base_order = 7.0
+
+        if "SVD++" in model_base or "Funk SVD" in model_base:
+            model_base_order = 8.0
+        if "MF BPR" in model_base:
+            model_base_order = 9.0
+
+        if "SLIM ElasticNet" in model_base:
+            model_base_order = 10.0
+        if "SLIM BPR" in model_base:
+            model_base_order = 11.0
+
+        if "EASE R" in model_base:
+            model_base_order = 12.0
+
+        if "LightFM" in model_base:
+            model_base_order = 13.0
+
+        if "Last impression" in model_base:
+            return 97.0
+        if "Frequency & recency" in model_base:
+            return 99.0
+        if "Recency" in model_base:
+            return 98.0
+
+        if "asymmetric" in model_base:
+            model_base_order += 0.1
+        if "cosine" in model_base:
+            model_base_order += 0.2
+        if "dice" in model_base:
+            model_base_order += 0.3
+        if "jaccard" in model_base:
+            model_base_order += 0.4
+        if "tversky" in model_base:
+            model_base_order += 0.5
+
+        if "Folded" in model_base:
+            model_base_order += 1000.0
+
+        return model_base_order
+
+    def convert_model_type_to_model_type_order(model_type: str) -> int:
+        model_order = 100
+        if model_type == "Baseline":
+            model_order = 0
+        if model_type == "HFC":
+            model_order = 1
+        if model_type == "Cycling":
+            model_order = 2
+        if model_type == "IDF":
+            model_order = 3
+        if model_type == "IUP":
+            model_order = 4
+        if model_type == "Baseline-IARS":
+            model_order = 10
+
+        return model_order
+
     # This creates a dataframe with the following structure:
     # # benchmark | recommender | model_base | model_type | experiment_type | <columns of the dataframe>.
     df_results_accuracy_metrics: pd.DataFrame = pd.concat(
@@ -879,6 +960,18 @@ def _process_results_dataframe(
         .astype(pd.StringDtype())
     )
 
+    df_results_accuracy_metrics[column_model_base_order] = (
+        df_results_accuracy_metrics[column_model_base]
+        .apply(convert_model_base_to_model_base_order, convert_dtype=True)
+        .astype(np.float32)
+    )
+
+    df_results_accuracy_metrics[column_model_type_order] = (
+        df_results_accuracy_metrics[column_model_type]
+        .apply(convert_model_type_to_model_type_order, convert_dtype=True)
+        .astype(np.int32)
+    )
+
     with pd.option_context("max_colwidth", 1000):
         df_results_accuracy_metrics.to_csv(
             path_or_buf=os.path.join(folder_path_csv, f"{filename_non_processed}.csv"),
@@ -912,116 +1005,28 @@ def _export_results_accuracy_metrics(
     * dataset | recommender | variant | type | (cutoff, metric_1) | ... | (cutoff, metric_n)
     """
     column_benchmark_order = "benchmark_order"
-    column_model_base_order = "model_base_order"
-    column_model_type_order = "model_type_order"
 
     column_benchmark = "benchmark"
     column_model_base = "model_base"
     column_model_type = "model_type"
-    column_experiment_type: str | tuple[str, str] = "experiment_type"
+    column_model_base_order = "model_base_order"
+    column_model_type_order = "model_type_order"
+
+    column_experiment_type = "experiment_type"
 
     column_export_benchmark = "Dataset"
     column_export_model_base = "Recommender"
     column_export_model_type = "Variant"
     column_export_experiment_type = "Experiment"
 
-    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
-    def convert_model_base_to_model_base_order(model_base: str) -> float:
-        model_base_order = 100.0
-
-        if "Random" in model_base:
-            model_base_order = 0.0
-        if "TopPop" in model_base:
-            model_base_order = 1.0
-
-        if "ItemKNN" in model_base:
-            model_base_order = 2.0
-        if "UserKNN" in model_base:
-            model_base_order = 3.0
-
-        if "P3alpha" in model_base:
-            model_base_order = 4.0
-        if "RP3beta" in model_base:
-            model_base_order = 5.0
-
-        if "PureSVD" in model_base:
-            model_base_order = 6.0
-        if "NMF" in model_base:
-            model_base_order = 7.0
-
-        if "SVD++" in model_base:
-            model_base_order = 8.0
-        if "MF BPR" in model_base:
-            model_base_order = 9.0
-
-        if "SLIM ElasticNet" in model_base:
-            model_base_order = 10.0
-        if "SLIM BPR" in model_base:
-            model_base_order = 11.0
-
-        if "Last impression" in model_base:
-            return 97.0
-        if "Frequency & recency" in model_base:
-            return 99.0
-        if "Recency" in model_base:
-            return 98.0
-
-        if "asymmetric" in model_base:
-            model_base_order += 0.1
-        if "cosine" in model_base:
-            model_base_order += 0.2
-        if "dice" in model_base:
-            model_base_order += 0.3
-        if "jaccard" in model_base:
-            model_base_order += 0.4
-        if "tversky" in model_base:
-            model_base_order += 0.5
-
-        if "Folded" in model_base:
-            model_base_order += 1000.0
-
-        return model_base_order
-
-    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
-    def convert_model_type_to_model_type_order(model_type: str) -> int:
-        model_order = 100
-        if model_type == "Baseline":
-            model_order = 0
-        if model_type == "HFC":
-            model_order = 1
-        if model_type == "Cycling":
-            model_order = 2
-        if model_type == "IDF":
-            model_order = 3
-        if model_type == "IUP":
-            model_order = 4
-        if model_type == "Baseline-IARS":
-            model_order = 10
-
-        return model_order
-
     benchmarks_order = {
         benchmark.value: idx for idx, benchmark in enumerate(benchmarks)
     }
 
-    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
     df_results[column_benchmark_order] = (
         df_results[column_benchmark].map(benchmarks_order).astype(np.int32)
     )
 
-    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
-    df_results[column_model_base_order] = (
-        df_results[column_model_base]
-        .apply(convert_model_base_to_model_base_order, convert_dtype=True)
-        .astype(np.float32)
-    )
-    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
-    df_results[column_model_type_order] = (
-        df_results[column_model_type]
-        .apply(convert_model_type_to_model_type_order, convert_dtype=True)
-        .astype(np.int32)
-    )
-    # TODO: MOVE THIS FUNCTION SOMEWHERE ELSE; THIS IS SPECIFIC TO EXPORTING.
     df_results = df_results.sort_values(
         by=[
             column_benchmark_order,
@@ -1074,6 +1079,180 @@ def _export_results_accuracy_metrics(
     )
 
     filename_export = f"accuracy-metrics-export-{results_name}"
+    with pd.option_context("max_colwidth", 1000):
+        df_results.to_csv(
+            path_or_buf=os.path.join(folder_path_csv, f"{filename_export}.csv"),
+            index=True,
+            header=True,
+            encoding="utf-8",
+            na_rep="-",
+            sep=";",
+            decimal=",",
+            float_format="%.4f",
+        )
+
+
+def _export_results_time(
+    *,
+    df_results: pd.DataFrame,
+    results_name: str,
+    benchmarks: list[commons.Benchmarks],
+    folder_path_csv: str,
+) -> None:
+    """
+    Saves on disk a dataframe as follows:
+    * Dataset | Recommender | Variant | Experiment | Train time | Recommendation time | Recommendation throughput
+    """
+    column_benchmark_order = "benchmark_order"
+    column_model_base_order = "model_base_order"
+    column_model_type_order = "model_type_order"
+
+    column_benchmark = "benchmark"
+    column_model_base = "model_base"
+    column_model_type = "model_type"
+    column_experiment_type = "experiment_type"
+    column_train_time = "Train Time"
+    column_recommendation_time = "Recommendation Time"
+    column_recommendation_throughput = "Recommendation Throughput"
+
+    column_export_benchmark = "Dataset"
+    column_export_model_base = "Recommender"
+    column_export_model_type = "Variant"
+    column_export_experiment_type = "Experiment"
+    column_export_train_time = "Train time"
+    column_export_recommendation_time = "Recommendation time"
+    column_export_recommendation_throughput = "Recommendation throughput"
+
+    benchmarks_order = {
+        benchmark.value: idx for idx, benchmark in enumerate(benchmarks)
+    }
+
+    df_results[column_benchmark_order] = (
+        df_results[column_benchmark].map(benchmarks_order).astype(np.int32)
+    )
+
+    df_results = df_results.sort_values(
+        by=[
+            column_benchmark_order,
+            column_model_base_order,
+            column_model_type_order,
+            column_experiment_type,
+        ],
+        ascending=True,
+        inplace=False,
+        ignore_index=True,
+    )
+
+    # This creates a dataframe
+    # Dataset | Recommender | Variant | Experiment | Train time | Recommendation time | Recommendation throughput
+    df_results = df_results[
+        [
+            column_benchmark,
+            column_model_base,
+            column_model_type,
+            column_experiment_type,
+            column_train_time,
+            column_recommendation_time,
+            column_recommendation_throughput,
+        ]
+    ].rename(
+        columns={
+            column_benchmark: column_export_benchmark,
+            column_model_base: column_export_model_base,
+            column_model_type: column_export_model_type,
+            column_experiment_type: column_export_experiment_type,
+            column_train_time: column_export_train_time,
+            column_recommendation_time: column_export_recommendation_time,
+            column_recommendation_throughput: column_export_recommendation_throughput,
+        }
+    )
+
+    filename_export = f"times-export-{results_name}"
+    with pd.option_context("max_colwidth", 1000):
+        df_results.to_csv(
+            path_or_buf=os.path.join(folder_path_csv, f"{filename_export}.csv"),
+            index=True,
+            header=True,
+            encoding="utf-8",
+            na_rep="-",
+            sep=";",
+            decimal=",",
+            float_format="%.4f",
+        )
+
+
+def _export_results_hyper_parameters(
+    *,
+    df_results: pd.DataFrame,
+    results_name: str,
+    benchmarks: list[commons.Benchmarks],
+    folder_path_csv: str,
+) -> None:
+    """
+    Saves on disk a dataframe as follows:
+    * Dataset | Variant | Recommender | Experiment | Hyper-parameter | Value
+    """
+    column_benchmark_order = "benchmark_order"
+    column_model_base_order = "model_base_order"
+    column_model_type_order = "model_type_order"
+
+    column_benchmark = "benchmark"
+    column_model_base = "model_base"
+    column_model_type = "model_type"
+    column_experiment_type = "experiment_type"
+    column_hyper_parameter_name = "hyperparameter_name"
+    column_hyper_parameter_value = "hyperparameter_value"
+
+    column_export_benchmark = "Dataset"
+    column_export_model_base = "Recommender"
+    column_export_model_type = "Variant"
+    column_export_experiment_type = "Experiment"
+    column_export_hyper_parameter_name = "Hyper-parameter"
+    column_export_hyper_parameter_value = "Value"
+
+    benchmarks_order = {
+        benchmark.value: idx for idx, benchmark in enumerate(benchmarks)
+    }
+
+    df_results[column_benchmark_order] = (
+        df_results[column_benchmark].map(benchmarks_order).astype(np.int32)
+    )
+
+    df_results = df_results.sort_values(
+        by=[
+            column_benchmark_order,
+            column_model_type_order,
+            column_model_base_order,
+            column_experiment_type,
+        ],
+        ascending=True,
+        inplace=False,
+        ignore_index=True,
+    )
+
+    # This creates a dataframe
+    # Dataset | Variant | Recommender | Experiment | Hyper-parameter | Value
+    df_results = df_results[
+        [
+            column_benchmark,
+            column_model_type,
+            column_model_base,
+            column_experiment_type,
+            column_hyper_parameter_name,
+            column_hyper_parameter_value,
+        ]
+    ].rename(
+        columns={
+            column_benchmark: column_export_benchmark,
+            column_model_base: column_export_model_base,
+            column_model_type: column_export_model_type,
+            column_experiment_type: column_export_experiment_type,
+            column_hyper_parameter_name: column_export_hyper_parameter_name,
+            column_hyper_parameter_value: column_export_hyper_parameter_value,
+        }
+    )
+
+    filename_export = f"hyper_parameters-export-{results_name}"
     with pd.option_context("max_colwidth", 1000):
         df_results.to_csv(
             path_or_buf=os.path.join(folder_path_csv, f"{filename_export}.csv"),
@@ -1362,4 +1541,18 @@ def export_evaluation_results(
         metrics=["NDCG", "COVERAGE_ITEM"],
         order="metric",
         results_name="all_cutoffs-two_metrics",
+    )
+
+    _export_results_time(
+        benchmarks=benchmarks,
+        df_results=df_results_times,
+        folder_path_csv=folder_path_results_to_export,
+        results_name="all",
+    )
+
+    _export_results_hyper_parameters(
+        benchmarks=benchmarks,
+        df_results=df_results_hyper_parameters,
+        folder_path_csv=folder_path_results_to_export,
+        results_name="all",
     )
