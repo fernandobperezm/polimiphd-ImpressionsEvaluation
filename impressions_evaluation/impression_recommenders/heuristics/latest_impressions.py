@@ -3,13 +3,17 @@ from typing import Optional
 import attrs
 import numpy as np
 import scipy.sparse as sp
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
-    AbstractExtendedBaseRecommender
+from recsys_framework_extensions.recommenders.base import (
+    SearchHyperParametersBaseRecommender,
+    AbstractExtendedBaseRecommender,
+)
 from recsys_framework_extensions.recommenders.mixins import MixinEmptySaveModel
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class SearchHyperParametersLastImpressionsRecommender(SearchHyperParametersBaseRecommender):
+class SearchHyperParametersLastImpressionsRecommender(
+    SearchHyperParametersBaseRecommender
+):
     pass
 
 
@@ -23,6 +27,7 @@ class LastImpressionsRecommender(MixinEmptySaveModel, AbstractExtendedBaseRecomm
     .. [1]
 
     """
+
     RECOMMENDER_NAME = "LastImpressionsRecommender"
 
     def __init__(
@@ -57,11 +62,7 @@ class LastImpressionsRecommender(MixinEmptySaveModel, AbstractExtendedBaseRecomm
         assert self.URM_train.shape == self._uim_position.shape
         assert self.URM_train.shape == self._uim_timestamp.shape
 
-    def fit(
-        self,
-        *args,
-        **kwargs
-    ) -> None:
+    def fit(self, *args, **kwargs) -> None:
         pass
 
     def _compute_item_score(
@@ -96,8 +97,12 @@ class LastImpressionsRecommender(MixinEmptySaveModel, AbstractExtendedBaseRecomm
         )
 
         for idx_item_score, user_id in enumerate(user_id_array):
-            user_timestamps: np.ndarray = self._uim_timestamp[user_id, :].toarray().ravel()
-            user_positions: np.ndarray = -self._uim_position[user_id, :].toarray().ravel()
+            user_timestamps: np.ndarray = (
+                self._uim_timestamp[user_id, :].toarray().ravel()
+            )
+            user_positions: np.ndarray = (
+                -self._uim_position[user_id, :].toarray().ravel()
+            )
 
             user_max_timestamp: float = user_timestamps.max(initial=np.NINF)  # type: ignore
             if user_max_timestamp == 0.0:
@@ -108,7 +113,9 @@ class LastImpressionsRecommender(MixinEmptySaveModel, AbstractExtendedBaseRecomm
             # If we want to compute for only a certain group of items (`items_to_compute` not being None),
             # then we must have a mask that sets -INF to items outside this list.
             if items_to_compute is None:
-                arr_mask_items: np.ndarray = np.ones_like(user_timestamps, dtype=np.bool8)
+                arr_mask_items: np.ndarray = np.ones_like(
+                    user_timestamps, dtype=np.bool8
+                )
             else:
                 arr_mask_items = np.zeros_like(user_timestamps, dtype=np.bool8)
                 arr_mask_items[items_to_compute] = True
@@ -126,7 +133,9 @@ class LastImpressionsRecommender(MixinEmptySaveModel, AbstractExtendedBaseRecomm
             # then it will update the value. The number of truth values must be the same in the right. That is why we
             # also do user_positions[items_to_select], in this way we tell which values we want in those truth places.
             items_to_select = (user_timestamps == user_max_timestamp) & arr_mask_items
-            item_scores2[idx_item_score, items_to_select] = user_positions[items_to_select]
+            item_scores2[idx_item_score, items_to_select] = user_positions[
+                items_to_select
+            ]
 
         assert item_scores.shape == (num_score_users, num_score_items)
         assert np.array_equal(item_scores, item_scores2)
@@ -134,7 +143,8 @@ class LastImpressionsRecommender(MixinEmptySaveModel, AbstractExtendedBaseRecomm
         return item_scores
 
     def validate_load_trained_recommender(
-        self, *args, **kwargs,
+        self,
+        *args,
+        **kwargs,
     ) -> None:
         pass
-
