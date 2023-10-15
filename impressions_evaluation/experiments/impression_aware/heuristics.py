@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 ####################################################################################################
 DIR_TRAINED_MODELS_IMPRESSION_AWARE_HEURISTICS = os.path.join(
     DIR_TRAINED_MODELS_IMPRESSION_AWARE,
-    "heuristics",
     "{benchmark}",
     "{evaluation_strategy}",
+    # "heuristics",
     "",
 )
 

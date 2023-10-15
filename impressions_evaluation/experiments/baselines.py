@@ -34,9 +34,9 @@ logger = logging.getLogger(__name__)
 ####################################################################################################
 DIR_TRAINED_MODELS_BASELINES = os.path.join(
     commons.DIR_TRAINED_MODELS,
-    "baselines",
     "{benchmark}",
     "{evaluation_strategy}",
+    # "baselines",
     "",
 )
 

@@ -37,9 +37,9 @@ logger = logging.getLogger(__name__)
 ####################################################################################################
 DIR_TRAINED_MODELS_RE_RANKING = os.path.join(
     DIR_TRAINED_MODELS_IMPRESSION_AWARE,
-    "re_ranking",
     "{benchmark}",
     "{evaluation_strategy}",
+    "re_ranking",
     "",
 )
 

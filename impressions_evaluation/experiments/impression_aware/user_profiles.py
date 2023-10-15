@@ -39,9 +39,9 @@ logger = logging.getLogger(__name__)
 ####################################################################################################
 DIR_TRAINED_MODELS_USER_PROFILES = os.path.join(
     DIR_TRAINED_MODELS_IMPRESSION_AWARE,
-    "user_profiles",
     "{benchmark}",
     "{evaluation_strategy}",
+    # "user_profiles",
     "",
 )
 
