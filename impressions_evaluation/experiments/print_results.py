@@ -59,11 +59,12 @@ DIR_RESULTS_MODEL_EVALUATION = os.path.join(
 
 DIR_RESULTS_TO_EXPORT = os.path.join(
     DIR_RESULTS_MODEL_EVALUATION,
+    "evaluation_impression_aware_recommenders",
     "",
 )
 
 DIR_RESULTS_TO_PROCESS = os.path.join(
-    DIR_RESULTS_MODEL_EVALUATION,
+    DIR_RESULTS_TO_EXPORT,
     "{benchmark}",
     "{evaluation_strategy}",
     "",
@@ -83,24 +84,13 @@ DIR_LATEX_RESULTS = os.path.join(
     "latex",
     "",
 )
-DIR_ARTICLE_ACCURACY_METRICS_BASELINES_LATEX = os.path.join(
-    DIR_LATEX_RESULTS,
-    "article_accuracy_and_beyond_accuracy",
-    "",
-)
-DIR_ACCURACY_METRICS_BASELINES_LATEX = os.path.join(
-    DIR_LATEX_RESULTS,
-    "accuracy_and_beyond_accuracy",
-    "",
-)
+
 
 commons.FOLDERS.add(DIR_RESULTS_MODEL_EVALUATION)
 commons.FOLDERS.add(DIR_RESULTS_TO_EXPORT)
 commons.FOLDERS.add(DIR_RESULTS_TO_PROCESS)
 commons.FOLDERS.add(DIR_CSV_RESULTS)
 commons.FOLDERS.add(DIR_PARQUET_RESULTS)
-commons.FOLDERS.add(DIR_ACCURACY_METRICS_BASELINES_LATEX)
-commons.FOLDERS.add(DIR_ARTICLE_ACCURACY_METRICS_BASELINES_LATEX)
 
 RESULT_EXPORT_CUTOFFS = [5, 10, 20, 30, 40, 50, 100]
 
@@ -1311,7 +1301,7 @@ def process_evaluation_results(
         urm_test = interaction_data_splits.sp_urm_test
         num_test_users = cast(int, np.sum(np.ediff1d(urm_test.indptr) >= 1))
 
-        folder_path_export_latex = DIR_ACCURACY_METRICS_BASELINES_LATEX.format(
+        folder_path_export_latex = DIR_LATEX_RESULTS.format(
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
@@ -1498,6 +1488,7 @@ def export_evaluation_results(
         results_hyper_parameters.append(df_results_hyper_parameters)
 
     folder_path_results_to_export = DIR_RESULTS_TO_EXPORT
+    os.makedirs(folder_path_results_to_export, exist_ok=True)
 
     df_results_accuracy = pd.concat(
         objs=results_accuracy_metrics,

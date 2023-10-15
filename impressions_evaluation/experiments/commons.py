@@ -51,10 +51,14 @@ from impressions_evaluation.impression_recommenders.graph_based.lightgcn import 
 from impressions_evaluation.impression_recommenders.graph_based.p3_alpha import (
     ImpressionsDirectedP3AlphaRecommender,
     ImpressionsProfileP3AlphaRecommender,
+    ImpressionsProfileWithFrequencyP3AlphaRecommender,
+    ImpressionsDirectedWithFrequencyP3AlphaRecommender,
 )
 from impressions_evaluation.impression_recommenders.graph_based.rp3_beta import (
     ImpressionsDirectedRP3BetaRecommender,
     ImpressionsProfileRP3BetaRecommender,
+    ImpressionsProfileWithFrequencyRP3BetaRecommender,
+    ImpressionsDirectedWithFrequencyRP3BetaRecommender,
 )
 from impressions_evaluation.impression_recommenders.re_ranking.hard_frequency_capping import (
     SearchHyperParametersHardFrequencyCappingRecommender,
@@ -192,9 +196,17 @@ class RecommenderImpressions(Enum):
     P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS = (
         "P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS"
     )
+    P3_ALPHA_ONLY_IMPRESSIONS_FREQUENCY = "P3_ALPHA_ONLY_IMPRESSIONS_FREQUENCY"
+    P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY = (
+        "P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY"
+    )
     RP3_BETA_ONLY_IMPRESSIONS = "RP3_BETA_ONLY_IMPRESSIONS"
     RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS = (
         "RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS"
+    )
+    RP3_BETA_ONLY_IMPRESSIONS_FREQUENCY = "RP3_BETA_ONLY_IMPRESSIONS_FREQUENCY"
+    RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY = (
+        "RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY"
     )
     SOFT_FREQUENCY_CAPPING = "SOFT_FREQUENCY_CAPPING"
 
@@ -792,6 +804,35 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
         priority=40,
         use_gpu=True,
         do_early_stopping=True,
+    ),
+    # Recommenders using frequency
+    RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS_FREQUENCY: ExperimentRecommender(
+        recommender=ImpressionsProfileWithFrequencyP3AlphaRecommender,
+        search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY: ExperimentRecommender(
+        recommender=ImpressionsDirectedWithFrequencyP3AlphaRecommender,
+        search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS_FREQUENCY: ExperimentRecommender(
+        recommender=ImpressionsProfileWithFrequencyRP3BetaRecommender,
+        search_hyper_parameters=SearchHyperParametersRP3BetaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
+    ),
+    RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY: ExperimentRecommender(
+        recommender=ImpressionsDirectedWithFrequencyRP3BetaRecommender,
+        search_hyper_parameters=SearchHyperParametersRP3BetaRecommender,
+        priority=45,
+        use_gpu=False,
+        do_early_stopping=False,
     ),
 }
 

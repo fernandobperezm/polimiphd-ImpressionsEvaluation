@@ -28,7 +28,11 @@ from impressions_evaluation.experiments.graph_based import (
     run_experiments_sequentially,
     _run_frequency_impressions_hyper_parameter_tuning,
 )
-from impressions_evaluation.experiments.graph_based.results import print_results
+from impressions_evaluation.experiments.graph_based.results import (
+    print_results,
+    process_results,
+    export_evaluation_results,
+)
 
 
 class ConsoleArguments(Tap):
@@ -104,62 +108,83 @@ _TO_USE_TRAINING_FUNCTIONS_IMPRESSIONS_FREQUENCY = [
     _run_frequency_impressions_hyper_parameter_tuning,
 ]
 
-_TO_PRINT_RECOMMENDERS: list[
-    tuple[
-        Benchmarks,
-        EHyperParameterTuningParameters,
-        list[Sequence[Union[RecommenderBaseline, RecommenderImpressions]]],
-    ]
-] = [
-    (
-        Benchmarks.MINDSmall,
-        EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
-        [
-            (
-                RecommenderBaseline.P3_ALPHA,
-                RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
-                RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-            ),
-            (
-                RecommenderBaseline.RP3_BETA,
-                RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
-                RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-            ),
-        ],
-    ),
-    (
-        Benchmarks.ContentWiseImpressions,
-        EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
-        [
-            (
-                RecommenderBaseline.P3_ALPHA,
-                RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
-                RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-            ),
-            (
-                RecommenderBaseline.RP3_BETA,
-                RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
-                RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-            ),
-        ],
-    ),
-    # (
-    #     Benchmarks.FINNNoSlates,
-    #     EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
-    #     [
-    #         (
-    #             RecommenderBaseline.P3_ALPHA,
-    #             RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
-    #             RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-    #         ),
-    #         (
-    #             RecommenderBaseline.RP3_BETA,
-    #             RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
-    #             RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-    #         ),
-    #     ],
-    # ),
-]
+# _TO_PRINT_RECOMMENDERS: list[
+#     tuple[
+#         Benchmarks,
+#         EHyperParameterTuningParameters,
+#         list[Sequence[Union[RecommenderBaseline, RecommenderImpressions]]],
+#     ]
+# ] = [
+#     (
+#         Benchmarks.MINDSmall,
+#         EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
+#         [
+#             (
+#                 RecommenderBaseline.P3_ALPHA,
+#                 RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
+#                 RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+#             ),
+#             (
+#                 RecommenderBaseline.RP3_BETA,
+#                 RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
+#                 RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+#             ),
+#         ],
+#     ),
+#     (
+#         Benchmarks.ContentWiseImpressions,
+#         EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
+#         [
+#             (
+#                 RecommenderBaseline.P3_ALPHA,
+#                 RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
+#                 RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+#             ),
+#             (
+#                 RecommenderBaseline.RP3_BETA,
+#                 RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
+#                 RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+#             ),
+#         ],
+#     ),
+#     # (
+#     #     Benchmarks.FINNNoSlates,
+#     #     EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
+#     #     [
+#     #         (
+#     #             RecommenderBaseline.P3_ALPHA,
+#     #             RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
+#     #             RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+#     #         ),
+#     #         (
+#     #             RecommenderBaseline.RP3_BETA,
+#     #             RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
+#     #             RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+#     #         ),
+#     #     ],
+#     # ),
+# ]
+
+
+_TO_PRINT_RECOMMENDERS: tuple[
+    list[Benchmarks],
+    list[EHyperParameterTuningParameters],
+    list[
+        Union[
+            RecommenderBaseline,
+            RecommenderImpressions,
+            tuple[RecommenderBaseline, RecommenderImpressions],
+        ]
+    ],
+] = (
+    _TO_USE_BENCHMARKS,
+    _TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+    [
+        *_TO_USE_RECOMMENDERS_BASELINES,
+        *_TO_USE_RECOMMENDERS_IMPRESSIONS,
+        *_TO_USE_RECOMMENDERS_IMPRESSIONS_FREQUENCY,
+    ],
+)
 
 
 if __name__ == "__main__":
@@ -217,8 +242,15 @@ if __name__ == "__main__":
         )
 
     if input_flags.print_evaluation_results:
-        print_results(
+        # print_results(
+        #     results_interface=_TO_PRINT_RECOMMENDERS,
+        # )
+        process_results(
             results_interface=_TO_PRINT_RECOMMENDERS,
+        )
+        export_evaluation_results(
+            benchmarks=_TO_USE_BENCHMARKS,
+            hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
         )
 
     logger.info(f"Finished running script: {__file__}")

@@ -140,48 +140,6 @@ _MAPPER_COLLABORATIVE_RECOMMENDERS = {
 }
 
 _MAPPER_IMPRESSIONS_RECOMMENDERS = {
-    RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS: ExperimentRecommender(
-        recommender=ImpressionsProfileP3AlphaRecommender,
-        search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
-        priority=45,
-        use_gpu=False,
-        do_early_stopping=False,
-    ),
-    RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS: ExperimentRecommender(
-        recommender=ImpressionsDirectedP3AlphaRecommender,
-        search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
-        priority=45,
-        use_gpu=False,
-        do_early_stopping=False,
-    ),
-    RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS: ExperimentRecommender(
-        recommender=ImpressionsProfileRP3BetaRecommender,
-        search_hyper_parameters=SearchHyperParametersRP3BetaRecommender,
-        priority=45,
-        use_gpu=False,
-        do_early_stopping=False,
-    ),
-    RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS: ExperimentRecommender(
-        recommender=ImpressionsDirectedRP3BetaRecommender,
-        search_hyper_parameters=SearchHyperParametersRP3BetaRecommender,
-        priority=45,
-        use_gpu=False,
-        do_early_stopping=False,
-    ),
-    RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS: ExperimentRecommender(
-        recommender=ImpressionsProfileLightGCNRecommender,
-        search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
-        priority=40,
-        use_gpu=True,
-        do_early_stopping=True,
-    ),
-    RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS: ExperimentRecommender(
-        recommender=ImpressionsDirectedLightGCNRecommender,
-        search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
-        priority=40,
-        use_gpu=True,
-        do_early_stopping=True,
-    ),
     RecommenderImpressions.SOFT_FREQUENCY_CAPPING: ExperimentRecommender(
         recommender=SoftFrequencyCappingRecommender,
         search_hyper_parameters=SearchHyperParametersSFCRecommender,
@@ -202,7 +160,8 @@ def _run_collaborative_filtering_hyper_parameter_tuning(
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
         experiment_case.benchmark
     ]
-    experiment_recommender = _MAPPER_COLLABORATIVE_RECOMMENDERS[
+    # experiment_recommender = _MAPPER_COLLABORATIVE_RECOMMENDERS[
+    experiment_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
         experiment_case.recommender
     ]
     experiment_hyper_parameter_tuning_parameters = (
@@ -335,7 +294,8 @@ def _run_pure_impressions_hyper_parameter_tuning(
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
         experiment_case.benchmark
     ]
-    experiment_recommender = _MAPPER_IMPRESSIONS_RECOMMENDERS[
+    # experiment_recommender = _MAPPER_IMPRESSIONS_RECOMMENDERS[
+    experiment_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
         experiment_case.recommender
     ]
     experiment_hyper_parameter_tuning_parameters = (
@@ -465,7 +425,7 @@ def _run_frequency_impressions_hyper_parameter_tuning(
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
         experiment_case.benchmark
     ]
-    experiment_recommender = _MAPPER_IMPRESSIONS_RECOMMENDERS[
+    experiment_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
         experiment_case.recommender
     ]
     experiment_hyper_parameter_tuning_parameters = (
@@ -657,7 +617,7 @@ def run_experiments_sequentially(
     experiment_cases = sorted(
         experiment_cases_interface.experiment_cases,
         key=lambda ex: commons.MAPPER_AVAILABLE_BENCHMARKS[ex.benchmark].priority
-        * MAPPER_AVAILABLE_RECOMMENDERS[ex.recommender].priority,
+        + commons.MAPPER_AVAILABLE_RECOMMENDERS[ex.recommender].priority,
         reverse=True,
     )
 
