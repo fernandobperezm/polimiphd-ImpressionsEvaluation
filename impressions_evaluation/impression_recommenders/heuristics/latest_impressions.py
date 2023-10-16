@@ -32,9 +32,11 @@ class LastImpressionsRecommender(MixinEmptySaveModel, AbstractExtendedBaseRecomm
 
     def __init__(
         self,
+        *,
         urm_train: sp.csr_matrix,
         uim_position: sp.csr_matrix,
         uim_timestamp: sp.csr_matrix,
+        **kwargs,
     ):
         """
         Parameters
