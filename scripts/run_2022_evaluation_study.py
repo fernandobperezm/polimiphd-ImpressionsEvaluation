@@ -2,12 +2,10 @@
 from __future__ import annotations
 
 import logging
-from typing import Sequence, Union
-
-from recsys_framework_extensions.dask import configure_dask_cluster
-from tap import Tap
 
 from dotenv import load_dotenv
+from recsys_framework_extensions.dask import configure_dask_cluster
+from tap import Tap
 
 from impressions_evaluation import configure_logger
 from impressions_evaluation.experiments.print_results import (
@@ -21,7 +19,6 @@ from impressions_evaluation.experiments.print_statistics import (
 load_dotenv()
 
 from impressions_evaluation.experiments.baselines import (
-    _run_baselines_hyper_parameter_tuning,
     run_baselines_experiments,
     run_baselines_folded,
     _run_baselines_folded_hyper_parameter_tuning,
@@ -42,7 +39,6 @@ from impressions_evaluation.experiments.commons import (
     plot_popularity_of_datasets,
 )
 from impressions_evaluation.experiments.graph_based import (
-    run_experiments_sequentially,
     _run_collaborative_filtering_hyper_parameter_tuning,
 )
 from impressions_evaluation.experiments.impression_aware.re_ranking import (
@@ -129,8 +125,8 @@ _TO_USE_BENCHMARKS = [
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE = [
-    RecommenderBaseline.RANDOM,
-    RecommenderBaseline.TOP_POPULAR,
+    # RecommenderBaseline.RANDOM,
+    # RecommenderBaseline.TOP_POPULAR,
     #
     RecommenderBaseline.USER_KNN,
     RecommenderBaseline.ITEM_KNN,
@@ -140,14 +136,14 @@ _TO_USE_RECOMMENDERS_BASELINE = [
     #
     RecommenderBaseline.PURE_SVD,
     RecommenderBaseline.NMF,
-    RecommenderBaseline.MF_BPR,
-    RecommenderBaseline.SVDpp,
+    # RecommenderBaseline.MF_BPR,
+    # RecommenderBaseline.SVDpp,
     #
-    RecommenderBaseline.SLIM_ELASTIC_NET,
-    RecommenderBaseline.SLIM_BPR,
+    # RecommenderBaseline.SLIM_ELASTIC_NET,
+    # RecommenderBaseline.SLIM_BPR,
     #
-    RecommenderBaseline.LIGHT_FM,
-    RecommenderBaseline.EASE_R,
+    # RecommenderBaseline.LIGHT_FM,
+    # RecommenderBaseline.EASE_R,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE_FOLDED = [
@@ -238,98 +234,19 @@ _TO_USE_TRAINING_FUNCTIONS_IMPRESSION_AWARE_PROFILES = [
     _run_impressions_user_profiles_hyper_parameter_tuning,
 ]
 
-_TO_PRINT_RECOMMENDERS: list[
-    tuple[
-        Benchmarks,
-        EHyperParameterTuningParameters,
-        list[Sequence[Union[RecommenderBaseline, RecommenderImpressions]]],
-    ]
-] = [
-    (
-        Benchmarks.ContentWiseImpressions,
-        EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
-        [
-            (
-                RecommenderBaseline.RANDOM,
-                RecommenderBaseline.TOP_POPULAR,
-            ),
-            (
-                RecommenderImpressions.LAST_IMPRESSIONS,
-                RecommenderImpressions.RECENCY,
-                RecommenderImpressions.FREQUENCY_RECENCY,
-            ),
-            # (
-            #     RecommenderBaseline.USER_KNN,
-            #     RecommenderImpressions.CYCLING,
-            #     RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
-            #     RecommenderImpressions.USER_WEIGHTED_USER_PROFILE,
-            # ),
-            # (
-            #     RecommenderBaseline.ITEM_KNN,
-            #     RecommenderImpressions.CYCLING,
-            #     RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
-            #     RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE,
-            # ),
-            (
-                RecommenderBaseline.P3_ALPHA,
-                RecommenderImpressions.CYCLING,
-                RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
-                RecommenderImpressions.USER_WEIGHTED_USER_PROFILE,
-            ),
-            (
-                RecommenderBaseline.RP3_BETA,
-                RecommenderImpressions.CYCLING,
-                RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
-                RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE,
-            ),
-        ],
-    ),
-    (
-        Benchmarks.MINDSmall,
-        EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
-        [
-            (
-                RecommenderBaseline.RANDOM,
-                RecommenderBaseline.TOP_POPULAR,
-            ),
-            (
-                RecommenderImpressions.LAST_IMPRESSIONS,
-                RecommenderImpressions.RECENCY,
-                RecommenderImpressions.FREQUENCY_RECENCY,
-            ),
-            # (
-            #     RecommenderBaseline.USER_KNN,
-            #     RecommenderImpressions.CYCLING,
-            #     RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
-            #     RecommenderImpressions.USER_WEIGHTED_USER_PROFILE,
-            # ),
-            # (
-            #     RecommenderBaseline.ITEM_KNN,
-            #     RecommenderImpressions.CYCLING,
-            #     RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
-            #     RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE,
-            # ),
-            (
-                RecommenderBaseline.P3_ALPHA,
-                RecommenderImpressions.CYCLING,
-                RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
-                RecommenderImpressions.USER_WEIGHTED_USER_PROFILE,
-            ),
-            (
-                RecommenderBaseline.RP3_BETA,
-                RecommenderImpressions.CYCLING,
-                RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
-                RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE,
-            ),
-        ],
-    ),
-]
 
 if __name__ == "__main__":
     input_flags = ConsoleArguments().parse_args()
 
     configure_logger()
     logger = logging.getLogger(__name__)
+
+    print(f"Running script: {__file__} with arguments: {input_flags.as_dict()}")
+
+    logger.info(
+        "Running script: %(script_name)s with arguments: %(args)s",
+        {"script_name": __file__, "args": input_flags.as_dict()},
+    )
 
     dask_interface = configure_dask_cluster()
 

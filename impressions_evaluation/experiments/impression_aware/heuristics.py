@@ -9,6 +9,7 @@ from recsys_framework_extensions.dask import DaskInterface
 import logging
 
 import impressions_evaluation.experiments.commons as commons
+from impressions_evaluation import configure_logger
 from impressions_evaluation.experiments.impression_aware import (
     DIR_TRAINED_MODELS_IMPRESSION_AWARE,
 )
@@ -49,27 +50,19 @@ def _run_impressions_heuristics_hyper_parameter_tuning(
 
     This method should not be called from outside.
     """
-    print(
-        f"PRINT-"
-        f"\n\t* Running function {_run_impressions_heuristics_hyper_parameter_tuning.__name__}"
-        f"\n\t* {logger=}"
-        f"\n\t* {__name__=}"
-    )
-    logger.debug(
-        f"LOGGER-"
-        f"\n\t* Running function {_run_impressions_heuristics_hyper_parameter_tuning.__name__}"
-        f"\n\t* {logger=}"
-        f"\n\t* {__name__=}"
-    )
-
     import logging
 
-    logger2 = logging.getLogger(__name__)
-    logger2.debug(
-        f"LOGGER2-"
-        f"\n\t* Running function {_run_impressions_heuristics_hyper_parameter_tuning.__name__}"
-        f"\n\t* {logger2=}"
-        f"\n\t* {__name__=}"
+    configure_logger()
+
+    logger = logging.getLogger(__name__)
+    logger.info(
+        f"Running hyper-parameter tuning of a heuristic impression-aware recommender, function %(function)s. Received arguments: benchmark=%(benchmark)s - recommender=%(recommender)s - hyper_parameters=%(hyper_parameters)s",
+        {
+            "function": _run_impressions_heuristics_hyper_parameter_tuning.__name__,
+            "benchmark": experiment_case.benchmark,
+            "recommender": experiment_case.recommender,
+            "hyper_parameters": experiment_case.hyper_parameter_tuning_parameters,
+        },
     )
 
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[

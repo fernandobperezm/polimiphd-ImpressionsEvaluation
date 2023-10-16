@@ -20,6 +20,7 @@ from recsys_framework_extensions.hyper_parameter_search import (
 import logging
 
 import impressions_evaluation.experiments.commons as commons
+from impressions_evaluation import configure_logger
 from impressions_evaluation.impression_recommenders.user_profile.folding import (
     FoldedMatrixFactorizationRecommender,
 )
@@ -412,6 +413,21 @@ def _run_baselines_hyper_parameter_tuning(
 
     This method should not be called from outside.
     """
+    import logging
+
+    configure_logger()
+
+    logger = logging.getLogger(__name__)
+    logger.info(
+        f"Running hyper-parameter tuning of a baseline, function %(function)s. Received arguments: benchmark=%(benchmark)s - recommender=%(recommender)s - hyper_parameters=%(hyper_parameters)s",
+        {
+            "function": _run_baselines_hyper_parameter_tuning.__name__,
+            "benchmark": experiment_case.benchmark,
+            "recommender": experiment_case.recommender,
+            "hyper_parameters": experiment_case.hyper_parameter_tuning_parameters,
+        },
+    )
+
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
         experiment_case.benchmark
     ]

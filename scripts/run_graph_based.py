@@ -108,63 +108,6 @@ _TO_USE_TRAINING_FUNCTIONS_IMPRESSIONS_FREQUENCY = [
     _run_frequency_impressions_hyper_parameter_tuning,
 ]
 
-# _TO_PRINT_RECOMMENDERS: list[
-#     tuple[
-#         Benchmarks,
-#         EHyperParameterTuningParameters,
-#         list[Sequence[Union[RecommenderBaseline, RecommenderImpressions]]],
-#     ]
-# ] = [
-#     (
-#         Benchmarks.MINDSmall,
-#         EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
-#         [
-#             (
-#                 RecommenderBaseline.P3_ALPHA,
-#                 RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
-#                 RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-#             ),
-#             (
-#                 RecommenderBaseline.RP3_BETA,
-#                 RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
-#                 RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-#             ),
-#         ],
-#     ),
-#     (
-#         Benchmarks.ContentWiseImpressions,
-#         EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
-#         [
-#             (
-#                 RecommenderBaseline.P3_ALPHA,
-#                 RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
-#                 RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-#             ),
-#             (
-#                 RecommenderBaseline.RP3_BETA,
-#                 RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
-#                 RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-#             ),
-#         ],
-#     ),
-#     # (
-#     #     Benchmarks.FINNNoSlates,
-#     #     EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
-#     #     [
-#     #         (
-#     #             RecommenderBaseline.P3_ALPHA,
-#     #             RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
-#     #             RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-#     #         ),
-#     #         (
-#     #             RecommenderBaseline.RP3_BETA,
-#     #             RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
-#     #             RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-#     #         ),
-#     #     ],
-#     # ),
-# ]
-
 
 _TO_PRINT_RECOMMENDERS: tuple[
     list[Benchmarks],

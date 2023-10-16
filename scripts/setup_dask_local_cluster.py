@@ -22,7 +22,12 @@ if __name__ == "__main__":
     input_flags = ConsoleArguments().parse_args()
 
     configure_logger()
-    logger = logging.getLogger("__main__")
+    logger = logging.getLogger(__name__)
+
+    logger.info(
+        "Running script: %(script_name)s with arguments: %(args)s",
+        {"script_name": __file__, "args": input_flags.as_dict()},
+    )
 
     if input_flags.setup_dask_local_cluster:
         logger.info(f"Creating dask local cluster")
