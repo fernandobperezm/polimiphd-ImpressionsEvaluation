@@ -617,11 +617,21 @@ def plot_barplot(
         layout="compressed",
     )
 
+    # We must convert data into strings due to an error in the library. See: https://github.com/nschloe/tikzplotlib/issues/440
+    # THIS DOES NOT WORK; PLEASE DO NOT UNCOMMENT.
+    # if isinstance(df, pd.DataFrame):
+    #     df = df.astype({x_data: pd.StringDtype(), y_data: pd.StringDtype()})
+    # else:
+    #     df = [
+    #         (df_.astype({x_data: pd.StringDtype(), y_data: pd.StringDtype()}), group)
+    #         for df_, group in df
+    #     ]
+
     ax.bar(
         x_data,
         y_data,
-        width=0.25,
         data=df,
+        width=0.5,
         log=log,
         tick_label=ticks_labels,
         align=align,
@@ -665,15 +675,26 @@ def plot_barplot(
     #
     #     plot_name = "bar_group"
 
-    tikzplotlib.clean_figure(fig=fig)
+    folder_to_save_tikz = os.path.join(dir_results, "tikz", "")
+    folder_to_save_png = os.path.join(dir_results, "png", "")
+
+    os.makedirs(folder_to_save_tikz, exist_ok=True)
+    os.makedirs(folder_to_save_png, exist_ok=True)
+
+    # Not supported yet as per warning: "UserWarning: Cleaning Bar Container (bar plot) is not supported yet"
+    # tikzplotlib.clean_figure(fig=fig)
     tikzplotlib.save(
-        os.path.join(dir_results, f"plot-{plot_name}-{name}.tikz"),  # cannot be kwarg!
+        os.path.join(
+            folder_to_save_tikz, f"plot-{plot_name}-{name}.tikz"
+        ),  # cannot be kwarg!
         fig,  # cannot be kwarg!
         encoding="utf-8",
         textsize=9,
     )
 
-    fig.show()
+    fig.savefig(os.path.join(folder_to_save_png, f"plot-{plot_name}-{name}.png"))
+    # fig.show()
+    plt.close(fig)  # ensure proper disposal/destruction of fig object.
 
 
 def plot_histogram(
@@ -688,6 +709,9 @@ def plot_histogram(
     hist_type: Literal["bar", "step"] = "bar",
     log: bool = False,
 ) -> None:
+    if bins is None:
+        bins = 10
+
     fig: plt.Figure
     ax: plt.Axes
 
@@ -711,15 +735,43 @@ def plot_histogram(
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
 
-    tikzplotlib.clean_figure(fig=fig)
+    hist, bin_edges = np.histogram(
+        df[x_data],
+        bins=bins,
+    )
+
+    # Try to see if this works.
+    ax.set_xticks(bin_edges)
+    ax.set_yticks(hist)
+
+    # Try to see if this works.
+    # ax.set_xticks(
+    #     np.linspace(
+    #         start=df[x_data].min() - 1,
+    #         stop=df[x_data].max() + 1,
+    #         num=20 if bins is None else bins * 2,
+    #     )
+    # )
+    # ax.set_yticks()
+
+    folder_to_save_tikz = os.path.join(dir_results, "tikz", "")
+    folder_to_save_png = os.path.join(dir_results, "png", "")
+
+    os.makedirs(folder_to_save_tikz, exist_ok=True)
+    os.makedirs(folder_to_save_png, exist_ok=True)
+
+    # It says it is not supported yet
+    # tikzplotlib.clean_figure(fig=fig)
     tikzplotlib.save(
-        os.path.join(dir_results, f"plot-hist-{name}.tikz"),  # cannot be kwarg
+        os.path.join(folder_to_save_tikz, f"plot-hist-{name}.tikz"),  # cannot be kwarg
         fig,  # cannot be kwarg
         encoding="utf-8",
         textsize=9,
     )
 
-    fig.show()
+    # fig.savefig(os.path.join(folder_to_save_png, f"plot-hist-{name}.png"))  # see if xticks are not being printed because of this?
+    # fig.show()
+    plt.close(fig)
 
 
 def plot_boxplot(

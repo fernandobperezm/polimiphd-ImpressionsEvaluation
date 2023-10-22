@@ -7,7 +7,7 @@ DATE=$(date '+%Y%m%d_%H%M%S')
 
 OUT_FILE_DASK="$WORKING_FOLDER/$OUTPUTS_FOLDER/$DATE-DASK_PROCESSES.txt"
 OUT_FILE_GRAPH="$WORKING_FOLDER/$OUTPUTS_FOLDER/$DATE-GRAPH_BASED.txt"
-OUT_FILE_EVALUATION="$WORKING_FOLDER/$OUTPUTS_FOLDER/$DATE-2022_EVALUATION_MIND_DATASET.txt"
+OUT_FILE_EVALUATION="$WORKING_FOLDER/$OUTPUTS_FOLDER/$DATE-2022_EVALUATION_FINN_DATASET_ANALYSIS.txt"
 # OUT_FILE_EVALUATION="$WORKING_FOLDER/$OUTPUTS_FOLDER/$DATE-2022_EVALUATION_TEST.txt"
 
 if [ ! -d $WORKING_FOLDER/$OUTPUTS_FOLDER ]
@@ -35,6 +35,7 @@ poetry run python scripts/run_2022_evaluation_study.py \
   --include_impressions_heuristics \
   --include_impressions_reranking \
   --include_impressions_profile \
+  --include_signal_analysis \
   --print_evaluation_results \
   &> "$OUT_FILE_EVALUATION"
 

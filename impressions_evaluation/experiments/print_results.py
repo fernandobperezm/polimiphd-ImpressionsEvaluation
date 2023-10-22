@@ -254,28 +254,29 @@ def _print_baselines_metrics(
         ]:
             similarities = knn_similarity_list
 
-        for similarity in similarities:
-            # This inner loop is to load Folded Recommenders. If we cannot mock a Folded recommender,
-            # then this method returns None.
-            loaded_recommender = mock_trained_recommender(
-                experiment_recommender=baseline_experiment_recommender,
-                experiment_benchmark=experiment_benchmark,
-                experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
-                experiment_model_dir=experiments_folder_path,
-                data_splits=interaction_data_splits,
-                similarity=similarity,
-                model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
-                try_folded_recommender=True,
-            )
-
-            if loaded_recommender is None:
-                logger.warning(
-                    f"The recommender {baseline_experiment_recommender.recommender} for the dataset {experiment_benchmark} "
-                    f"returned empty. Skipping."
-                )
-                continue
-
-            base_algorithm_list.append(loaded_recommender)
+        # TODO: REMOVE FOLDED RECOMMENDERS
+        # for similarity in similarities:
+        #     # This inner loop is to load Folded Recommenders. If we cannot mock a Folded recommender,
+        #     # then this method returns None.
+        #     loaded_recommender = mock_trained_recommender(
+        #         experiment_recommender=baseline_experiment_recommender,
+        #         experiment_benchmark=experiment_benchmark,
+        #         experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
+        #         experiment_model_dir=experiments_folder_path,
+        #         data_splits=interaction_data_splits,
+        #         similarity=similarity,
+        #         model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
+        #         try_folded_recommender=True,
+        #     )
+        #
+        #     if loaded_recommender is None:
+        #         logger.warning(
+        #             f"The recommender {baseline_experiment_recommender.recommender} for the dataset {experiment_benchmark} "
+        #             f"returned empty. Skipping."
+        #         )
+        #         continue
+        #
+        #     base_algorithm_list.append(loaded_recommender)
 
     return generate_accuracy_and_beyond_metrics_pandas(
         experiments_folder_path=experiments_folder_path,
@@ -375,7 +376,8 @@ def _print_impressions_re_ranking_metrics(
                 similarities = knn_similarity_list
 
             for similarity in similarities:
-                for try_folded_recommender in [True, False]:
+                # TODO: REMOVE FOLDED RECOMMENDERS, IT WAS [True, False]
+                for try_folded_recommender in [False]:
                     loaded_baseline_recommender = mock_trained_recommender(
                         experiment_recommender=baseline_experiment_recommender,
                         experiment_benchmark=baseline_experiment_benchmark,
@@ -472,7 +474,8 @@ def _print_ablation_impressions_re_ranking_metrics(
                 similarities = knn_similarity_list
 
             for similarity in similarities:
-                for try_folded_recommender in [True, False]:
+                # TODO: REMOVE FOLDED RECOMMENDERS, IT WAS [True, False]
+                for try_folded_recommender in [False]:
                     loaded_baseline_recommender = mock_trained_recommender(
                         experiment_recommender=baseline_experiment_recommender,
                         experiment_benchmark=baseline_experiment_benchmark,
@@ -581,7 +584,8 @@ def _print_impressions_user_profiles_metrics(
                 similarities = knn_similarity_list
 
             for similarity in similarities:
-                for try_folded_recommender in [True, False]:
+                # TODO: REMOVE FOLDED RECOMMENDERS, IT WAS [True, False]
+                for try_folded_recommender in [False]:
                     loaded_baseline_recommender = mock_trained_recommender(
                         experiment_recommender=baseline_experiment_recommender,
                         experiment_benchmark=baseline_experiment_benchmark,

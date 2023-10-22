@@ -3399,6 +3399,20 @@ six = "*"
 test = ["pytest", "pytest-cov", "scipy"]
 
 [[package]]
+name = "paxplot"
+version = "0.1.4b2"
+description = "Paxplot is a Python visualization library for parallel coordinate plots based on Matplotlib."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "paxplot-0.1.4b2-py3-none-any.whl", hash = "sha256:426e34cbf1fa4a5b664b57c4d7e38dc93c82e36b5403742211b76a51e541aac4"},
+    {file = "paxplot-0.1.4b2.tar.gz", hash = "sha256:50795a44b35f42b7e77170a187242a605b8e884d517672e8122b9653b832aba6"},
+]
+
+[package.dependencies]
+matplotlib = ">=3.5"
+
+[[package]]
 name = "pexpect"
 version = "4.8.0"
 description = "Pexpect allows easy control of interactive console applications."
@@ -5490,4 +5504,4 @@ testing = ["big-O", "jaraco.functools", "jaraco.itertools", "more-itertools", "p
 [metadata]
 lock-version = "2.0"
 python-versions = "~3.10"
-content-hash = "8584be5090f12e6e5bb9c5fa0330512c0c5fe0310bdba3737960673393bc6391"
+content-hash = "23e768133d2b87a05620079c2cc1f07e6cc4590376fe692a9737c3db1147f2c9"

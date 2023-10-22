@@ -8,6 +8,10 @@ from recsys_framework_extensions.dask import configure_dask_cluster
 from tap import Tap
 
 from impressions_evaluation import configure_logger
+from impressions_evaluation.experiments.hyperparameters import (
+    plot_parallel_hyper_parameters,
+    distribution_hyper_parameters,
+)
 from impressions_evaluation.experiments.print_results import (
     process_evaluation_results,
     export_evaluation_results,
@@ -36,7 +40,7 @@ from impressions_evaluation.experiments.commons import (
     EHyperParameterTuningParameters,
     RecommenderBaseline,
     ExperimentCasesSignalAnalysisInterface,
-    plot_popularity_of_datasets,
+    compute_and_plot_popularity_of_datasets,
 )
 from impressions_evaluation.experiments.graph_based import (
     _run_collaborative_filtering_hyper_parameter_tuning,
@@ -106,8 +110,11 @@ class ConsoleArguments(Tap):
     print_datasets_statistics: bool = False
     """Export to CSV statistics on the different sparse matrices existing for each dataset."""
 
-    plot_popularity_of_datasets: bool = False
+    plot_datasets_popularity: bool = False
     """Creates plots depicting the popularity of each dataset split."""
+
+    analyze_hyper_parameters: bool = False
+    """TODO: fernando-debugger"""
 
     send_email: bool = False
     """Send a notification email via GMAIL when experiments start and finish."""
@@ -119,6 +126,12 @@ class ConsoleArguments(Tap):
 ####################################################################################################
 ####################################################################################################
 _TO_USE_BENCHMARKS = [
+    # Benchmarks.ContentWiseImpressions,
+    # Benchmarks.MINDSmall,
+    Benchmarks.FINNNoSlates,
+]
+
+_TO_USE_BENCHMARKS_RESULTS = [
     Benchmarks.ContentWiseImpressions,
     Benchmarks.MINDSmall,
     Benchmarks.FINNNoSlates,
@@ -144,6 +157,7 @@ _TO_USE_RECOMMENDERS_BASELINE = [
     #
     # RecommenderBaseline.LIGHT_FM,
     # RecommenderBaseline.EASE_R,
+    # RecommenderBaseline.MULT_VAE,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE_FOLDED = [
@@ -203,6 +217,10 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_SIGNAL_ANALYSIS = [
 _TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS = [
     EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
     # EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_5_2,
+]
+
+_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS = [
+    EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16
 ]
 
 _TO_USE_TRAINING_FUNCTIONS_BASELINES = [
@@ -342,6 +360,19 @@ if __name__ == "__main__":
             baseline_experiment_cases_interface=experiments_interface_baselines,
         )
 
+    if input_flags.include_impressions_profile:
+        run_impressions_user_profiles_experiments(
+            dask_interface=dask_interface,
+            user_profiles_experiment_cases_interface=experiments_impressions_user_profiles_interface,
+            baseline_experiment_cases_interface=experiments_interface_baselines,
+        )
+
+    if input_flags.include_signal_analysis:
+        run_signal_analysis_impressions_re_ranking_experiments(
+            dask_interface=dask_interface,
+            signal_analysis_re_ranking_experiment_cases_interface=experiments_signal_analysis_impressions_re_ranking_interface,
+        )
+
     if input_flags.include_ablation_impressions_reranking:
         run_ablation_impressions_re_ranking_experiments(
             dask_interface=dask_interface,
@@ -354,19 +385,6 @@ if __name__ == "__main__":
             dask_interface=dask_interface,
             ablation_re_ranking_experiment_cases_interface=experiments_signal_analysis_ablation_impressions_re_ranking_interface,
             baseline_experiment_cases_interface=experiments_interface_baselines,
-        )
-
-    if input_flags.include_impressions_profile:
-        run_impressions_user_profiles_experiments(
-            dask_interface=dask_interface,
-            user_profiles_experiment_cases_interface=experiments_impressions_user_profiles_interface,
-            baseline_experiment_cases_interface=experiments_interface_baselines,
-        )
-
-    if input_flags.include_signal_analysis:
-        run_signal_analysis_impressions_re_ranking_experiments(
-            dask_interface=dask_interface,
-            signal_analysis_re_ranking_experiment_cases_interface=experiments_signal_analysis_impressions_re_ranking_interface,
         )
 
     dask_interface.wait_for_jobs()
@@ -387,9 +405,18 @@ if __name__ == "__main__":
     #     )
     #
     # dask_interface.wait_for_jobs()
+    if input_flags.analyze_hyper_parameters:
+        distribution_hyper_parameters(
+            benchmarks=_TO_USE_BENCHMARKS_RESULTS,
+            hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
+        )
+        plot_parallel_hyper_parameters(
+            benchmarks=_TO_USE_BENCHMARKS_RESULTS,
+            hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
+        )
 
-    if input_flags.plot_popularity_of_datasets:
-        plot_popularity_of_datasets(
+    if input_flags.plot_datasets_popularity:
+        compute_and_plot_popularity_of_datasets(
             experiments_interface=experiments_interface_baselines
         )
 
@@ -408,8 +435,8 @@ if __name__ == "__main__":
         )
 
         export_evaluation_results(
-            benchmarks=_TO_USE_BENCHMARKS,
-            hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+            benchmarks=_TO_USE_BENCHMARKS_RESULTS,
+            hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
         )
 
     logger.info(f"Finished running script: {__file__}")

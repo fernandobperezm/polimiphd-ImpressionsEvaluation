@@ -636,12 +636,12 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
     RecommenderBaseline.P3_ALPHA: ExperimentRecommender(
         recommender=recommenders.P3alphaRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=900,
+        priority=950,
     ),
     RecommenderBaseline.RP3_BETA: ExperimentRecommender(
         recommender=recommenders.RP3betaRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        priority=900,
+        priority=950,
     ),
     RecommenderBaseline.PURE_SVD: ExperimentRecommender(
         recommender=recommenders.PureSVDRecommender,
@@ -1194,13 +1194,13 @@ def ensure_datasets_exist(
         print(f"{loaded_dataset.sparse_matrices_available_features()=}")
 
 
-def plot_popularity_of_datasets(
+def compute_and_plot_popularity_of_datasets(
     experiments_interface: ExperimentCasesInterface,
 ) -> None:
     """
     Public method that will plot the popularity of data splits. Currently untested.
     """
-    from Utils.plot_popularity import plot_popularity_bias
+    from Utils.plot_popularity import plot_popularity_bias, save_popularity_statistics
 
     for experiment_case in experiments_interface.experiment_cases:
         experiment_benchmark = MAPPER_AVAILABLE_BENCHMARKS[experiment_case.benchmark]
@@ -1221,57 +1221,201 @@ def plot_popularity_of_datasets(
             evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy.value,
         )
 
-        # Interactions plotting.
         urm_splits = loaded_dataset.get_urm_splits(
             evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
         )
-        plot_popularity_bias(
-            URM_object_list=[
-                urm_splits.sp_urm_train,
-                urm_splits.sp_urm_validation,
-                urm_splits.sp_urm_test,
-            ],
-            URM_name_list=["Train", "Validation", "Test"],
-            output_img_path=os.path.join(output_folder, "interactions"),
-            sort_on_all=False,
-        )
-
-        plot_popularity_bias(
-            URM_object_list=[
-                urm_splits.sp_urm_train,
-                urm_splits.sp_urm_validation,
-                urm_splits.sp_urm_test,
-            ],
-            URM_name_list=["Train", "Validation", "Test"],
-            output_img_path=os.path.join(output_folder, "interactions_sorted"),
-            sort_on_all=True,
-        )
-
-        # Impressions plotting
         uim_splits = loaded_dataset.get_uim_splits(
             evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
         )
-        plot_popularity_bias(
-            URM_object_list=[
-                uim_splits.sp_uim_train,
-                uim_splits.sp_uim_validation,
-                uim_splits.sp_uim_test,
-            ],
-            URM_name_list=["Train", "Validation", "Test"],
-            output_img_path=os.path.join(output_folder, "impressions"),
-            sort_on_all=False,
+        uim_frequency_train = loaded_dataset.sparse_matrix_impression_feature(
+            feature=get_feature_key_by_benchmark(
+                benchmark=experiment_benchmark.benchmark,
+                evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
+                impressions_feature=ImpressionsFeatures.USER_ITEM_FREQUENCY,
+                impressions_feature_column=ImpressionsFeatureColumnsFrequency.FREQUENCY,
+                impressions_feature_split=ImpressionsFeaturesSplit.TRAIN,
+            )
+        )
+        uim_frequency_train_validation = loaded_dataset.sparse_matrix_impression_feature(
+            feature=get_feature_key_by_benchmark(
+                benchmark=experiment_benchmark.benchmark,
+                evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
+                impressions_feature=ImpressionsFeatures.USER_ITEM_FREQUENCY,
+                impressions_feature_column=ImpressionsFeatureColumnsFrequency.FREQUENCY,
+                impressions_feature_split=ImpressionsFeaturesSplit.TRAIN_VALIDATION,
+            )
+        )
+        uim_position_train = loaded_dataset.sparse_matrix_impression_feature(
+            feature=get_feature_key_by_benchmark(
+                benchmark=experiment_benchmark.benchmark,
+                evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
+                impressions_feature=ImpressionsFeatures.USER_ITEM_POSITION,
+                impressions_feature_column=ImpressionsFeatureColumnsPosition.POSITION,
+                impressions_feature_split=ImpressionsFeaturesSplit.TRAIN,
+            )
+        )
+        uim_position_train_validation = loaded_dataset.sparse_matrix_impression_feature(
+            feature=get_feature_key_by_benchmark(
+                benchmark=experiment_benchmark.benchmark,
+                evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
+                impressions_feature=ImpressionsFeatures.USER_ITEM_POSITION,
+                impressions_feature_column=ImpressionsFeatureColumnsPosition.POSITION,
+                impressions_feature_split=ImpressionsFeaturesSplit.TRAIN_VALIDATION,
+            )
         )
 
-        plot_popularity_bias(
-            URM_object_list=[
-                uim_splits.sp_uim_train,
-                uim_splits.sp_uim_validation,
-                uim_splits.sp_uim_test,
-            ],
-            URM_name_list=["Train", "Validation", "Test"],
-            output_img_path=os.path.join(output_folder, "impressions_sorted"),
-            sort_on_all=True,
-        )
+        if Benchmarks.FINNNoSlates == experiment_benchmark.benchmark:
+            uim_last_seen_train = loaded_dataset.sparse_matrix_impression_feature(
+                feature=get_feature_key_by_benchmark(
+                    benchmark=experiment_benchmark.benchmark,
+                    evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
+                    impressions_feature=ImpressionsFeatures.USER_ITEM_LAST_SEEN,
+                    impressions_feature_column=ImpressionsFeatureColumnsLastSeen.EUCLIDEAN,
+                    impressions_feature_split=ImpressionsFeaturesSplit.TRAIN,
+                )
+            )
+            uim_last_seen_train_validation = loaded_dataset.sparse_matrix_impression_feature(
+                feature=get_feature_key_by_benchmark(
+                    benchmark=experiment_benchmark.benchmark,
+                    evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
+                    impressions_feature=ImpressionsFeatures.USER_ITEM_LAST_SEEN,
+                    impressions_feature_column=ImpressionsFeatureColumnsLastSeen.EUCLIDEAN,
+                    impressions_feature_split=ImpressionsFeaturesSplit.TRAIN_VALIDATION,
+                )
+            )
+        else:
+            uim_last_seen_train = loaded_dataset.sparse_matrix_impression_feature(
+                feature=get_feature_key_by_benchmark(
+                    benchmark=experiment_benchmark.benchmark,
+                    evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
+                    impressions_feature=ImpressionsFeatures.USER_ITEM_LAST_SEEN,
+                    impressions_feature_column=ImpressionsFeatureColumnsLastSeen.TOTAL_MINUTES,
+                    impressions_feature_split=ImpressionsFeaturesSplit.TRAIN,
+                )
+            )
+            uim_last_seen_train_validation = loaded_dataset.sparse_matrix_impression_feature(
+                feature=get_feature_key_by_benchmark(
+                    benchmark=experiment_benchmark.benchmark,
+                    evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
+                    impressions_feature=ImpressionsFeatures.USER_ITEM_LAST_SEEN,
+                    impressions_feature_column=ImpressionsFeatureColumnsLastSeen.TOTAL_MINUTES,
+                    impressions_feature_split=ImpressionsFeaturesSplit.TRAIN_VALIDATION,
+                )
+            )
+        cases = [
+            (
+                [
+                    urm_splits.sp_urm_train,
+                    urm_splits.sp_urm_validation,
+                    urm_splits.sp_urm_test,
+                ],
+                ["Train", "Validation", "Test"],
+                "urm_interactions",
+            ),
+            (
+                [
+                    uim_splits.sp_uim_train,
+                    uim_splits.sp_uim_validation,
+                    uim_splits.sp_uim_test,
+                ],
+                ["Train", "Validation", "Test"],
+                "uim_impressions",
+            ),
+            (
+                [uim_frequency_train, uim_frequency_train_validation],
+                ["Train", "Train & Validation"],
+                "uim_frequency",
+            ),
+            (
+                [uim_position_train, uim_position_train_validation],
+                ["Train", "Train & Validation"],
+                "uim_position",
+            ),
+            (
+                [uim_last_seen_train, uim_last_seen_train_validation],
+                ["Train", "Train & Validation"],
+                "uim_last_seen_minutes",
+            ),
+        ]
+
+        for matrices, matrices_names, name in cases:
+            save_popularity_statistics(
+                URM_object_list=matrices,
+                URM_name_list=matrices_names,
+                output_file_path=os.path.join(
+                    output_folder, f"dataset_popularity-{name}.tex"
+                ),
+            )
+
+            plot_popularity_bias(
+                URM_object_list=matrices,
+                URM_name_list=matrices_names,
+                output_img_path=os.path.join(
+                    output_folder, f"dataset_popularity-{name}"
+                ),
+                sort_on_all=False,
+            )
+
+            plot_popularity_bias(
+                URM_object_list=matrices,
+                URM_name_list=matrices_names,
+                output_img_path=os.path.join(
+                    output_folder, f"dataset_popularity-{name}-sorted"
+                ),
+                sort_on_all=True,
+            )
+
+        # # Interactions plotting.
+        # urm_splits = loaded_dataset.get_urm_splits(
+        #     evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
+        # )
+        # plot_popularity_bias(
+        #     URM_object_list=[
+        #         urm_splits.sp_urm_train,
+        #         urm_splits.sp_urm_validation,
+        #         urm_splits.sp_urm_test,
+        #     ],
+        #     URM_name_list=["Train", "Validation", "Test"],
+        #     output_img_path=os.path.join(output_folder, "interactions"),
+        #     sort_on_all=False,
+        # )
+        #
+        # plot_popularity_bias(
+        #     URM_object_list=[
+        #         urm_splits.sp_urm_train,
+        #         urm_splits.sp_urm_validation,
+        #         urm_splits.sp_urm_test,
+        #     ],
+        #     URM_name_list=["Train", "Validation", "Test"],
+        #     output_img_path=os.path.join(output_folder, "interactions_sorted"),
+        #     sort_on_all=True,
+        # )
+        #
+        # # Impressions plotting
+        # uim_splits = loaded_dataset.get_uim_splits(
+        #     evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
+        # )
+        # plot_popularity_bias(
+        #     URM_object_list=[
+        #         uim_splits.sp_uim_train,
+        #         uim_splits.sp_uim_validation,
+        #         uim_splits.sp_uim_test,
+        #     ],
+        #     URM_name_list=["Train", "Validation", "Test"],
+        #     output_img_path=os.path.join(output_folder, "impressions"),
+        #     sort_on_all=False,
+        # )
+        #
+        # plot_popularity_bias(
+        #     URM_object_list=[
+        #         uim_splits.sp_uim_train,
+        #         uim_splits.sp_uim_validation,
+        #         uim_splits.sp_uim_test,
+        #     ],
+        #     URM_name_list=["Train", "Validation", "Test"],
+        #     output_img_path=os.path.join(output_folder, "impressions_sorted"),
+        #     sort_on_all=True,
+        # )
 
 
 def get_feature_key_by_benchmark(

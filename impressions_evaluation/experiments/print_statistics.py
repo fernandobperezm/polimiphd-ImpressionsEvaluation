@@ -297,6 +297,14 @@ def _print_dataset_experiments_statistics(
             benchmark=experiment_benchmark.benchmark,
         ),
         dict(
+            sp_matrix=(
+                interactions_data_splits.sp_urm_train_validation
+                + interactions_data_splits.sp_urm_test
+            ),
+            sp_matrix_name="urm_all",
+            benchmark=experiment_benchmark.benchmark,
+        ),
+        dict(
             sp_matrix=impressions_data_splits.sp_uim_train,
             sp_matrix_name="uim_train",
             benchmark=experiment_benchmark.benchmark,
@@ -314,6 +322,14 @@ def _print_dataset_experiments_statistics(
         dict(
             sp_matrix=impressions_data_splits.sp_uim_test,
             sp_matrix_name="uim_test",
+            benchmark=experiment_benchmark.benchmark,
+        ),
+        dict(
+            sp_matrix=(
+                impressions_data_splits.sp_uim_train_validation
+                + impressions_data_splits.sp_uim_test
+            ),
+            sp_matrix_name="uim_all",
             benchmark=experiment_benchmark.benchmark,
         ),
         dict(
