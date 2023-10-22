@@ -65,7 +65,7 @@ def plot_parallel_coordinates(
         labels = []
         for val_str, val_int in col_mapping.items():
             ticks.append(val_int)
-            labels.append(val_str)
+            labels.append(str(val_str))
         paxfig.set_ticks(ax_idx=col_idx, ticks=ticks, labels=labels)
 
     # paxfig.plot(
@@ -402,13 +402,16 @@ def _prepare_recommender_data_for_parallel_plot(
 
 
 def _create_dict_mapping(
-    rec_impression: str,
+    recommender: str,
 ) -> dict[str, dict[str, int]]:
-    if rec_impression == "CyclingRecommender":
+    if "p3alpha" in recommender.casefold() or "rp3beta" in recommender.casefold():
+        return {"normalize_similarity": {False: 0, True: 1}}
+
+    if recommender == "CyclingRecommender":
         return {}
-    elif rec_impression == "HardFrequencyCappingRecommender":
+    elif recommender == "HardFrequencyCappingRecommender":
         return {"mode": {"leq": 0, "geq": 1}}
-    elif rec_impression == "ImpressionsDiscountingRecommender":
+    elif recommender == "ImpressionsDiscountingRecommender":
         return {
             "func_user_frequency": {
                 "LINEAR": 0,
@@ -444,9 +447,9 @@ def _create_dict_mapping(
             },
         }
     elif (
-        rec_impression == "BaseWeightedUserProfileRecommender"
-        or rec_impression == "ItemWeightedUserProfileRecommender"
-        or rec_impression == "UserWeightedUserProfileRecommender"
+        recommender == "BaseWeightedUserProfileRecommender"
+        or recommender == "ItemWeightedUserProfileRecommender"
+        or recommender == "UserWeightedUserProfileRecommender"
     ):
         return {
             "weighted_user_profile_type": {
@@ -532,7 +535,7 @@ def plot_parallel_hyper_parameters_plug_in_impression_aware_recommenders(
             continue
 
         dict_mappings = _create_dict_mapping(
-            rec_impression=rec_impression,
+            recommender=rec_impression,
         )
 
         list_columns_to_remove = (
@@ -576,17 +579,16 @@ def plot_parallel_hyper_parameters_recommenders(
             "Must select at least one metric to plot the parallel coordinates of hyper-parameters."
         )
 
+    os.makedirs(dir_analysis_hyper_parameters, exist_ok=True)
+
     main_metric = metrics_to_optimize[-1]
 
     benchmark: commons.Benchmarks
     hyper_parameter: commons.EHyperParameterTuningParameters
-    rec_baseline: str
-    rec_impression: str
+    recommender: str
 
     for benchmark, hyper_parameter, recommender in itertools.product(
-        benchmarks,
-        hyper_parameters,
-        recommenders,
+        benchmarks, hyper_parameters, recommenders
     ):
         data_recommender = _load_metadata_recommender(
             benchmark=benchmark,
@@ -599,7 +601,9 @@ def plot_parallel_hyper_parameters_recommenders(
             )
             continue
 
-        dict_mappings: dict[str, dict[str, int]] = {}
+        dict_mappings: dict[str, dict[str, int]] = _create_dict_mapping(
+            recommender=recommender
+        )
         list_columns_to_remove: list[str] = []
 
         df_hyperparameters_and_result = _prepare_recommender_data_for_parallel_plot(
@@ -615,10 +619,25 @@ def plot_parallel_hyper_parameters_recommenders(
             )
             continue
 
-        plot_parallel_coordinates(
-            df=df_hyperparameters_and_result,
-            dict_mappings=dict_mappings,
-            dir_results=dir_analysis_hyper_parameters,
-            name=f"{benchmark.value}-{recommender}",
-            col_data=main_metric,
-        )
+        name = f"{benchmark.value}-{recommender}"
+        try:
+            plot_parallel_coordinates(
+                df=df_hyperparameters_and_result,
+                dict_mappings=dict_mappings,
+                dir_results=dir_analysis_hyper_parameters,
+                name=name,
+                col_data=main_metric,
+            )
+            print(
+                f"Just exported the parallel coordinates plot for the combination {benchmark.value}-{recommender}"
+            )
+        except:
+            print(df_hyperparameters_and_result)
+            print(dict_mappings)
+            print(name)
+            print(main_metric)
+            import pdb
+
+            pdb.set_trace()
+            print(dir_analysis_hyper_parameters)
+            print(df_hyperparameters_and_result)

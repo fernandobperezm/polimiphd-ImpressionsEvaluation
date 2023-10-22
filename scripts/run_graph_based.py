@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-from typing import Union, Sequence
+import os
+from typing import Union
 
 from dotenv import load_dotenv
 
@@ -29,9 +30,13 @@ from impressions_evaluation.experiments.graph_based import (
     _run_frequency_impressions_hyper_parameter_tuning,
 )
 from impressions_evaluation.experiments.graph_based.results import (
-    print_results,
     process_results,
     export_evaluation_results,
+)
+from impressions_evaluation.experiments.hyperparameters import (
+    distribution_hyper_parameters,
+    DIR_ANALYSIS_HYPER_PARAMETERS,
+    plot_parallel_hyper_parameters_recommenders,
 )
 
 
@@ -52,6 +57,9 @@ class ConsoleArguments(Tap):
     print_evaluation_results: bool = False
     """Export to CSV and LaTeX the accuracy, beyond-accuracy, optimal hyper-parameters, and scalability metrics of 
     all tuned recommenders."""
+
+    analyze_hyper_parameters: bool = False
+    """"""
 
     send_email: bool = False
     """Send a notification email via GMAIL when experiments start and finish."""
@@ -130,6 +138,17 @@ _TO_PRINT_RECOMMENDERS: tuple[
 )
 
 
+_TO_USE_BENCHMARKS_RESULTS = [
+    Benchmarks.ContentWiseImpressions,
+    Benchmarks.MINDSmall,
+    Benchmarks.FINNNoSlates,
+]
+
+_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS = [
+    EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16
+]
+
+
 if __name__ == "__main__":
     input_flags = ConsoleArguments().parse_args()
 
@@ -194,6 +213,51 @@ if __name__ == "__main__":
         export_evaluation_results(
             benchmarks=_TO_USE_BENCHMARKS,
             hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        )
+
+    if input_flags.analyze_hyper_parameters:
+        recommenders = [
+            "P3alphaRecommender",
+            "RP3betaRecommender",
+            #
+            "ExtendedP3AlphaRecommender",
+            "ExtendedRP3BetaRecommender",
+            "ExtendedLightGCNRecommender",
+            #
+            "ImpressionsProfileP3AlphaRecommender",
+            "ImpressionsProfileWithFrequencyP3AlphaRecommender",
+            "ImpressionsDirectedP3AlphaRecommender",
+            "ImpressionsDirectedWithFrequencyP3AlphaRecommender",
+            #
+            "ImpressionsProfileRP3BetaRecommender",
+            "ImpressionsProfileWithFrequencyRP3BetaRecommender",
+            "ImpressionsDirectedRP3BetaRecommender",
+            "ImpressionsDirectedWithFrequencyRP3BetaRecommender",
+            #
+            "ImpressionsProfileLightGCNRecommender",
+            "ImpressionsDirectedLightGCNRecommender",
+        ]
+
+        metrics_to_optimize = ["COVERAGE_ITEM", "NDCG"]
+        cutoff_to_optimize = 10
+
+        dir_analysis_hyper_parameters = os.path.join(
+            DIR_ANALYSIS_HYPER_PARAMETERS,
+            "script_graph_based_recommenders_with_impressions",
+            "",
+        )
+
+        # distribution_hyper_parameters(
+        #     benchmarks=_TO_USE_BENCHMARKS_RESULTS,
+        #     hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
+        # )
+        plot_parallel_hyper_parameters_recommenders(
+            benchmarks=_TO_USE_BENCHMARKS_RESULTS,
+            hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
+            recommenders=recommenders,
+            metrics_to_optimize=metrics_to_optimize,
+            cutoff_to_optimize=cutoff_to_optimize,
+            dir_analysis_hyper_parameters=dir_analysis_hyper_parameters,
         )
 
     logger.info(f"Finished running script: {__file__}")
