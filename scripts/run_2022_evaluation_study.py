@@ -443,7 +443,7 @@ if __name__ == "__main__":
 
         dir_analysis_hyper_parameters = os.path.join(
             DIR_ANALYSIS_HYPER_PARAMETERS,
-            "script_evaluation_study_impression_aware_recommenders",
+            "script_2022_evaluation_study_impression_aware_recommenders",
             "",
         )
 
