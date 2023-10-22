@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from dotenv import load_dotenv
 from recsys_framework_extensions.dask import configure_dask_cluster
@@ -9,8 +10,9 @@ from tap import Tap
 
 from impressions_evaluation import configure_logger
 from impressions_evaluation.experiments.hyperparameters import (
-    plot_parallel_hyper_parameters,
+    plot_parallel_hyper_parameters_plug_in_impression_aware_recommenders,
     distribution_hyper_parameters,
+    DIR_ANALYSIS_HYPER_PARAMETERS,
 )
 from impressions_evaluation.experiments.print_results import (
     process_evaluation_results,
@@ -406,13 +408,57 @@ if __name__ == "__main__":
     #
     # dask_interface.wait_for_jobs()
     if input_flags.analyze_hyper_parameters:
+        baseline_recommenders = [
+            "ItemKNNCFRecommender_asymmetric",
+            "ItemKNNCFRecommender_cosine",
+            "ItemKNNCFRecommender_dice",
+            "ItemKNNCFRecommender_jaccard",
+            "ItemKNNCFRecommender_tversky",
+            "UserKNNCFRecommender_asymmetric",
+            "UserKNNCFRecommender_cosine",
+            "UserKNNCFRecommender_dice",
+            "UserKNNCFRecommender_jaccard",
+            "UserKNNCFRecommender_tversky",
+            "P3alphaRecommender",
+            "RP3betaRecommender",
+            "PureSVDRecommender",
+            "NMFRecommender",
+            "MatrixFactorization_FunkSVD_Cython_Recommender",
+            "MatrixFactorization_BPR_Cython_Recommender",
+            "SLIMElasticNetRecommender",
+            "SLIM_BPR_Recommender",
+            "LightFMCFRecommender",
+            "EASE_R_Recommender",
+        ]
+        impression_aware_recommenders = [
+            "CyclingRecommender",
+            "HardFrequencyCappingRecommender",
+            "ImpressionsDiscountingRecommender",
+            "ItemWeightedUserProfileRecommender",
+            "UserWeightedUserProfileRecommender",
+        ]
+
+        metrics_to_optimize = ["COVERAGE_ITEM", "NDCG"]
+        cutoff_to_optimize = 10
+
+        dir_analysis_hyper_parameters = os.path.join(
+            DIR_ANALYSIS_HYPER_PARAMETERS,
+            "script_evaluation_study_impression_aware_recommenders",
+            "",
+        )
+
         distribution_hyper_parameters(
             benchmarks=_TO_USE_BENCHMARKS_RESULTS,
             hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
         )
-        plot_parallel_hyper_parameters(
+        plot_parallel_hyper_parameters_plug_in_impression_aware_recommenders(
             benchmarks=_TO_USE_BENCHMARKS_RESULTS,
             hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
+            baseline_recommenders=baseline_recommenders,
+            impression_aware_recommenders=impression_aware_recommenders,
+            metrics_to_optimize=metrics_to_optimize,
+            cutoff_to_optimize=cutoff_to_optimize,
+            dir_analysis_hyper_parameters=dir_analysis_hyper_parameters,
         )
 
     if input_flags.plot_datasets_popularity:

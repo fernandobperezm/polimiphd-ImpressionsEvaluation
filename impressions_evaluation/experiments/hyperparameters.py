@@ -297,11 +297,27 @@ def distribution_hyper_parameters(
             continue
 
 
-def _load_metadata_recommender(
+def _load_metadata_plug_in_impression_aware_recommender(
+    *,
     benchmark: commons.Benchmarks,
     hyper_parameter: commons.EHyperParameterTuningParameters,
     rec_impression: str,
     rec_baseline: str,
+) -> Optional[dict[str, Any]]:
+    recommender = f"{rec_impression}_{rec_baseline}"
+
+    return _load_metadata_recommender(
+        benchmark=benchmark,
+        hyper_parameter=hyper_parameter,
+        recommender=recommender,
+    )
+
+
+def _load_metadata_recommender(
+    *,
+    benchmark: commons.Benchmarks,
+    hyper_parameter: commons.EHyperParameterTuningParameters,
+    recommender: str,
 ) -> Optional[dict[str, Any]]:
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[benchmark]
     experiment_hyper_parameters = (
@@ -312,7 +328,7 @@ def _load_metadata_recommender(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
-    recommender_filename = f"{rec_impression}_{rec_baseline}_metadata.zip"
+    recommender_filename = f"{recommender}_metadata.zip"
 
     if recommender_filename not in os.listdir(folder_trained_models):
         return None
@@ -442,7 +458,7 @@ def _create_dict_mapping(
     return {}
 
 
-def _create_list_columns_to_remove(
+def _create_list_columns_to_remove_impression_aware_recommenders(
     rec_impression: str,
 ) -> list[str]:
     if rec_impression == "CyclingRecommender":
@@ -476,44 +492,21 @@ def _create_list_columns_to_remove(
     return []
 
 
-def plot_parallel_hyper_parameters(
+def plot_parallel_hyper_parameters_plug_in_impression_aware_recommenders(
     benchmarks: list[commons.Benchmarks],
     hyper_parameters: list[commons.EHyperParameterTuningParameters],
+    baseline_recommenders: list[str],
+    impression_aware_recommenders: list[str],
+    metrics_to_optimize: list[str],
+    cutoff_to_optimize: int,
+    dir_analysis_hyper_parameters: str,
 ) -> None:
-    baseline_recommenders_to_try = [
-        "ItemKNNCFRecommender_asymmetric",
-        "ItemKNNCFRecommender_cosine",
-        "ItemKNNCFRecommender_dice",
-        "ItemKNNCFRecommender_jaccard",
-        "ItemKNNCFRecommender_tversky",
-        "UserKNNCFRecommender_asymmetric",
-        "UserKNNCFRecommender_cosine",
-        "UserKNNCFRecommender_dice",
-        "UserKNNCFRecommender_jaccard",
-        "UserKNNCFRecommender_tversky",
-        "P3alphaRecommender",
-        "RP3betaRecommender",
-        "PureSVDRecommender",
-        "NMFRecommender",
-        "MatrixFactorization_FunkSVD_Cython_Recommender",
-        "MatrixFactorization_BPR_Cython_Recommender",
-        "SLIMElasticNetRecommender",
-        "SLIM_BPR_Recommender",
-        "LightFMCFRecommender",
-        "EASE_R_Recommender",
-    ]
-    impression_aware_recommenders_to_try = [
-        "CyclingRecommender",
-        "HardFrequencyCappingRecommender",
-        "ImpressionsDiscountingRecommender",
-        "ItemWeightedUserProfileRecommender",
-        "UserWeightedUserProfileRecommender",
-    ]
+    if len(metrics_to_optimize) == 0:
+        raise ValueError(
+            "Must select at least one metric to plot the parallel coordinates of hyper-parameters."
+        )
 
-    metrics_to_optimize = ["COVERAGE_ITEM", "NDCG"]
-    cutoff_to_optimize = 10
-
-    dir_analysis_hyper_parameters = DIR_ANALYSIS_HYPER_PARAMETERS
+    main_metric = metrics_to_optimize[-1]
 
     benchmark: commons.Benchmarks
     hyper_parameter: commons.EHyperParameterTuningParameters
@@ -523,10 +516,10 @@ def plot_parallel_hyper_parameters(
     for benchmark, hyper_parameter, rec_impression, rec_baseline in itertools.product(
         benchmarks,
         hyper_parameters,
-        impression_aware_recommenders_to_try,
-        baseline_recommenders_to_try,
+        impression_aware_recommenders,
+        baseline_recommenders,
     ):
-        data_recommender = _load_metadata_recommender(
+        data_recommender = _load_metadata_plug_in_impression_aware_recommender(
             benchmark=benchmark,
             hyper_parameter=hyper_parameter,
             rec_impression=rec_impression,
@@ -542,8 +535,10 @@ def plot_parallel_hyper_parameters(
             rec_impression=rec_impression,
         )
 
-        list_columns_to_remove = _create_list_columns_to_remove(
-            rec_impression=rec_impression,
+        list_columns_to_remove = (
+            _create_list_columns_to_remove_impression_aware_recommenders(
+                rec_impression=rec_impression,
+            )
         )
 
         df_hyperparameters_and_result = _prepare_recommender_data_for_parallel_plot(
@@ -564,180 +559,66 @@ def plot_parallel_hyper_parameters(
             dict_mappings=dict_mappings,
             dir_results=dir_analysis_hyper_parameters,
             name=f"{benchmark.value}-{rec_impression}-{rec_baseline}",
-            col_data="NDCG",
+            col_data=main_metric,
         )
 
-        # data = df_hyperparameters_and_result
-        # data_best = (
-        #     df_hyperparameters_and_result.sort_values(
-        #         by=metric_to_optimize, ascending=False, ignore_index=True, inplace=False
-        #     )
-        #     .head(5)
-        #     .copy()
-        # )
-        #
-        # columns = df_hyperparameters_and_result.columns
-        #
-        # paxfig = paxplot.pax_parallel(n_axes=len(columns))
-        # paxfig.plot(
-        #     data_best.to_numpy(),  # line_kwargs={"alpha": 1, "linewidth": 2, "zorder": 1}
-        # )
-        #
-        # # We must add the colorbar only on best data, as we only want to plot that. If we add the remaining data, then we will have the entire data in the colorbar.
-        # color_col = len(columns) - 1
-        # paxfig.add_colorbar(
-        #     ax_idx=color_col,
-        #     cmap="viridis",
-        #     colorbar_kwargs={"label": columns[color_col]},
-        # )
-        #
-        # paxfig.set_labels(columns)
-        #
-        # paxfig.plot(
-        #     data.to_numpy(), line_kwargs={"alpha": 0.3, "color": "grey", "zorder": 0}
-        # )
-        #
-        # # ticks_similarity = []
-        # # labels_similarity = []
-        # # for sim, idx in map_similarity_to_idx.items():
-        # #     ticks_similarity.append(idx)
-        # #     labels_similarity.append(sim)
-        # # paxfig.set_ticks(ax_idx=2, ticks=ticks_similarity, labels=labels_similarity)
-        #
-        # # ticks_feature = []
-        # # labels_feature = []
-        # # for feat, idx in map_feature_to_idx.items():
-        # #     ticks_feature.append(idx)
-        # #     labels_feature.append(feat)
-        # # paxfig.set_ticks(ax_idx=5, ticks=ticks_feature, labels=labels_feature)
-        #
-        # paxfig.savefig(filename)
-        # plt.show()
 
-    # folder_path = os.path.join(
-    #     "/fbpm/project-impressions/impressions-evaluation/trained_models/MINDSmall/LEAVE_LAST_K_OUT",
-    #     "",
-    # )
-    # filename = "ItemKNNCFRecommender_asymmetric_metadata.zip"
-    #
-    # metric_to_optimize = "NDCG"
-    # cutoff_to_optimize = 10
-    #
-    # df_hyperparameters: pd.DataFrame = data_recommender["hyperparameters_df"]
-    # df_results_validation: pd.DataFrame = data_recommender["result_on_validation_df"]
-    #
-    # df_hyperparameters = df_hyperparameters.astype(
-    #     {
-    #         "topK": np.int32,
-    #         "shrink": np.int32,
-    #         "similarity": pd.StringDtype(),
-    #         "normalize": pd.BooleanDtype(),
-    #         "asymmetric_alpha": np.float32,
-    #         "feature_weighting": pd.StringDtype(),
-    #     }
-    # )
-    # map_similarity_to_idx = {
-    #     sim: float(idx)
-    #     for idx, sim in enumerate(df_hyperparameters["similarity"].unique())
-    # }
-    #
-    # map_feature_to_idx = {
-    #     fw: float(idx)
-    #     for idx, fw in enumerate(df_hyperparameters["feature_weighting"].unique())
-    # }
-    #
-    # df_hyperparameters["similarity"] = (
-    #     df_hyperparameters["similarity"].map(map_similarity_to_idx).astype(np.float32)
-    # )
-    # df_hyperparameters["feature_weighting"] = (
-    #     df_hyperparameters["feature_weighting"]
-    #     .map(map_feature_to_idx)
-    #     .astype(np.float32)
-    # )
-    #
-    # df_results_on_metric_and_cutoff = df_results_validation.reset_index(
-    #     drop=False, level=1
-    # )
-    # df_results_on_metric_and_cutoff = df_results_on_metric_and_cutoff[
-    #     (df_results_on_metric_and_cutoff["cutoff"] == cutoff_to_optimize)
-    # ][metric_to_optimize].astype(np.float32)
-    #
-    # df_hyperparameters_and_result = pd.concat(
-    #     objs=[df_hyperparameters, df_results_on_metric_and_cutoff],
-    #     axis="columns",
-    #     ignore_index=False,
-    #     verify_integrity=True,
-    # )
-    #
-    # folder_path = os.path.join(
-    #     "/fbpm/project-impressions/impressions-evaluation/result_experiments/analysis_hyperparameters",
-    #     "",
-    # )
-    # filename = os.path.join(folder_path, "hyper_parameters.png")
-    #
-    # data = df_hyperparameters_and_result
-    # data_best = (
-    #     df_hyperparameters_and_result.sort_values(
-    #         by=metric_to_optimize, ascending=False, ignore_index=True, inplace=False
-    #     )
-    #     .head(5)
-    #     .copy()
-    # )
-    #
-    # # df_hyperparameters_and_result.iloc[[idx_hyperparameters_best]]
-    # columns = df_hyperparameters_and_result.columns
-    #
-    # paxfig = paxplot.pax_parallel(n_axes=len(columns))
-    # paxfig.plot(
-    #     data_best.to_numpy(),  # line_kwargs={"alpha": 1, "linewidth": 2, "zorder": 1}
-    # )
-    #
-    # # We must add the colorbar only on best data, as we only want to plot that. If we add the remaining data, then we will have the entire data in the colorbar.
-    # color_col = len(columns) - 1
-    # paxfig.add_colorbar(
-    #     ax_idx=color_col, cmap="viridis", colorbar_kwargs={"label": columns[color_col]}
-    # )
-    #
-    # paxfig.set_labels(columns)
-    #
-    # paxfig.plot(
-    #     data.to_numpy(), line_kwargs={"alpha": 0.3, "color": "grey", "zorder": 0}
-    # )
-    #
-    # ticks_similarity = []
-    # labels_similarity = []
-    # for sim, idx in map_similarity_to_idx.items():
-    #     ticks_similarity.append(idx)
-    #     labels_similarity.append(sim)
-    # paxfig.set_ticks(ax_idx=2, ticks=ticks_similarity, labels=labels_similarity)
-    #
-    # ticks_feature = []
-    # labels_feature = []
-    # for feat, idx in map_feature_to_idx.items():
-    #     ticks_feature.append(idx)
-    #     labels_feature.append(feat)
-    # paxfig.set_ticks(ax_idx=5, ticks=ticks_feature, labels=labels_feature)
-    #
-    # paxfig.savefig(filename)
-    # plt.show()
+def plot_parallel_hyper_parameters_recommenders(
+    benchmarks: list[commons.Benchmarks],
+    hyper_parameters: list[commons.EHyperParameterTuningParameters],
+    recommenders: list[str],
+    metrics_to_optimize: list[str],
+    cutoff_to_optimize: int,
+    dir_analysis_hyper_parameters: str,
+) -> None:
+    if len(metrics_to_optimize) == 0:
+        raise ValueError(
+            "Must select at least one metric to plot the parallel coordinates of hyper-parameters."
+        )
 
-    # fig: plt.Figure
-    # ax: plt.Axes
-    #
-    # fig, ax = plt.figure(num=(1, 1))
-    #
-    # parallel_coordinates(
-    #     frame=df_hyperparameters_and_result,
-    #     class_column="",
-    #     ax=ax,
-    #     use_columns=True,
-    #     axvlines=True,
-    # )
-    #
-    # folder_path = os.path.join(
-    #     "/fbpm/project-impressions/impressions-evaluation/result_experiments/analysis_hyperparameters",
-    #     "",
-    # )
-    # fig.savefig(os.path.join(folder_path, "hyper_parameters.png"))
+    main_metric = metrics_to_optimize[-1]
 
-    # print(df_hyperparameters)
+    benchmark: commons.Benchmarks
+    hyper_parameter: commons.EHyperParameterTuningParameters
+    rec_baseline: str
+    rec_impression: str
+
+    for benchmark, hyper_parameter, recommender in itertools.product(
+        benchmarks,
+        hyper_parameters,
+        recommenders,
+    ):
+        data_recommender = _load_metadata_recommender(
+            benchmark=benchmark,
+            hyper_parameter=hyper_parameter,
+            recommender=recommender,
+        )
+        if data_recommender is None:
+            print(
+                f"Could not find a file for the combination {benchmark}-{recommender}. Skipping"
+            )
+            continue
+
+        dict_mappings: dict[str, dict[str, int]] = {}
+        list_columns_to_remove: list[str] = []
+
+        df_hyperparameters_and_result = _prepare_recommender_data_for_parallel_plot(
+            data_recommender=data_recommender,
+            dict_mappings=dict_mappings,
+            list_columns_to_remove=list_columns_to_remove,
+            metrics_to_optimize=metrics_to_optimize,
+            cutoff_to_optimize=cutoff_to_optimize,
+        )
+        if df_hyperparameters_and_result is None:
+            print(
+                f"The recommender may not be finished for the combination {benchmark}-{recommender}. Skipping"
+            )
+            continue
+
+        plot_parallel_coordinates(
+            df=df_hyperparameters_and_result,
+            dict_mappings=dict_mappings,
+            dir_results=dir_analysis_hyper_parameters,
+            name=f"{benchmark.value}-{recommender}",
+            col_data=main_metric,
+        )
