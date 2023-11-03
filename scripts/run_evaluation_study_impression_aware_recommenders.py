@@ -61,52 +61,42 @@ from impressions_evaluation.experiments.impression_aware.user_profiles import (
 
 class ConsoleArguments(Tap):
     create_datasets: bool = False
-    """If the flag is included, then the script ensures that datasets exists, i.e., it downloads the datasets if 
-    possible and then processes the data to create the splits."""
+    """If the flag is included, then the script ensures that datasets exists, i.e., it downloads the datasets if possible and then processes the data to create the splits."""
 
     include_baselines: bool = False
-    """If the flag is included, then the script tunes the hyper-parameters of the base recommenders, e.g., ItemKNN, 
-    UserKNN, SLIM ElasticNet."""
-
-    include_folded: bool = False
-    """If the flag is included, then the script folds the tuned matrix-factorization base recommenders. If the 
-    recommenders are not previously tuned, then this flag fails."""
+    """Tunes the hyper-parameters of the base recommenders, e.g., ItemKNN, UserKNN, SLIM ElasticNet."""
 
     include_impressions_heuristics: bool = False
-    """If the flag is included, then the script tunes the hyper-parameter of time-aware impressions recommenders: 
-    Last Impressions, Recency, and Frequency & Recency. These recommenders do not need base recommenders to be tuned."""
+    """Tunes the hyper-parameter of time-aware impressions recommenders: Last Impressions, Recency, and Frequency & Recency. The first recommender does not need to be tuned, while the latter two must be tuned."""
 
     include_impressions_reranking: bool = False
-    """If the flag is included, then the script tunes the hyper-parameter of re-ranking impressions recommenders: 
-    Cycling and Impressions Discounting. These recommenders need base recommenders to be tuned, if they aren't then 
-    the method fails."""
+    """Tunes the hyper-parameter of re-ranking impressions recommenders: HFC, Cycling, and IDF. These recommenders need base recommenders to be tuned, if they aren't then the method fails."""
 
-    include_ablation_impressions_reranking: bool = False
-    """If the flag is included, then the script tunes the hyper-parameter of re-ranking impressions recommenders: 
-    Impressions Discounting with only impressions frequency. These recommenders need base recommenders to be tuned, 
-    if they aren't then the method fails."""
+    include_impressions_profile: bool = False
+    """Tunes the hyper-parameter of the IUP recommenders. These recommenders need similarity-based recommenders to be tuned, if they aren't then the method fails."""
+
+    print_evaluation_results: bool = False
+    """Exports to Parquet, CSV, and LaTeX the accuracy, beyond-accuracy, optimal hyper-parameters, and scalability metrics of all tuned recommenders."""
+
+    analyze_hyper_parameters: bool = False
+    """Exports to Parquet, CSV, Tikz, PDF, and PNG the distribution of hyper-parameters and parallel plots of them."""
 
     include_signal_analysis: bool = False
-    """TODO: fernando-debugger"""
+    """If the flag is included, then the script tunes the hyper-parameters of re-ranking recommenders: HFC, Cycling, and IDF. The sign hyper-parameter is not tuned by the optimizer, instead, it is hard-coded so the optimizer finds optimal values for the remaining hyper-parameters"""
+
+    include_ablation_impressions_reranking: bool = False
+    """If the flag is included, then the script tunes the hyper-parameter of re-ranking impressions recommenders: Impressions Discounting with only impressions frequency. These recommenders need base recommenders to be tuned, if they aren't then the method fails."""
+
+    include_folded: bool = False
+    """Folds the tuned matrix-factorization base recommenders. If the recommenders are not previously tuned, then this flag fails."""
 
     include_signal_analysis_reranking: bool = False
     """TODO: fernando-debugger"""
-
-    include_impressions_profile: bool = False
-    """If the flag is included, then the script tunes the hyper-parameter of impressions as user profiles recommenders. 
-    These recommenders need similarity-based recommenders to be tuned, if they aren't then the method fails."""
 
     compute_confidence_intervals: bool = False
     """TODO: fernando-debugger"""
 
     compute_statistical_tests: bool = False
-    """TODO: fernando-debugger"""
-
-    print_evaluation_results: bool = False
-    """Export to CSV and LaTeX the accuracy, beyond-accuracy, optimal hyper-parameters, and scalability metrics of 
-    all tuned recommenders."""
-
-    analyze_hyper_parameters: bool = False
     """TODO: fernando-debugger"""
 
     send_email: bool = False

@@ -45,24 +45,22 @@ from impressions_evaluation.experiments.hyperparameters import (
 
 class ConsoleArguments(Tap):
     create_datasets: bool = False
-    """If the flag is included, then the script ensures that datasets exists, i.e., it downloads the datasets if 
-    possible and then processes the data to create the splits."""
+    """Ensures that datasets exists, i.e., it downloads the datasets if possible and then processes the data to create the splits."""
 
     include_baselines: bool = False
-    """If the flag is included, then the script tunes the hyper-parameters of the pure collaborative recommenders"""
+    """Tunes the hyper-parameters of the pure collaborative recommenders"""
 
     include_impressions: bool = False
-    """If the flag is included, then the script tunes the hyper-parameters of the collaborative+impressions recommenders"""
+    """Tunes the hyper-parameters of graph-based recommenders using impressions, i.e., the UIM."""
 
     include_impressions_frequency: bool = False
-    """If the flag is included, then the script tunes the hyper-parameters of the collaborative+impressions frequency recommenders"""
+    """Tunes the hyper-parameters of graph-based recommenders using impressions frequency, i.e., the UIM-F"""
 
     print_evaluation_results: bool = False
-    """Export to CSV and LaTeX the accuracy, beyond-accuracy, optimal hyper-parameters, and scalability metrics of 
-    all tuned recommenders."""
+    """Exports to Parquet, CSV, and LaTeX the accuracy, beyond-accuracy, optimal hyper-parameters, and scalability metrics of all tuned recommenders."""
 
     analyze_hyper_parameters: bool = False
-    """"""
+    """Exports to Parquet, CSV, Tikz, PDF, and PNG the parallel plots of hyper-parameters."""
 
     send_email: bool = False
     """Send a notification email via GMAIL when experiments start and finish."""
