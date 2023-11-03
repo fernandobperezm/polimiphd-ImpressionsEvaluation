@@ -22,6 +22,7 @@ from impressions_evaluation.experiments.commons import (
     EHyperParameterTuningParameters,
     RecommenderBaseline,
     RecommenderImpressions,
+    DIR_TRAINED_MODELS,
 )
 from impressions_evaluation.experiments.graph_based import (
     _run_collaborative_filtering_hyper_parameter_tuning,
@@ -32,11 +33,14 @@ from impressions_evaluation.experiments.graph_based import (
 from impressions_evaluation.experiments.graph_based.results import (
     process_results,
     export_evaluation_results,
+    DIR_PARQUET_RESULTS,
+    DIR_CSV_RESULTS,
+    DIR_LATEX_RESULTS,
 )
 from impressions_evaluation.experiments.hyperparameters import (
-    distribution_hyper_parameters,
     DIR_ANALYSIS_HYPER_PARAMETERS,
     plot_parallel_hyper_parameters_recommenders,
+    distribution_hyper_parameters_graph_based_impression_aware_recommenders,
 )
 
 
@@ -97,11 +101,12 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_FREQUENCY = [
     RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
     RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS_FREQUENCY,
     RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
+    # RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS_FREQUENCY,
+    # RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
 ]
 
 _TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS = [
     EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
-    # EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_5_2,
 ]
 
 _TO_USE_TRAINING_FUNCTIONS_BASELINES = [
@@ -131,9 +136,27 @@ _TO_PRINT_RECOMMENDERS: tuple[
     _TO_USE_BENCHMARKS,
     _TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
     [
-        *_TO_USE_RECOMMENDERS_BASELINES,
-        *_TO_USE_RECOMMENDERS_IMPRESSIONS,
-        *_TO_USE_RECOMMENDERS_IMPRESSIONS_FREQUENCY,
+        *[
+            RecommenderBaseline.P3_ALPHA,
+            RecommenderBaseline.RP3_BETA,
+            RecommenderBaseline.LIGHT_GCN,
+        ],
+        *[
+            RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
+            RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+            RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
+            RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+            RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS,
+            RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS,
+        ],
+        *[
+            RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS_FREQUENCY,
+            RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
+            RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS_FREQUENCY,
+            RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
+            RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS_FREQUENCY,
+            RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
+        ],
     ],
 )
 
@@ -204,11 +227,21 @@ if __name__ == "__main__":
         )
 
     if input_flags.print_evaluation_results:
-        # print_results(
-        #     results_interface=_TO_PRINT_RECOMMENDERS,
-        # )
+        dir_trained_models = os.path.join(
+            DIR_TRAINED_MODELS,
+            "script_graph_based_recommenders_with_impressions",
+            "",
+        )
+
+        dir_latex_results = DIR_LATEX_RESULTS
+        dir_csv_results = DIR_CSV_RESULTS
+        dir_parquet_results = DIR_PARQUET_RESULTS
+
         process_results(
             results_interface=_TO_PRINT_RECOMMENDERS,
+            dir_csv_results=dir_csv_results,
+            dir_latex_results=dir_latex_results,
+            dir_parquet_results=dir_parquet_results,
         )
         export_evaluation_results(
             benchmarks=_TO_USE_BENCHMARKS,
@@ -235,7 +268,9 @@ if __name__ == "__main__":
             "ImpressionsDirectedWithFrequencyRP3BetaRecommender",
             #
             "ImpressionsProfileLightGCNRecommender",
+            "ImpressionsProfileWithFrequencyLightGCNRecommender",
             "ImpressionsDirectedLightGCNRecommender",
+            "ImpressionsDirectedWithFrequencyLightGCNRecommender",
         ]
 
         metrics_to_optimize = ["COVERAGE_ITEM", "NDCG"]
@@ -247,10 +282,18 @@ if __name__ == "__main__":
             "",
         )
 
-        # distribution_hyper_parameters(
+        dir_parquet_results = DIR_PARQUET_RESULTS
+
+        # No need to call the `distribution_hyper_parameters_graph_based_impression_aware_recommenders` function because
+        # we only have five values in each hyper-parameter. Not enough to create a distribution map.
+        # distribution_hyper_parameters_graph_based_impression_aware_recommenders(
         #     benchmarks=_TO_USE_BENCHMARKS_RESULTS,
         #     hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
+        #     dir_parquet_results=dir_parquet_results,
+        #     dir_analysis_hyper_parameters=dir_analysis_hyper_parameters,
         # )
+
+        # We can plot parallel coordinates.
         plot_parallel_hyper_parameters_recommenders(
             benchmarks=_TO_USE_BENCHMARKS_RESULTS,
             hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,

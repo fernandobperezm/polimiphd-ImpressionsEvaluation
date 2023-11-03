@@ -22,7 +22,7 @@ if __name__ == "__main__":
     dir_export_base = os.path.join(
         os.getcwd(),
         "result_experiments",
-        "script_dataset_statistics",
+        "script_thesis_dataset_statistics_cw_impressions",
         "",
     )
     dir_export_parquet = os.path.join(dir_export_base, "parquet", "")
@@ -39,31 +39,3 @@ if __name__ == "__main__":
     )
 
     print(results_cw_impressions)
-
-    # statistics_cw_full = content_wise_impressions_statistics_full_dataset()
-    # statistics_finn_full = finn_no_slates_statistics_full_dataset()
-    # statistics_mind_full = mind_large_statistics_full_dataset()
-    # statistics_mind_small_full = mind_small_statistics_full_dataset()
-    #
-    # df_statistics = pd.DataFrame.from_records(
-    #     data=[
-    #         statistics_cw_full,
-    #         statistics_finn_full,
-    #         statistics_mind_full,
-    #         statistics_mind_small_full,
-    #     ],
-    # )
-    #
-    # df_statistics.style.to_latex(
-    #     buf=os.path.join(dir_export_latex, f"{filename_export}.tex"),
-    #     position="t",
-    #     position_float="centering",
-    #     column_format="l|SS|SS|SS",
-    #     siunitx=True,
-    #     encoding="utf-8",
-    #     caption="Dataset Statistics",
-    # )
-    # df_statistics.to_parquet(
-    #     path=os.path.join(dir_export_parquet, f"{filename_export}.parquet"),
-    #     engine="pyarrow",
-    # )

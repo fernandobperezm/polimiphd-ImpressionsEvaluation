@@ -10,16 +10,18 @@ from tap import Tap
 
 from impressions_evaluation import configure_logger
 from impressions_evaluation.experiments.hyperparameters import (
-    plot_parallel_hyper_parameters_plug_in_impression_aware_recommenders,
-    distribution_hyper_parameters,
     DIR_ANALYSIS_HYPER_PARAMETERS,
+    distribution_hyper_parameters_plug_in_impression_aware_recommenders,
+    plot_parallel_hyper_parameters_plug_in_impression_aware_recommenders,
 )
 from impressions_evaluation.experiments.print_results import (
     process_evaluation_results,
     export_evaluation_results,
+    DIR_PARQUET_RESULTS,
 )
 from impressions_evaluation.experiments.print_statistics import (
     print_datasets_statistics,
+    print_datasets_statistics_thesis,
 )
 
 load_dotenv()
@@ -128,8 +130,8 @@ class ConsoleArguments(Tap):
 ####################################################################################################
 ####################################################################################################
 _TO_USE_BENCHMARKS = [
-    # Benchmarks.ContentWiseImpressions,
-    # Benchmarks.MINDSmall,
+    Benchmarks.ContentWiseImpressions,
+    Benchmarks.MINDSmall,
     Benchmarks.FINNNoSlates,
 ]
 
@@ -140,8 +142,8 @@ _TO_USE_BENCHMARKS_RESULTS = [
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE = [
-    # RecommenderBaseline.RANDOM,
-    # RecommenderBaseline.TOP_POPULAR,
+    RecommenderBaseline.RANDOM,
+    RecommenderBaseline.TOP_POPULAR,
     #
     RecommenderBaseline.USER_KNN,
     RecommenderBaseline.ITEM_KNN,
@@ -151,15 +153,15 @@ _TO_USE_RECOMMENDERS_BASELINE = [
     #
     RecommenderBaseline.PURE_SVD,
     RecommenderBaseline.NMF,
-    # RecommenderBaseline.MF_BPR,
-    # RecommenderBaseline.SVDpp,
+    RecommenderBaseline.MF_BPR,
+    RecommenderBaseline.SVDpp,
     #
-    # RecommenderBaseline.SLIM_ELASTIC_NET,
-    # RecommenderBaseline.SLIM_BPR,
+    RecommenderBaseline.SLIM_ELASTIC_NET,
+    RecommenderBaseline.SLIM_BPR,
     #
-    # RecommenderBaseline.LIGHT_FM,
-    # RecommenderBaseline.EASE_R,
-    # RecommenderBaseline.MULT_VAE,
+    RecommenderBaseline.LIGHT_FM,
+    RecommenderBaseline.EASE_R,
+    RecommenderBaseline.MULT_VAE,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE_FOLDED = [
@@ -447,9 +449,13 @@ if __name__ == "__main__":
             "",
         )
 
-        distribution_hyper_parameters(
+        dir_parquet_results = DIR_PARQUET_RESULTS
+
+        distribution_hyper_parameters_plug_in_impression_aware_recommenders(
             benchmarks=_TO_USE_BENCHMARKS_RESULTS,
             hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
+            dir_parquet_results=dir_parquet_results,
+            dir_analysis_hyper_parameters=dir_analysis_hyper_parameters,
         )
         plot_parallel_hyper_parameters_plug_in_impression_aware_recommenders(
             benchmarks=_TO_USE_BENCHMARKS_RESULTS,
@@ -468,6 +474,9 @@ if __name__ == "__main__":
 
     if input_flags.print_datasets_statistics:
         print_datasets_statistics(
+            experiment_cases_interface=experiments_interface_baselines,
+        )
+        print_datasets_statistics_thesis(
             experiment_cases_interface=experiments_interface_baselines,
         )
 
