@@ -13,8 +13,10 @@ from Recommenders.BaseSimilarityMatrixRecommender import (
 from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO, attach_to_extended_json_decoder
 import logging
-from recsys_framework_extensions.recommenders.base import SearchHyperParametersBaseRecommender, \
-    AbstractExtendedBaseRecommender
+from recsys_framework_extensions.recommenders.base import (
+    SearchHyperParametersBaseRecommender,
+    AbstractExtendedBaseRecommender,
+)
 from skopt.space import Real, Categorical
 
 logger = logging.getLogger(__name__)
@@ -27,7 +29,9 @@ class EWeightedUserProfileType(enum.Enum):
 
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
-class SearchHyperParametersWeightedUserProfileRecommender(SearchHyperParametersBaseRecommender):
+class SearchHyperParametersWeightedUserProfileRecommender(
+    SearchHyperParametersBaseRecommender
+):
     alpha: Real = attrs.field(
         default=Real(
             low=1e-5,
@@ -50,9 +54,11 @@ class SearchHyperParametersWeightedUserProfileRecommender(SearchHyperParametersB
 
 DICT_SEARCH_CONFIGS = {
     "REPRODUCIBILITY_ORIGINAL_PAPER": SearchHyperParametersWeightedUserProfileRecommender(
-        alpha=Categorical(categories=[0.]),
+        alpha=Categorical(categories=[0.0]),
         sign=Categorical(categories=[1]),
-        weighted_user_profile_type=Categorical(categories=[EWeightedUserProfileType.ONLY_IMPRESSIONS.value]),
+        weighted_user_profile_type=Categorical(
+            categories=[EWeightedUserProfileType.ONLY_IMPRESSIONS.value]
+        ),
     ),
 }
 
@@ -74,20 +80,26 @@ def compute_difference_between_impressions_and_interactions(
 
     # Given that this is a set difference between `uim` and `urm` and based on the resulting values above,
     # we only keep those positions in which the value is 1.
-    indices_only_on_impressions = sp_difference_uim_urm.data == 1.
-    arr_rows_only_on_impressions = sp_difference_uim_urm.row[indices_only_on_impressions]
-    arr_cols_only_on_impressions = sp_difference_uim_urm.col[indices_only_on_impressions]
-    arr_data_only_on_impressions = sp_difference_uim_urm.data[indices_only_on_impressions]
+    indices_only_on_impressions = sp_difference_uim_urm.data == 1.0
+    arr_rows_only_on_impressions = sp_difference_uim_urm.row[
+        indices_only_on_impressions
+    ]
+    arr_cols_only_on_impressions = sp_difference_uim_urm.col[
+        indices_only_on_impressions
+    ]
+    arr_data_only_on_impressions = sp_difference_uim_urm.data[
+        indices_only_on_impressions
+    ]
 
     sp_impressions_profile: sp.csr_matrix = sp.csr_matrix(
         (
             arr_data_only_on_impressions,
-            (arr_rows_only_on_impressions, arr_cols_only_on_impressions)
+            (arr_rows_only_on_impressions, arr_cols_only_on_impressions),
         ),
         dtype=np.float32,
         shape=sp_difference_uim_urm.shape,
     )
-    assert np.all(sp_impressions_profile.data == 1.)
+    assert np.all(sp_impressions_profile.data == 1.0)
 
     return sp_impressions_profile
 
@@ -135,10 +147,14 @@ class BaseWeightedUserProfileRecommender(AbstractExtendedBaseRecommender, ABC):
         self._sparse_user_profile: sp.csr_matrix = sp.csr_matrix([], dtype=np.float32)
         self._sparse_similarity: sp.csr_matrix = sp.csr_matrix([], dtype=np.float32)
 
-        self._uim_train: sp.csr_matrix = check_matrix(X=uim_train, format="csr", dtype=np.float32)
+        self._uim_train: sp.csr_matrix = check_matrix(
+            X=uim_train, format="csr", dtype=np.float32
+        )
         self._alpha: float = 0.0
         self._sign: int = 1
-        self._weighted_user_profile_type: EWeightedUserProfileType = EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
+        self._weighted_user_profile_type: EWeightedUserProfileType = (
+            EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
+        )
 
         self.trained_recommender = trained_recommender
 
@@ -150,35 +166,51 @@ class BaseWeightedUserProfileRecommender(AbstractExtendedBaseRecommender, ABC):
         **kwargs,
     ) -> None:
         assert sign == 1 or sign == -1
-        assert alpha >= 0.
+        assert alpha >= 0.0
 
         self._alpha = alpha
         self._sign = sign
-        self._weighted_user_profile_type = EWeightedUserProfileType(weighted_user_profile_type)
+        self._weighted_user_profile_type = EWeightedUserProfileType(
+            weighted_user_profile_type
+        )
 
-        if EWeightedUserProfileType.ONLY_IMPRESSIONS == self._weighted_user_profile_type:
+        if (
+            EWeightedUserProfileType.ONLY_IMPRESSIONS
+            == self._weighted_user_profile_type
+        ):
             sparse_user_profile: sp.csr_matrix = self._uim_train.copy()
             sparse_user_profile.eliminate_zeros()
 
-        elif EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS == self._weighted_user_profile_type:
-            sp_impressions_profile = compute_difference_between_impressions_and_interactions(
-                uim=self._uim_train,
-                urm=self.URM_train,
+        elif (
+            EWeightedUserProfileType.INTERACTIONS_AND_IMPRESSIONS
+            == self._weighted_user_profile_type
+        ):
+            sp_impressions_profile = (
+                compute_difference_between_impressions_and_interactions(
+                    uim=self._uim_train,
+                    urm=self.URM_train,
+                )
             )
 
-            sparse_user_profile = (
-                self.URM_train + (self._sign * self._alpha * sp_impressions_profile)
+            sparse_user_profile = self.URM_train + (
+                self._sign * self._alpha * sp_impressions_profile
             )
             sparse_user_profile.eliminate_zeros()
 
         else:
-            raise ValueError(f"Invalid {weighted_user_profile_type}. Valid values are {list(EWeightedUserProfileType)}.")
+            raise ValueError(
+                f"Invalid {weighted_user_profile_type}. Valid values are {list(EWeightedUserProfileType)}."
+            )
 
         sp_similarity = getattr(self.trained_recommender, self.ATTR_NAME_W_SPARSE)
 
         format = "csr" if sp.issparse(sp_similarity) else "npy"
-        self._sparse_similarity = check_matrix(X=sp_similarity, format=format, dtype=np.float32)
-        self._sparse_user_profile = check_matrix(X=sparse_user_profile, format="csr", dtype=np.float32)
+        self._sparse_similarity = check_matrix(
+            X=sp_similarity, format=format, dtype=np.float32
+        )
+        self._sparse_user_profile = check_matrix(
+            X=sparse_user_profile, format="csr", dtype=np.float32
+        )
 
     def save_model(
         self,
@@ -197,25 +229,23 @@ class BaseWeightedUserProfileRecommender(AbstractExtendedBaseRecommender, ABC):
                 "_weighted_user_profile_type": self._weighted_user_profile_type,
                 "_sparse_user_profile": self._sparse_user_profile,
                 "_sparse_similarity": self._sparse_similarity,
-            }
+            },
         )
 
     def validate_load_trained_recommender(self, *args, **kwargs) -> None:
-        assert hasattr(self, "_alpha") and self._alpha > 0.
+        assert hasattr(self, "_alpha") and self._alpha > 0.0
         assert hasattr(self, "_sign") and (self._sign == -1 or self._sign == 1)
         assert hasattr(self, "_weighted_user_profile_type")
         assert hasattr(self, "_sparse_similarity") and self._sparse_similarity.nnz > 0
-        assert hasattr(self, "_sparse_user_profile") and self._sparse_user_profile.nnz > 0
+        assert (
+            hasattr(self, "_sparse_user_profile") and self._sparse_user_profile.nnz > 0
+        )
 
         self._sparse_similarity = check_matrix(
-            X=self._sparse_similarity,
-            format="csr",
-            dtype=np.float32
+            X=self._sparse_similarity, format="csr", dtype=np.float32
         )
         self._sparse_user_profile = check_matrix(
-            X=self._sparse_user_profile,
-            format="csr",
-            dtype=np.float32
+            X=self._sparse_user_profile, format="csr", dtype=np.float32
         )
 
 
@@ -234,13 +264,17 @@ class ItemWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
             trained_recommender=trained_recommender,
         )
 
-        if not isinstance(self.trained_recommender, BaseItemSimilarityMatrixRecommender):
+        if not isinstance(
+            self.trained_recommender, BaseItemSimilarityMatrixRecommender
+        ):
             raise AttributeError(
                 f"Cannot weight user profiles on the recommender {trained_recommender} as it does not inherit from "
                 f"the class 'BaseItemSimilarityMatrixRecommender'."
             )
 
-        self.RECOMMENDER_NAME = f"ItemWeightedUserProfileRecommender_{trained_recommender.RECOMMENDER_NAME}"
+        self.RECOMMENDER_NAME = (
+            f"ItemWeightedUserProfileRecommender_{trained_recommender.RECOMMENDER_NAME}"
+        )
 
     def _compute_item_score(
         self,
@@ -256,9 +290,11 @@ class ItemWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
         num_score_items: int = self.n_items
 
         # Create the scores only for the users inside `user_id_array`
+        # Apparently, this already returns a numpy array, so the call to .toarray() is not needed anymore. Probably happened due to an update on Scipy or Numpy.
         item_scores_all = self._sparse_user_profile[user_id_array, :].dot(
             self._sparse_similarity,
-        ).toarray()
+        )
+        # ).toarray()
         assert (num_score_users, num_score_items) == item_scores_all.shape
 
         # In case we're asked to compute the similarity only on a subset of items, then, we create a matrix of -inf
@@ -283,10 +319,9 @@ class ItemWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
 
         trained_recommender = kwargs["trained_recommender"]
 
-        instance_has_item_similarity = (
-            isinstance(trained_recommender, BaseItemSimilarityMatrixRecommender)
-            and hasattr(trained_recommender, cls.ATTR_NAME_W_SPARSE)
-        )
+        instance_has_item_similarity = isinstance(
+            trained_recommender, BaseItemSimilarityMatrixRecommender
+        ) and hasattr(trained_recommender, cls.ATTR_NAME_W_SPARSE)
 
         return instance_has_item_similarity
 
@@ -306,13 +341,17 @@ class UserWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
             trained_recommender=trained_recommender,
         )
 
-        if not isinstance(self.trained_recommender, BaseUserSimilarityMatrixRecommender):
+        if not isinstance(
+            self.trained_recommender, BaseUserSimilarityMatrixRecommender
+        ):
             raise AttributeError(
                 f"Cannot weight user profiles on the recommender {trained_recommender} as it does not inherit from "
                 f"the class 'BaseUserSimilarityMatrixRecommender'."
             )
 
-        self.RECOMMENDER_NAME = f"UserWeightedUserProfileRecommender_{trained_recommender.RECOMMENDER_NAME}"
+        self.RECOMMENDER_NAME = (
+            f"UserWeightedUserProfileRecommender_{trained_recommender.RECOMMENDER_NAME}"
+        )
 
     def _compute_item_score(
         self,
@@ -328,9 +367,11 @@ class UserWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
         num_score_items: int = self.n_items
 
         # Create the scores only for the users inside `user_id_array`
-        item_scores_all = self._sparse_similarity[user_id_array, :].dot(
-            self._sparse_user_profile
-        ).toarray()
+        item_scores_all = (
+            self._sparse_similarity[user_id_array, :]
+            .dot(self._sparse_user_profile)
+            .toarray()
+        )
         assert (num_score_users, num_score_items) == item_scores_all.shape
 
         # In case we're asked to compute the similarity only on a subset of items, then, we create a matrix of -inf
@@ -355,9 +396,8 @@ class UserWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
 
         trained_recommender = kwargs["trained_recommender"]
 
-        instance_has_user_similarity = (
-            isinstance(trained_recommender, BaseUserSimilarityMatrixRecommender)
-            and hasattr(trained_recommender, cls.ATTR_NAME_W_SPARSE)
-        )
+        instance_has_user_similarity = isinstance(
+            trained_recommender, BaseUserSimilarityMatrixRecommender
+        ) and hasattr(trained_recommender, cls.ATTR_NAME_W_SPARSE)
 
         return instance_has_user_similarity
