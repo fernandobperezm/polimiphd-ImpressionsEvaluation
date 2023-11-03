@@ -1,4 +1,5 @@
 import itertools
+import logging
 import os
 from enum import Enum
 from typing import (
@@ -38,15 +39,19 @@ from recsys_framework_extensions.recommenders.graph_based.light_gcn import (
 )
 from recsys_framework_extensions.recommenders.graph_based.p3_alpha import (
     SearchHyperParametersP3AlphaRecommender,
+    ExtendedP3AlphaRecommender,
 )
 from recsys_framework_extensions.recommenders.graph_based.rp3_beta import (
     SearchHyperParametersRP3BetaRecommender,
+    ExtendedRP3BetaRecommender,
 )
 from typing_extensions import ParamSpec
 
 from impressions_evaluation.impression_recommenders.graph_based.lightgcn import (
     ImpressionsDirectedLightGCNRecommender,
     ImpressionsProfileLightGCNRecommender,
+    ImpressionsProfileWithFrequencyLightGCNRecommender,
+    ImpressionsDirectedWithFrequencyLightGCNRecommender,
 )
 from impressions_evaluation.impression_recommenders.graph_based.p3_alpha import (
     ImpressionsDirectedP3AlphaRecommender,
@@ -103,6 +108,9 @@ from impressions_evaluation.impression_recommenders.user_profile.weighted import
     ItemWeightedUserProfileRecommender,
     SearchHyperParametersWeightedUserProfileRecommender,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class ImpressionsFeatures(Enum):
@@ -191,6 +199,10 @@ class RecommenderImpressions(Enum):
     LIGHT_GCN_ONLY_IMPRESSIONS = "LIGHT_GCN_ONLY_IMPRESSIONS"
     LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS = (
         "LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS"
+    )
+    LIGHT_GCN_ONLY_IMPRESSIONS_FREQUENCY = "LIGHT_GCN_ONLY_IMPRESSIONS_FREQUENCY"
+    LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY = (
+        "LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY"
     )
     P3_ALPHA_ONLY_IMPRESSIONS = "P3_ALPHA_ONLY_IMPRESSIONS"
     P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS = (
@@ -635,11 +647,13 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
     ),
     RecommenderBaseline.P3_ALPHA: ExperimentRecommender(
         recommender=recommenders.P3alphaRecommender,
+        # recommender=ExtendedP3AlphaRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=950,
     ),
     RecommenderBaseline.RP3_BETA: ExperimentRecommender(
         recommender=recommenders.RP3betaRecommender,
+        # recommender=ExtendedRP3BetaRecommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=950,
     ),
@@ -833,6 +847,20 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
         priority=45,
         use_gpu=False,
         do_early_stopping=False,
+    ),
+    RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS_FREQUENCY: ExperimentRecommender(
+        recommender=ImpressionsProfileWithFrequencyLightGCNRecommender,
+        search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
+        priority=40,
+        use_gpu=True,
+        do_early_stopping=True,
+    ),
+    RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY: ExperimentRecommender(
+        recommender=ImpressionsDirectedWithFrequencyLightGCNRecommender,
+        search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
+        priority=40,
+        use_gpu=True,
+        do_early_stopping=True,
     ),
 }
 
@@ -1172,13 +1200,13 @@ def get_evaluators(
 
 
 def ensure_datasets_exist(
-    experiment_cases_interface: ExperimentCasesInterface,
+    to_use_benchmarks: list[Benchmarks],
 ) -> None:
     """
     Public method that will try to load a dataset. If the splits are not created then it will create the
     splits accordingly. The dataset processing parameters are given by the `config` on the benchmark mappers.
     """
-    for benchmark in experiment_cases_interface.benchmarks:
+    for benchmark in to_use_benchmarks:
         experiment_benchmark = MAPPER_AVAILABLE_BENCHMARKS[benchmark]
 
         benchmark_reader = get_reader_from_benchmark(
@@ -1195,19 +1223,24 @@ def ensure_datasets_exist(
 
 
 def compute_and_plot_popularity_of_datasets(
-    experiments_interface: ExperimentCasesInterface,
+    to_use_benchmarks: list[Benchmarks],
+    to_use_hyper_parameters: list[EHyperParameterTuningParameters],
 ) -> None:
     """
-    Public method that will plot the popularity of data splits. Currently untested.
+    Public method that will plot the popularity of data splits.
     """
     from Utils.plot_popularity import plot_popularity_bias, save_popularity_statistics
 
-    for experiment_case in experiments_interface.experiment_cases:
-        experiment_benchmark = MAPPER_AVAILABLE_BENCHMARKS[experiment_case.benchmark]
+    benchmark: Benchmarks
+    hyper_parameters: EHyperParameterTuningParameters
+    for benchmark, hyper_parameters in itertools.product(
+        to_use_benchmarks,
+        to_use_hyper_parameters,
+        repeat=1,
+    ):
+        experiment_benchmark = MAPPER_AVAILABLE_BENCHMARKS[benchmark]
         experiment_hyper_parameter_tuning_parameters = (
-            MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-                experiment_case.hyper_parameter_tuning_parameters
-            ]
+            MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[hyper_parameters]
         )
 
         dataset_reader = get_reader_from_benchmark(
@@ -1343,7 +1376,7 @@ def compute_and_plot_popularity_of_datasets(
                 URM_object_list=matrices,
                 URM_name_list=matrices_names,
                 output_file_path=os.path.join(
-                    output_folder, f"dataset_popularity-{name}.tex"
+                    output_folder, f"dataset_popularity-{name}"
                 ),
             )
 
@@ -1365,57 +1398,14 @@ def compute_and_plot_popularity_of_datasets(
                 sort_on_all=True,
             )
 
-        # # Interactions plotting.
-        # urm_splits = loaded_dataset.get_urm_splits(
-        #     evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
-        # )
-        # plot_popularity_bias(
-        #     URM_object_list=[
-        #         urm_splits.sp_urm_train,
-        #         urm_splits.sp_urm_validation,
-        #         urm_splits.sp_urm_test,
-        #     ],
-        #     URM_name_list=["Train", "Validation", "Test"],
-        #     output_img_path=os.path.join(output_folder, "interactions"),
-        #     sort_on_all=False,
-        # )
-        #
-        # plot_popularity_bias(
-        #     URM_object_list=[
-        #         urm_splits.sp_urm_train,
-        #         urm_splits.sp_urm_validation,
-        #         urm_splits.sp_urm_test,
-        #     ],
-        #     URM_name_list=["Train", "Validation", "Test"],
-        #     output_img_path=os.path.join(output_folder, "interactions_sorted"),
-        #     sort_on_all=True,
-        # )
-        #
-        # # Impressions plotting
-        # uim_splits = loaded_dataset.get_uim_splits(
-        #     evaluation_strategy=experiment_hyper_parameter_tuning_parameters.evaluation_strategy,
-        # )
-        # plot_popularity_bias(
-        #     URM_object_list=[
-        #         uim_splits.sp_uim_train,
-        #         uim_splits.sp_uim_validation,
-        #         uim_splits.sp_uim_test,
-        #     ],
-        #     URM_name_list=["Train", "Validation", "Test"],
-        #     output_img_path=os.path.join(output_folder, "impressions"),
-        #     sort_on_all=False,
-        # )
-        #
-        # plot_popularity_bias(
-        #     URM_object_list=[
-        #         uim_splits.sp_uim_train,
-        #         uim_splits.sp_uim_validation,
-        #         uim_splits.sp_uim_test,
-        #     ],
-        #     URM_name_list=["Train", "Validation", "Test"],
-        #     output_img_path=os.path.join(output_folder, "impressions_sorted"),
-        #     sort_on_all=True,
-        # )
+            logger.info(
+                "Processed popularity of the '%(dataset)s' dataset, matrix '%(matrix_name)s'. Plots and popularity exported to folder '%(folder)s'",
+                {
+                    "dataset": benchmark.value,
+                    "matrix_name": name,
+                    "folder": output_folder,
+                },
+            )
 
 
 def get_feature_key_by_benchmark(

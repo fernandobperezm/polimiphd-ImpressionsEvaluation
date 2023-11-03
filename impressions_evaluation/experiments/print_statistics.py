@@ -382,6 +382,12 @@ def _print_dataset_experiments_statistics(
     )
 
     with pd.option_context("max_colwidth", 1000):
+        df_results.to_parquet(
+            path=os.path.join(folder_path, "dataset_statistics.parquet"),
+            engine="pyarrow",
+            compression=None,
+            index=True,
+        )
         df_results.to_csv(
             path_or_buf=os.path.join(folder_path, "dataset_statistics.csv"),
             index=True,
@@ -407,21 +413,22 @@ def _print_dataset_experiments_statistics(
 
 
 def print_datasets_statistics(
-    experiment_cases_interface: commons.ExperimentCasesInterface,
+    to_use_benchmarks: list[commons.Benchmarks],
+    to_use_hyper_parameters: list[commons.EHyperParameterTuningParameters],
 ) -> None:
     printed_experiments: set[
         tuple[commons.Benchmarks, commons.EHyperParameterTuningParameters]
     ] = set()
 
-    baseline_benchmarks = experiment_cases_interface.to_use_benchmarks
-    baseline_hyper_parameters = (
-        experiment_cases_interface.to_use_hyper_parameter_tuning_parameters
-    )
-
     results = []
 
+    benchmark: commons.Benchmarks
+    hyper_parameters: commons.EHyperParameterTuningParameters
+
     for benchmark, hyper_parameters in itertools.product(
-        baseline_benchmarks, baseline_hyper_parameters
+        to_use_benchmarks,
+        to_use_hyper_parameters,
+        repeat=1,
     ):
         if (benchmark, hyper_parameters) in printed_experiments:
             continue
@@ -479,3 +486,140 @@ def print_datasets_statistics(
         )
 
     logger.info(f"Successfully finished exporting statistics of datasets.")
+
+
+def print_datasets_statistics_thesis(
+    to_use_benchmarks: list[commons.Benchmarks],
+    to_use_hyper_parameters: list[commons.EHyperParameterTuningParameters],
+) -> None:
+    printed_experiments: set[
+        tuple[commons.Benchmarks, commons.EHyperParameterTuningParameters]
+    ] = set()
+
+    results = []
+
+    benchmark: commons.Benchmarks
+    hyper_parameters: commons.EHyperParameterTuningParameters
+
+    for benchmark, hyper_parameters in itertools.product(
+        to_use_benchmarks,
+        to_use_hyper_parameters,
+        repeat=1,
+    ):
+        if (benchmark, hyper_parameters) in printed_experiments:
+            continue
+        else:
+            printed_experiments.add((benchmark, hyper_parameters))
+
+        experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[benchmark]
+        experiment_hyper_parameters = (
+            commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[hyper_parameters]
+        )
+
+        folder_path_export = DIR_RESULTS_DATASETS_STATISTICS_BENCHMARK.format(
+            benchmark=experiment_benchmark.benchmark.value,
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+        )
+
+        filename = "dataset_statistics.parquet"
+
+        df_results = pd.read_parquet(
+            path=os.path.join(folder_path_export, filename),
+            engine="pyarrow",
+        )
+        results.append(df_results)
+
+    df_results = pd.concat(
+        objs=results,
+        axis=0,
+        ignore_index=True,
+    )
+
+    columns_to_export = [
+        "matrix_name",
+        "dataset",
+        "nnz",
+        "num_rows",
+        "num_col",
+        "num_unique_users",
+        "num_unique_items",
+        "density",
+        "user_profile_length_mean",
+        "user_profile_length_std",
+        "user_profile_length_median",
+        "user_profile_length_skew",
+        "user_profile_length_kurt",
+        "user_profile_length_sum",
+        "user_profile_length_gini_index",
+        "item_profile_length_mean",
+        "item_profile_length_std",
+        "item_profile_length_median",
+        "item_profile_length_skew",
+        "item_profile_length_kurt",
+        "item_profile_length_sum",
+        "item_profile_length_gini_index",
+    ]
+    matrices_to_export = ["urm_all", "uim_all"]
+
+    df_results = df_results[df_results["matrix_name"].isin(matrices_to_export)][
+        columns_to_export
+    ]
+
+    df_results_transposed = df_results.set_index(["matrix_name", "dataset"]).transpose()
+
+    folder_path_export = DIR_RESULTS_DATASETS_STATISTICS
+    os.makedirs(folder_path_export, exist_ok=True)
+
+    with pd.option_context("max_colwidth", 1000):
+        df_results.to_csv(
+            path_or_buf=os.path.join(
+                folder_path_export, "thesis_datasets_statistics.csv"
+            ),
+            index=True,
+            header=True,
+            encoding="utf-8",
+            na_rep="-",
+            sep=";",
+            compression=None,
+            decimal=",",
+        )
+        df_results.to_latex(
+            buf=os.path.join(folder_path_export, "thesis_datasets_statistics.tex"),
+            index=True,
+            header=True,
+            escape=False,
+            float_format="{:.4f}".format,
+            encoding="utf-8",
+            na_rep="-",
+            longtable=True,
+        )
+
+        df_results_transposed.to_csv(
+            path_or_buf=os.path.join(
+                folder_path_export, "thesis_datasets_statistics_transposed.csv"
+            ),
+            index=True,
+            header=True,
+            encoding="utf-8",
+            na_rep="-",
+            sep=";",
+            compression=None,
+            decimal=",",
+        )
+        df_results_transposed.to_latex(
+            buf=os.path.join(
+                folder_path_export, "thesis_datasets_statistics_transposed.tex"
+            ),
+            index=True,
+            header=True,
+            escape=False,
+            float_format="{:.4f}".format,
+            encoding="utf-8",
+            na_rep="-",
+            longtable=True,
+        )
+
+    logger.info(
+        f"Successfully finished exporting statistics of datasets to folder '%(folder)s'",
+        {"folder": folder_path_export},
+    )
