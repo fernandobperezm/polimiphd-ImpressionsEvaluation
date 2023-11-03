@@ -1,17 +1,13 @@
 import itertools
 import os
-import pdb
 from typing import Optional, Any
 
-import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import paxplot
-import tikzplotlib
 from recsys_framework_extensions.data.io import DataIO
 from impressions_evaluation.experiments import commons
-from impressions_evaluation.experiments import print_results
 from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES
 from impressions_evaluation.readers.ContentWiseImpressions.statistics import (
     plot_histogram,
@@ -33,15 +29,19 @@ def plot_parallel_coordinates(
     col_data: str,
     name: str,
 ) -> None:
+    plt.style.use("ggplot")
+
     columns = df.columns.tolist()
 
     # Data in ascending order + the colormap ensures that better values are highlighted in darker colors.
-    data = df.sort_values(
-        by=col_data, ascending=True, ignore_index=True, inplace=False
-    ).copy()  #
+    arr_data = (
+        df.sort_values(by=col_data, ascending=True, ignore_index=True, inplace=False)
+        .copy()
+        .to_numpy()
+    )
 
     paxfig = paxplot.pax_parallel(n_axes=len(columns))
-    paxfig.plot(data.to_numpy())
+    paxfig.plot(arr_data)
 
     color_col = len(columns) - 1
     paxfig.add_colorbar(
@@ -68,29 +68,7 @@ def plot_parallel_coordinates(
             labels.append(str(val_str))
         paxfig.set_ticks(ax_idx=col_idx, ticks=ticks, labels=labels)
 
-    # paxfig.plot(
-    #     data.to_numpy(), line_kwargs={"alpha": 0.3, "color": "grey", "zorder": 0}
-    # )
-
     paxfig.set_labels(columns)
-
-    # ticks_similarity = []
-    # labels_similarity = []
-    # for sim, idx in map_similarity_to_idx.items():
-    #     ticks_similarity.append(idx)
-    #     labels_similarity.append(sim)
-    # paxfig.set_ticks(ax_idx=2, ticks=ticks_similarity, labels=labels_similarity)
-
-    # ticks_feature = []
-    # labels_feature = []
-    # for feat, idx in map_feature_to_idx.items():
-    #     ticks_feature.append(idx)
-    #     labels_feature.append(feat)
-    # paxfig.set_ticks(ax_idx=5, ticks=ticks_feature, labels=labels_feature)
-
-    # fig = paxfig.figure
-    # tikzplotlib.clean_figure(fig=fig)  # This method throws an error.
-    # tikzplotlib.clean_figure(fig=paxfig)  # This method throws an error.
 
     folder_to_save_tikz = os.path.join(dir_results, "tikz", "")
     folder_to_save_png = os.path.join(dir_results, "png", "")
@@ -108,21 +86,15 @@ def plot_parallel_coordinates(
         os.path.join(folder_to_save_pdf, f"{filename}.pdf"),
         transparent=False,
     )
-    # tikzplotlib generates weird figures. Will leave it commented and will try to fix it later.
-    # tikzplotlib.save(
-    #     os.path.join(folder_to_save_tikz, f"{filename}.tikz"),  # cannot be kwarg
-    #     paxfig,  # try this one if fig does not work.
-    #     encoding="utf-8",
-    #     textsize=9,
-    # )
 
     plt.close(paxfig)
 
 
-def distribution_hyper_parameters(
+def _load_single_dataframe_hyper_parameters(
     benchmarks: list[commons.Benchmarks],
     hyper_parameters: list[commons.EHyperParameterTuningParameters],
-) -> None:
+    dir_parquet_results: str,
+) -> pd.DataFrame:
     results_hyper_parameters = []
     for benchmark, hyper_parameter in itertools.product(benchmarks, hyper_parameters):
         experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[benchmark]
@@ -130,7 +102,7 @@ def distribution_hyper_parameters(
             commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[hyper_parameter]
         )
 
-        folder_path_results_to_load = print_results.DIR_PARQUET_RESULTS.format(
+        folder_path_results_to_load = dir_parquet_results.format(
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
@@ -144,16 +116,56 @@ def distribution_hyper_parameters(
 
         results_hyper_parameters.append(df_results_hyper_parameters)
 
-    folder_path_results_to_export = DIR_ANALYSIS_HYPER_PARAMETERS
-    os.makedirs(folder_path_results_to_export, exist_ok=True)
-
     df_results_hyper_parameters = pd.concat(
         objs=results_hyper_parameters,
         axis=0,
         ignore_index=True,  # The index should be numeric and have no special meaning.
     )
 
-    print(df_results_hyper_parameters)
+    return df_results_hyper_parameters
+
+
+def distribution_hyper_parameters_plug_in_impression_aware_recommenders(
+    benchmarks: list[commons.Benchmarks],
+    hyper_parameters: list[commons.EHyperParameterTuningParameters],
+    dir_parquet_results: str,
+    dir_analysis_hyper_parameters: str,
+) -> None:
+    # results_hyper_parameters = []
+    # for benchmark, hyper_parameter in itertools.product(benchmarks, hyper_parameters):
+    #     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[benchmark]
+    #     experiment_hyper_parameters = (
+    #         commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[hyper_parameter]
+    #     )
+    #
+    #     folder_path_results_to_load = dir_parquet_results.format(
+    #         benchmark=experiment_benchmark.benchmark.value,
+    #         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+    #     )
+    #
+    #     df_results_hyper_parameters = pd.read_parquet(
+    #         path=os.path.join(
+    #             folder_path_results_to_load, "hyper-parameters-non_processed.parquet"
+    #         ),
+    #         engine="pyarrow",
+    #     )
+    #
+    #     results_hyper_parameters.append(df_results_hyper_parameters)
+    #
+    # df_results_hyper_parameters = pd.concat(
+    #     objs=results_hyper_parameters,
+    #     axis=0,
+    #     ignore_index=True,  # The index should be numeric and have no special meaning.
+    # )
+
+    df_results_hyper_parameters = _load_single_dataframe_hyper_parameters(
+        benchmarks=benchmarks,
+        hyper_parameters=hyper_parameters,
+        dir_parquet_results=dir_parquet_results,
+    )
+
+    folder_path_results_to_export = dir_analysis_hyper_parameters
+    os.makedirs(folder_path_results_to_export, exist_ok=True)
 
     # "benchmark", "model_type", "hyperparameter_name"
     unique_benchmarks = df_results_hyper_parameters["benchmark"].unique().tolist()
@@ -235,6 +247,154 @@ def distribution_hyper_parameters(
 
         name = (
             f"analysis_hyperparameters-{benchmark}-{model_type}-{hyper_parameter_name}"
+        )
+
+        if "float" in hyper_parameter_value_dtype:
+            print(f"PRINTING FLOAT-HIST FOR {name}")
+
+            plot_histogram(
+                df=df,
+                x_data=x_data,
+                x_label=x_label,
+                y_label=y_label,
+                name=name,
+                dir_results=folder_path_results_to_export,
+            )
+        elif "int" in hyper_parameter_value_dtype:
+            print(f"PRINTING INT-BAR FOR {name}")
+
+            df_pop, df_pop_perc = compute_popularity(df=df, column=x_data)
+
+            df_pop = df_pop.sort_values(
+                by=x_data,
+                ascending=True,
+                inplace=False,
+            )
+
+            plot_barplot(
+                df=df_pop,
+                x_data=x_data,
+                y_data="count",
+                x_label=x_label,
+                y_label=y_label,
+                name=name,
+                dir_results=folder_path_results_to_export,
+                ticks_labels=None,
+                log=False,
+                align="center",
+            )
+        elif "string" in hyper_parameter_value_dtype:
+            print(f"PRINTING STR-BAR FOR {name}")
+
+            df_pop, df_pop_perc = compute_popularity(df=df, column=x_data)
+
+            df_pop = df_pop.sort_values(by=x_data, ascending=True, inplace=False)
+
+            plot_barplot(
+                df=df_pop,
+                x_data=x_data,
+                y_data="count",
+                x_label=x_label,
+                y_label=y_label,
+                name=name,
+                dir_results=folder_path_results_to_export,
+                ticks_labels=None,
+                log=False,
+                align="center",
+            )
+
+            continue
+        else:
+            print(f"FERNANDO-DEBUGGER|COMPLETE THIS - ELSE.")
+            continue
+
+
+def distribution_hyper_parameters_graph_based_impression_aware_recommenders(
+    benchmarks: list[commons.Benchmarks],
+    hyper_parameters: list[commons.EHyperParameterTuningParameters],
+    dir_parquet_results: str,
+    dir_analysis_hyper_parameters: str,
+) -> None:
+    df_results_hyper_parameters = _load_single_dataframe_hyper_parameters(
+        benchmarks=benchmarks,
+        hyper_parameters=hyper_parameters,
+        dir_parquet_results=dir_parquet_results,
+    )
+
+    folder_path_results_to_export = dir_analysis_hyper_parameters
+    os.makedirs(folder_path_results_to_export, exist_ok=True)
+
+    column_benchmark = "benchmark"
+    column_model_base = "model_base"
+    column_hyperparameter_name = "hyperparameter_name"
+    column_hyperparameter_value = "hyperparameter_value"
+
+    # Make the `top_k` hyper-parameter between baseline and impression-aware the same.
+    df_results_hyper_parameters[
+        column_hyperparameter_name
+    ] = df_results_hyper_parameters[column_hyperparameter_name].map(
+        {"top_k": "top_k", "topK": "top_k"}
+    )
+
+    # "benchmark", "model_base", "hyperparameter_name"
+    unique_benchmarks = df_results_hyper_parameters[column_benchmark].unique().tolist()
+    unique_model_bases = (
+        df_results_hyper_parameters[column_model_base].unique().tolist()
+    )
+    unique_hyperparameter_names = (
+        df_results_hyper_parameters[column_hyperparameter_name].unique().tolist()
+    )
+
+    dtypes = {
+        "P3alpha": {
+            "top_k": np.int32,
+            "alpha": np.float32,
+            "normalize_similarity": pd.BooleanDtype(),
+        },
+        "RP3beta": {
+            "top_k": np.int32,
+            "alpha": np.float32,
+            "beta": np.float32,
+            "normalize_similarity": pd.BooleanDtype(),
+        },
+    }
+
+    benchmark: str
+    model_base: str
+    hyper_parameter_name: str
+
+    for benchmark, model_base, hyper_parameter_name in itertools.product(
+        unique_benchmarks, unique_model_bases, unique_hyperparameter_names
+    ):
+        df = df_results_hyper_parameters[
+            (df_results_hyper_parameters[column_benchmark] == benchmark)
+            & (df_results_hyper_parameters[column_model_base] == model_base)
+            & (
+                df_results_hyper_parameters[column_hyperparameter_name]
+                == hyper_parameter_name
+            )
+        ].copy()
+
+        if df.shape[0] == 0:
+            continue
+
+        col_dtype = dtypes[model_base][hyper_parameter_name]
+        try:
+            df = df.astype({column_hyperparameter_value: col_dtype})
+        except ValueError as e:
+            print(
+                f"COULD NOT CONVERT COLUMN {column_hyperparameter_value} TO SPECIFIED DTYPE {str(col_dtype)}. CONVERTING TO STRING."
+            )
+            df = df.astype({column_hyperparameter_value: pd.StringDtype()})
+
+        hyper_parameter_value_dtype = df[column_hyperparameter_value].dtype.name
+
+        x_data = column_hyperparameter_value
+        x_label = f"{model_base}-{hyper_parameter_name}"
+        y_label = "Frequency"
+
+        name = (
+            f"analysis_hyperparameters-{benchmark}-{model_base}-{hyper_parameter_name}"
         )
 
         if "float" in hyper_parameter_value_dtype:
