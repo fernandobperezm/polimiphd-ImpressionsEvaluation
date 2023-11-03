@@ -68,13 +68,17 @@ from recsys_framework_extensions.data.mixins import (
     DatasetConfigBackupMixin,
 )
 from recsys_framework_extensions.data.reader import DataReader
-from recsys_framework_extensions.data.sparse import create_sparse_matrix_from_dataframe
+from recsys_framework_extensions.data.sparse import (
+    create_sparse_matrix_from_dataframe,
+    ensure_leave_last_k_out_on_test_sparse_matrix,
+)
 from recsys_framework_extensions.data.splitter import (
     remove_duplicates_in_interactions,
     remove_users_without_min_number_of_interactions,
     E_KEEP,
     filter_impressions_by_interactions_index,
     split_sequential_train_test_by_num_records_on_test,
+    ensure_num_records_on_dataframe,
 )
 from recsys_framework_extensions.decorators import timeit
 from recsys_framework_extensions.decorators import typed_cache
@@ -311,9 +315,16 @@ class MINDSmallConfig(MixinSHA256Hash):
     split, and compute features on it.
     """
 
-    data_folder = os.path.join(
-        os.getcwd(),
+    default_data_folder = os.path.join(
+        os.getcwd(),  # "/media/hdd/impressions-datasets",
         "data",
+    )
+    env_data_folder = os.getenv(
+        "DIR_DATA",
+        default_data_folder,
+    )
+    data_folder = os.path.join(
+        env_data_folder,
         "MIND-SMALL",
         "",
     )
@@ -393,9 +404,16 @@ class MINDSmallConfig(MixinSHA256Hash):
 
 @attrs.define(kw_only=True, frozen=True, slots=False)
 class MINDLargeConfig(MINDSmallConfig):
-    data_folder = os.path.join(
-        os.getcwd(),
+    default_data_folder = os.path.join(
+        os.getcwd(),  # "/media/hdd/impressions-datasets",
         "data",
+    )
+    env_data_folder = os.getenv(
+        "DIR_DATA",
+        default_data_folder,
+    )
+    data_folder = os.path.join(
+        env_data_folder,
         "MIND-LARGE",
         "",
     )
@@ -968,6 +986,9 @@ class PandasMINDProcessedData(ParquetDataMixin, DatasetConfigBackupMixin):
         assert df_validation.shape[0] > 0
         assert df_train_validation.shape[0] > 0
         assert df_test.shape[0] > 0
+
+        logger.debug(f"{df_validation=}")
+        logger.debug(f"{df_test=}")
 
         return MINDSplits(
             df_train=df_train,
@@ -1592,12 +1613,28 @@ class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin, DatasetConfigBacku
             df_test,
         ) = self.data_loader_processed.leave_last_out_splits
 
+        ensure_num_records_on_dataframe(
+            df=df_validation,
+            users_column=self.users_column,
+            items_column=self.items_column,
+            num_records=1,
+        )
+        ensure_num_records_on_dataframe(
+            df=df_test,
+            users_column=self.users_column,
+            items_column=self.items_column,
+            num_records=1,
+        )
+
+        num_users = len(self.mapper_user_id_to_index)
+        num_items = len(self.mapper_item_id_to_index)
+
         sparse_matrices = []
-        for df_split in [
-            df_train,
-            df_validation,
-            df_train_validation,
-            df_test,
+        for df_split, validate_llo_k in [
+            (df_train, False),
+            (df_validation, True),
+            (df_train_validation, False),
+            (df_test, True),
         ]:
             urm_split = create_sparse_matrix_from_dataframe(
                 df=df_split,
@@ -1607,6 +1644,14 @@ class SparsePandasMINDData(SparseDataMixin, ParquetDataMixin, DatasetConfigBacku
                 mapper_user_id_to_index=self.mapper_user_id_to_index,
                 mapper_item_id_to_index=self.mapper_item_id_to_index,
             )
+
+            if validate_llo_k:
+                ensure_leave_last_k_out_on_test_sparse_matrix(
+                    csr_matrix=urm_split,
+                    k=1,
+                    num_users=num_users,
+                    num_items=num_items,
+                )
 
             sparse_matrices.append(urm_split)
 
