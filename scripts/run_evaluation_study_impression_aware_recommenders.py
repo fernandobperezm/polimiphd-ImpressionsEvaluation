@@ -19,10 +19,6 @@ from impressions_evaluation.experiments.print_results import (
     export_evaluation_results,
     DIR_PARQUET_RESULTS,
 )
-from impressions_evaluation.experiments.print_statistics import (
-    print_datasets_statistics,
-    print_datasets_statistics_thesis,
-)
 
 load_dotenv()
 
@@ -44,7 +40,6 @@ from impressions_evaluation.experiments.commons import (
     EHyperParameterTuningParameters,
     RecommenderBaseline,
     ExperimentCasesSignalAnalysisInterface,
-    compute_and_plot_popularity_of_datasets,
 )
 from impressions_evaluation.experiments.graph_based import (
     _run_collaborative_filtering_hyper_parameter_tuning,
@@ -110,12 +105,6 @@ class ConsoleArguments(Tap):
     print_evaluation_results: bool = False
     """Export to CSV and LaTeX the accuracy, beyond-accuracy, optimal hyper-parameters, and scalability metrics of 
     all tuned recommenders."""
-
-    print_datasets_statistics: bool = False
-    """Export to CSV statistics on the different sparse matrices existing for each dataset."""
-
-    plot_datasets_popularity: bool = False
-    """Creates plots depicting the popularity of each dataset split."""
 
     analyze_hyper_parameters: bool = False
     """TODO: fernando-debugger"""
@@ -336,7 +325,7 @@ if __name__ == "__main__":
 
     if input_flags.create_datasets:
         ensure_datasets_exist(
-            experiment_cases_interface=experiments_interface_baselines,
+            to_use_benchmarks=_TO_USE_BENCHMARKS,
         )
 
     if input_flags.include_baselines:
@@ -465,19 +454,6 @@ if __name__ == "__main__":
             metrics_to_optimize=metrics_to_optimize,
             cutoff_to_optimize=cutoff_to_optimize,
             dir_analysis_hyper_parameters=dir_analysis_hyper_parameters,
-        )
-
-    if input_flags.plot_datasets_popularity:
-        compute_and_plot_popularity_of_datasets(
-            experiments_interface=experiments_interface_baselines
-        )
-
-    if input_flags.print_datasets_statistics:
-        print_datasets_statistics(
-            experiment_cases_interface=experiments_interface_baselines,
-        )
-        print_datasets_statistics_thesis(
-            experiment_cases_interface=experiments_interface_baselines,
         )
 
     if input_flags.print_evaluation_results:
