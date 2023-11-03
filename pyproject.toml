@@ -23,7 +23,7 @@ path_token_json = "./token.json"
 use_processes = true
 num_workers = 6
 threads_per_worker = 1
-memory_limit = 0 # "30GiB" #0
+memory_limit = 0 # "30GiB"
 dashboard_address = ":8787"
 scheduler_port = 8786
 
@@ -62,17 +62,17 @@ powerlaw = "^1.5"
 paxplot = "^0.1.4b2"
 
 [tool.poetry.group.dev.dependencies]
-mypy = "^1.4.1"
-black = {extras = ["d"], version = "^23.3.0"}
-pytest = "^7.4.0"
+mypy = "^1.6.1"
+black = {extras = ["d"], version = "^23.10.1"}
+pytest = "^7.4.3"
 memory-profiler = "^0.61.0"
 types-toml = "^0.10.8.6"
-pylint = "^2.17.4"
-Faker = "^18.11.2"
-mock = "^5.0.2"
+pylint = "^3.0.2"
+Faker = "^19.13.0"
+mock = "^5.1.0"
 types-mock = "^5.0.0.7"
 jupyterlab = "^4.0.2"
-gpustat = "^1.1"
+gpustat = "^1.1.1"
 
 # How to include a script to build the package can be seen here: https://github.com/python-poetry/poetry/issues/11#issuecomment-379484540
 # example pyproject.toml: https://github.com/sdispater/pendulum/blob/master/pyproject.toml
