@@ -494,6 +494,7 @@ def plot_popularity(
     x_err: Optional[str] = None,
     y_err: Optional[str] = None,
 ) -> None:
+    plt.style.use("ggplot")
     # TODO: Add hot, middle, and long tail lines as in "Multistakeholder Recommender Systems" page 663, year 2022 Figure 2.
     #  This is, two lines, one at 80% and another at 60% interactions.
 
@@ -547,6 +548,8 @@ def plot_dates(
     y_err: Optional[str] = None,
     x_ticks: Optional[np.ndarray] = None,
 ) -> None:
+    plt.style.use("ggplot")
+
     fig: plt.Figure
     ax: plt.Axes
 
@@ -604,6 +607,8 @@ def plot_barplot(
     log: bool = False,
     align: Literal["center", "edge"] = "center",
 ) -> None:
+    plt.style.use("ggplot")
+
     fig: plt.Figure
     ax: plt.Axes
 
@@ -711,6 +716,8 @@ def plot_histogram(
 ) -> None:
     if bins is None:
         bins = 10
+
+    plt.style.use("ggplot")
 
     fig: plt.Figure
     ax: plt.Axes
