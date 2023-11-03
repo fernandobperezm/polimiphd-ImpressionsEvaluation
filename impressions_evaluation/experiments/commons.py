@@ -36,6 +36,7 @@ from recsys_framework_extensions.recommenders.base import (
 )
 from recsys_framework_extensions.recommenders.graph_based.light_gcn import (
     SearchHyperParametersLightGCNRecommender,
+    ExtendedLightGCNRecommender,
 )
 from recsys_framework_extensions.recommenders.graph_based.p3_alpha import (
     SearchHyperParametersP3AlphaRecommender,
@@ -711,6 +712,13 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
         recommender=recommenders.EASE_R_Recommender,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=500,
+    ),
+    RecommenderBaseline.LIGHT_GCN: ExperimentRecommender(
+        recommender=ExtendedLightGCNRecommender,
+        search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
+        priority=400,
+        use_gpu=True,
+        do_early_stopping=True,
     ),
     # IMPRESSIONS_FOLDING
     RecommenderFolded.FOLDED: ExperimentRecommender(

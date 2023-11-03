@@ -761,6 +761,7 @@ def _process_results_dataframe(
             .replace("Recommender", "")
             .replace("KNNCF", "KNN CF")
             .replace("CF", " ")
+            .replace("ElasticNet", "EN")
             # Remaining characters
             .replace("  ", "")
             .replace("_", "")
@@ -853,7 +854,11 @@ def _process_results_dataframe(
         if "NMF" in model_base:
             model_base_order = 7.0
 
-        if "SVD++" in model_base or "Funk SVD" in model_base:
+        if (
+            "MF SVDpp" in model_base
+            or "SVD++" in model_base
+            or "Funk SVD" in model_base
+        ):
             model_base_order = 8.0
         if "MF BPR" in model_base:
             model_base_order = 9.0
@@ -868,6 +873,9 @@ def _process_results_dataframe(
 
         if "LightFM" in model_base:
             model_base_order = 13.0
+
+        if "MultVAE" in model_base:
+            model_base_order = 14.0
 
         if "Last impression" in model_base:
             return 97.0
