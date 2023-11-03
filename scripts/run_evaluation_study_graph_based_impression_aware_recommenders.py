@@ -40,7 +40,6 @@ from impressions_evaluation.experiments.graph_based.results import (
 from impressions_evaluation.experiments.hyperparameters import (
     DIR_ANALYSIS_HYPER_PARAMETERS,
     plot_parallel_hyper_parameters_recommenders,
-    distribution_hyper_parameters_graph_based_impression_aware_recommenders,
 )
 
 
@@ -74,20 +73,20 @@ class ConsoleArguments(Tap):
 #                                            MAIN                                                  #
 ####################################################################################################
 ####################################################################################################
-_TO_USE_BENCHMARKS = [
+TO_USE_BENCHMARKS = [
     Benchmarks.ContentWiseImpressions,
     Benchmarks.MINDSmall,
     Benchmarks.FINNNoSlates,
 ]
 
 
-_TO_USE_RECOMMENDERS_BASELINES = [
+TO_USE_RECOMMENDERS_BASELINES = [
     RecommenderBaseline.P3_ALPHA,
     RecommenderBaseline.RP3_BETA,
     # RecommenderBaseline.LIGHT_GCN,
 ]
 
-_TO_USE_RECOMMENDERS_IMPRESSIONS = [
+TO_USE_RECOMMENDERS_IMPRESSIONS = [
     RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
     RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
     RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
@@ -96,7 +95,7 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS = [
     # RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS,
 ]
 
-_TO_USE_RECOMMENDERS_IMPRESSIONS_FREQUENCY = [
+TO_USE_RECOMMENDERS_IMPRESSIONS_FREQUENCY = [
     RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS_FREQUENCY,
     RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
     RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS_FREQUENCY,
@@ -105,24 +104,24 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_FREQUENCY = [
     # RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
 ]
 
-_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS = [
+TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS = [
     EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16,
 ]
 
-_TO_USE_TRAINING_FUNCTIONS_BASELINES = [
+TO_USE_TRAINING_FUNCTIONS_BASELINES = [
     _run_collaborative_filtering_hyper_parameter_tuning,
 ]
 
-_TO_USE_TRAINING_FUNCTIONS_PURE_IMPRESSIONS = [
+TO_USE_TRAINING_FUNCTIONS_PURE_IMPRESSIONS = [
     _run_pure_impressions_hyper_parameter_tuning,
 ]
 
-_TO_USE_TRAINING_FUNCTIONS_IMPRESSIONS_FREQUENCY = [
+TO_USE_TRAINING_FUNCTIONS_IMPRESSIONS_FREQUENCY = [
     _run_frequency_impressions_hyper_parameter_tuning,
 ]
 
 
-_TO_PRINT_RECOMMENDERS: tuple[
+TO_PRINT_RECOMMENDERS: tuple[
     list[Benchmarks],
     list[EHyperParameterTuningParameters],
     list[
@@ -133,8 +132,8 @@ _TO_PRINT_RECOMMENDERS: tuple[
         ]
     ],
 ] = (
-    _TO_USE_BENCHMARKS,
-    _TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+    TO_USE_BENCHMARKS,
+    TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
     [
         *[
             RecommenderBaseline.P3_ALPHA,
@@ -161,13 +160,13 @@ _TO_PRINT_RECOMMENDERS: tuple[
 )
 
 
-_TO_USE_BENCHMARKS_RESULTS = [
+TO_USE_BENCHMARKS_RESULTS = [
     Benchmarks.ContentWiseImpressions,
     Benchmarks.MINDSmall,
     Benchmarks.FINNNoSlates,
 ]
 
-_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS = [
+TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS = [
     EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16
 ]
 
@@ -181,24 +180,24 @@ if __name__ == "__main__":
     common_hyper_parameter_tuning_parameters = HyperParameterTuningParameters()
 
     experiments_interface_baselines = ExperimentCasesInterface(
-        to_use_benchmarks=_TO_USE_BENCHMARKS,
-        to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
-        to_use_recommenders=_TO_USE_RECOMMENDERS_BASELINES,
-        to_use_training_functions=_TO_USE_TRAINING_FUNCTIONS_BASELINES,
+        to_use_benchmarks=TO_USE_BENCHMARKS,
+        to_use_hyper_parameter_tuning_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        to_use_recommenders=TO_USE_RECOMMENDERS_BASELINES,
+        to_use_training_functions=TO_USE_TRAINING_FUNCTIONS_BASELINES,
     )
 
     experiments_impressions_interface = ExperimentCasesInterface(
-        to_use_benchmarks=_TO_USE_BENCHMARKS,
-        to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
-        to_use_recommenders=_TO_USE_RECOMMENDERS_IMPRESSIONS,
-        to_use_training_functions=_TO_USE_TRAINING_FUNCTIONS_PURE_IMPRESSIONS,
+        to_use_benchmarks=TO_USE_BENCHMARKS,
+        to_use_hyper_parameter_tuning_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        to_use_recommenders=TO_USE_RECOMMENDERS_IMPRESSIONS,
+        to_use_training_functions=TO_USE_TRAINING_FUNCTIONS_PURE_IMPRESSIONS,
     )
 
     experiments_impressions_frequency_interface = ExperimentCasesInterface(
-        to_use_benchmarks=_TO_USE_BENCHMARKS,
-        to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
-        to_use_recommenders=_TO_USE_RECOMMENDERS_IMPRESSIONS_FREQUENCY,
-        to_use_training_functions=_TO_USE_TRAINING_FUNCTIONS_IMPRESSIONS_FREQUENCY,
+        to_use_benchmarks=TO_USE_BENCHMARKS,
+        to_use_hyper_parameter_tuning_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        to_use_recommenders=TO_USE_RECOMMENDERS_IMPRESSIONS_FREQUENCY,
+        to_use_training_functions=TO_USE_TRAINING_FUNCTIONS_IMPRESSIONS_FREQUENCY,
     )
 
     create_necessary_folders(
@@ -208,7 +207,7 @@ if __name__ == "__main__":
 
     if input_flags.create_datasets:
         ensure_datasets_exist(
-            experiment_cases_interface=experiments_interface_baselines,
+            to_use_benchmarks=TO_USE_BENCHMARKS,
         )
 
     if input_flags.include_baselines:
@@ -238,14 +237,14 @@ if __name__ == "__main__":
         dir_parquet_results = DIR_PARQUET_RESULTS
 
         process_results(
-            results_interface=_TO_PRINT_RECOMMENDERS,
+            results_interface=TO_PRINT_RECOMMENDERS,
             dir_csv_results=dir_csv_results,
             dir_latex_results=dir_latex_results,
             dir_parquet_results=dir_parquet_results,
         )
         export_evaluation_results(
-            benchmarks=_TO_USE_BENCHMARKS,
-            hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+            benchmarks=TO_USE_BENCHMARKS,
+            hyper_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
         )
 
     if input_flags.analyze_hyper_parameters:
@@ -284,19 +283,9 @@ if __name__ == "__main__":
 
         dir_parquet_results = DIR_PARQUET_RESULTS
 
-        # No need to call the `distribution_hyper_parameters_graph_based_impression_aware_recommenders` function because
-        # we only have five values in each hyper-parameter. Not enough to create a distribution map.
-        # distribution_hyper_parameters_graph_based_impression_aware_recommenders(
-        #     benchmarks=_TO_USE_BENCHMARKS_RESULTS,
-        #     hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
-        #     dir_parquet_results=dir_parquet_results,
-        #     dir_analysis_hyper_parameters=dir_analysis_hyper_parameters,
-        # )
-
-        # We can plot parallel coordinates.
         plot_parallel_hyper_parameters_recommenders(
-            benchmarks=_TO_USE_BENCHMARKS_RESULTS,
-            hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
+            benchmarks=TO_USE_BENCHMARKS_RESULTS,
+            hyper_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
             recommenders=recommenders,
             metrics_to_optimize=metrics_to_optimize,
             cutoff_to_optimize=cutoff_to_optimize,

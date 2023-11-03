@@ -865,153 +865,6 @@ def _export_results_hyper_parameters(
         )
 
 
-def print_results(
-    results_interface: list[
-        tuple[
-            commons.Benchmarks,
-            commons.EHyperParameterTuningParameters,
-            list[
-                Sequence[
-                    Union[commons.RecommenderBaseline, commons.RecommenderImpressions]
-                ]
-            ],
-        ]
-    ]
-) -> None:
-    """
-    Public method that exports into CSV and LaTeX tables the evaluation metrics, hyper-parameters, and times.
-    """
-    printed_experiments: set[
-        tuple[commons.Benchmarks, commons.EHyperParameterTuningParameters]
-    ] = set()
-
-    for benchmark, hyper_parameters, groups_recs in results_interface:
-        experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[benchmark]
-        experiment_hyper_parameters = (
-            commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[hyper_parameters]
-        )
-
-        data_reader = commons.get_reader_from_benchmark(
-            benchmark_config=experiment_benchmark.config,
-            benchmark=experiment_benchmark.benchmark,
-        )
-
-        dataset = data_reader.dataset
-        interaction_data_splits = dataset.get_urm_splits(
-            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy,
-        )
-
-        urm_test = interaction_data_splits.sp_urm_test
-        num_test_users = cast(int, np.sum(np.ediff1d(urm_test.indptr) >= 1))
-
-        folder_path_export_latex = DIR_ACCURACY_METRICS_BASELINES_LATEX.format(
-            benchmark=experiment_benchmark.benchmark.value,
-            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
-        )
-        folder_path_export_csv = DIR_CSV_RESULTS.format(
-            benchmark=experiment_benchmark.benchmark.value,
-            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
-        )
-        folder_path_export_parquet = DIR_PARQUET_RESULTS.format(
-            benchmark=experiment_benchmark.benchmark.value,
-            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
-        )
-
-        os.makedirs(folder_path_export_latex, exist_ok=True)
-        os.makedirs(folder_path_export_csv, exist_ok=True)
-        os.makedirs(folder_path_export_parquet, exist_ok=True)
-
-        knn_similarity_list = experiment_hyper_parameters.knn_similarity_types
-
-        results_all = []
-        for group in groups_recs:
-            for rec in group:
-                if isinstance(rec, commons.RecommenderBaseline):
-                    results = _print_collaborative_filtering_metrics(
-                        recommender_baseline=rec,
-                        experiment_benchmark=experiment_benchmark,
-                        experiment_hyper_parameters=experiment_hyper_parameters,
-                        num_test_users=num_test_users,
-                        accuracy_metrics_list=ACCURACY_METRICS_LIST,
-                        beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
-                        all_metrics_list=ALL_METRICS_LIST,
-                        cutoffs_list=RESULT_EXPORT_CUTOFFS,
-                        knn_similarity_list=knn_similarity_list,
-                        export_experiments_folder_path=folder_path_export_latex,
-                    )
-
-                elif rec in [
-                    commons.RecommenderImpressions.CYCLING,
-                    commons.RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
-                    commons.RecommenderImpressions.USER_WEIGHTED_USER_PROFILE,
-                    commons.RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE,
-                ]:
-                    rec_baseline = cast(commons.RecommenderBaseline, group[0])
-
-                    results = _print_plugin_impression_aware_metrics(
-                        recommender_baseline=rec_baseline,
-                        recommender_plugin=rec,
-                        experiment_benchmark=experiment_benchmark,
-                        experiment_hyper_parameters=experiment_hyper_parameters,
-                        num_test_users=num_test_users,
-                        accuracy_metrics_list=ACCURACY_METRICS_LIST,
-                        beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
-                        all_metrics_list=ALL_METRICS_LIST,
-                        cutoffs_list=RESULT_EXPORT_CUTOFFS,
-                        knn_similarity_list=knn_similarity_list,
-                        export_experiments_folder_path=folder_path_export_latex,
-                    )
-
-                elif isinstance(rec, commons.RecommenderImpressions):
-                    results = _print_pure_impression_aware_metrics(
-                        recommender_impressions=rec,
-                        experiment_benchmark=experiment_benchmark,
-                        experiment_hyper_parameters=experiment_hyper_parameters,
-                        num_test_users=num_test_users,
-                        accuracy_metrics_list=ACCURACY_METRICS_LIST,
-                        beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
-                        all_metrics_list=ALL_METRICS_LIST,
-                        cutoffs_list=RESULT_EXPORT_CUTOFFS,
-                        knn_similarity_list=knn_similarity_list,
-                        export_experiments_folder_path=folder_path_export_latex,
-                    )
-
-                else:
-                    continue
-
-                results_all.append(results)
-
-        _results_to_pandas(
-            dfs=[res.df_results for res in results_all],
-            results_name="accuracy-metrics",
-            folder_path_latex=folder_path_export_latex,
-            folder_path_csv=folder_path_export_csv,
-            folder_path_parquet=folder_path_export_parquet,
-        )
-
-        _results_to_pandas(
-            dfs=[res.df_times for res in results_all],
-            results_name="times",
-            folder_path_latex=folder_path_export_latex,
-            folder_path_csv=folder_path_export_csv,
-            folder_path_parquet=folder_path_export_parquet,
-        )
-
-        _results_to_pandas(
-            dfs=[res.df_hyper_params for res in results_all],
-            results_name="hyper-parameters",
-            folder_path_latex=folder_path_export_latex,
-            folder_path_csv=folder_path_export_csv,
-            folder_path_parquet=folder_path_export_parquet,
-        )
-
-        printed_experiments.add((benchmark, hyper_parameters))
-
-    logger.info(
-        f"Successfully finished exporting accuracy and beyond-accuracy results to LaTeX"
-    )
-
-
 def process_results(
     results_interface: tuple[
         list[commons.Benchmarks],
@@ -1024,6 +877,9 @@ def process_results(
             ]
         ],
     ],
+    dir_latex_results: str,
+    dir_csv_results: str,
+    dir_parquet_results: str,
 ) -> None:
     """
     Public method that exports into CSV and LaTeX tables the evaluation metrics, hyper-parameters, and times.
@@ -1053,15 +909,15 @@ def process_results(
         urm_test = interaction_data_splits.sp_urm_test
         num_test_users = cast(int, np.sum(np.ediff1d(urm_test.indptr) >= 1))
 
-        folder_path_export_latex = DIR_LATEX_RESULTS.format(
+        folder_path_export_latex = dir_latex_results.format(
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
-        folder_path_export_csv = DIR_CSV_RESULTS.format(
+        folder_path_export_csv = dir_csv_results.format(
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
-        folder_path_export_parquet = DIR_PARQUET_RESULTS.format(
+        folder_path_export_parquet = dir_parquet_results.format(
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
@@ -1096,6 +952,8 @@ def process_results(
                     commons.RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
                     commons.RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
                     commons.RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+                    commons.RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS,
+                    commons.RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS,
                 ]:
                     results = _print_pure_impression_aware_metrics(
                         recommender_impressions=rec,
@@ -1115,6 +973,8 @@ def process_results(
                     commons.RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
                     commons.RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS_FREQUENCY,
                     commons.RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
+                    commons.RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS_FREQUENCY,
+                    commons.RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
                 ]:
                     results = _print_frequency_impression_aware_metrics(
                         recommender_impressions=rec,
@@ -1156,7 +1016,7 @@ def process_results(
                     )
 
             else:
-                continue
+                continue  # type: ignore
 
             if results is not None:
                 results_all.append(results)

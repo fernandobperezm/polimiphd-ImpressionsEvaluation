@@ -8,7 +8,9 @@ from recsys_framework_extensions.recommenders.graph_based.light_gcn import (
 
 __all__ = [
     "ImpressionsProfileLightGCNRecommender",
+    "ImpressionsProfileWithFrequencyLightGCNRecommender",
     "ImpressionsDirectedLightGCNRecommender",
+    "ImpressionsDirectedWithFrequencyLightGCNRecommender",
 ]
 
 
@@ -82,11 +84,48 @@ class ImpressionsProfileLightGCNRecommender(ExtendedLightGCNRecommender):
             verbose=verbose,
         )
 
-        self.uim_train = check_matrix(uim_train.copy(), "csr", dtype=np.float32)
+        self.uim_train = check_matrix(
+            uim_train.copy(),
+            "csr",
+            dtype=np.float32,
+        )
         self.uim_train.eliminate_zeros()
 
         self.adjacency_matrix = create_normalized_adjacency_matrix_from_urm(
-            urm=uim_train,
+            urm=self.uim_train,
+            add_self_connection=False,
+        )
+
+
+class ImpressionsProfileWithFrequencyLightGCNRecommender(ExtendedLightGCNRecommender):
+    RECOMMENDER_NAME = "ImpressionsProfileWithFrequencyLightGCNRecommender"
+
+    def __init__(
+        self,
+        urm_train: sp.csr_matrix,
+        uim_frequency: sp.csr_matrix,
+        use_cython_sampler: bool = True,
+        use_gpu: bool = False,
+        verbose: bool = True,
+    ):
+        assert urm_train.shape == uim_frequency.shape
+
+        super().__init__(
+            urm_train=urm_train,
+            use_cython_sampler=use_cython_sampler,
+            use_gpu=use_gpu,
+            verbose=verbose,
+        )
+
+        self.uim_frequency_train = check_matrix(
+            uim_frequency.copy(),
+            "csr",
+            dtype=np.float32,
+        )
+        self.uim_frequency_train.eliminate_zeros()
+
+        self.adjacency_matrix = create_normalized_adjacency_matrix_from_urm(
+            urm=self.uim_frequency_train,
             add_self_connection=False,
         )
 
@@ -111,13 +150,53 @@ class ImpressionsDirectedLightGCNRecommender(ExtendedLightGCNRecommender):
             verbose=verbose,
         )
 
-        self.uim_train = check_matrix(uim_train.copy(), "csr", dtype=np.float32)
+        self.uim_train = check_matrix(
+            uim_train.copy(),
+            "csr",
+            dtype=np.float32,
+        )
         self.uim_train.eliminate_zeros()
 
         self.adjacency_matrix = (
             create_normalized_directed_adjacency_matrix_interactions_and_impressions(
                 urm=self.URM_train,
-                uim=uim_train,
+                uim=self.uim_train,
+                add_self_connection=False,
+            )
+        )
+
+
+class ImpressionsDirectedWithFrequencyLightGCNRecommender(ExtendedLightGCNRecommender):
+    RECOMMENDER_NAME = "ImpressionsDirectedWithFrequencyLightGCNRecommender"
+
+    def __init__(
+        self,
+        urm_train: sp.csr_matrix,
+        uim_frequency: sp.csr_matrix,
+        use_cython_sampler: bool = True,
+        use_gpu: bool = False,
+        verbose: bool = True,
+    ):
+        assert urm_train.shape == uim_frequency.shape
+
+        super().__init__(
+            urm_train=urm_train,
+            use_cython_sampler=use_cython_sampler,
+            use_gpu=use_gpu,
+            verbose=verbose,
+        )
+
+        self.uim_frequency_train = check_matrix(
+            uim_frequency.copy(),
+            "csr",
+            dtype=np.float32,
+        )
+        self.uim_frequency_train.eliminate_zeros()
+
+        self.adjacency_matrix = (
+            create_normalized_directed_adjacency_matrix_interactions_and_impressions(
+                urm=self.URM_train,
+                uim=self.uim_frequency_train,
                 add_self_connection=False,
             )
         )

@@ -68,89 +68,9 @@ logger = logging.getLogger(__name__)
 
 DIR_TRAINED_MODELS_IMPRESSION_AWARE = os.path.join(
     commons.DIR_TRAINED_MODELS,
-    "impression_aware",
     "{benchmark}",
     "{evaluation_strategy}",
     "",
-)
-
-
-_MAPPER_COLLABORATIVE_RECOMMENDERS = {
-    RecommenderBaseline.RANDOM: ExperimentRecommender(
-        recommender=Random,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        fit_keyword_parameters=None,
-        priority=2,
-        use_gpu=False,
-        do_early_stopping=True,
-    ),
-    RecommenderBaseline.TOP_POPULAR: ExperimentRecommender(
-        recommender=TopPop,
-        search_hyper_parameters=SearchHyperParametersBaseRecommender,
-        fit_keyword_parameters=None,
-        priority=3,
-        use_gpu=False,
-        do_early_stopping=True,
-    ),
-    RecommenderBaseline.MF_BPR: ExperimentRecommender(
-        recommender=ExtendedMFBPRRecommender,
-        search_hyper_parameters=SearchHyperParametersMFBPRRecommender,
-        fit_keyword_parameters=FitParametersMFBPRRecommender,
-        priority=10,
-        use_gpu=False,
-        do_early_stopping=True,
-    ),
-    RecommenderBaseline.SLIM_BPR: ExperimentRecommender(
-        recommender=ExtendedSLIMBPRRecommender,
-        search_hyper_parameters=SearchHyperParametersSLIMBPRRecommender,
-        fit_keyword_parameters=FitParametersSLIMBPRRecommenderAllowSparseTraining,
-        priority=10,
-        use_gpu=False,
-        do_early_stopping=True,
-    ),
-    RecommenderBaseline.SLIM_ELASTIC_NET: ExperimentRecommender(
-        recommender=ExtendedSLIMElasticNetRecommender,
-        search_hyper_parameters=SearchHyperParametersSLIMElasticNetRecommender,
-        fit_keyword_parameters=None,
-        priority=7,
-        use_gpu=False,
-        do_early_stopping=False,
-    ),
-    RecommenderBaseline.P3_ALPHA: ExperimentRecommender(
-        recommender=ExtendedP3AlphaRecommender,
-        search_hyper_parameters=SearchHyperParametersP3AlphaRecommender,
-        priority=40,
-        use_gpu=False,
-        do_early_stopping=False,
-    ),
-    RecommenderBaseline.RP3_BETA: ExperimentRecommender(
-        recommender=ExtendedRP3BetaRecommender,
-        search_hyper_parameters=SearchHyperParametersRP3BetaRecommender,
-        priority=40,
-        use_gpu=False,
-        do_early_stopping=False,
-    ),
-    RecommenderBaseline.LIGHT_GCN: ExperimentRecommender(
-        recommender=ExtendedLightGCNRecommender,
-        search_hyper_parameters=SearchHyperParametersLightGCNRecommender,
-        priority=30,
-        use_gpu=True,
-        do_early_stopping=True,
-    ),
-}
-
-_MAPPER_IMPRESSIONS_RECOMMENDERS = {
-    RecommenderImpressions.SOFT_FREQUENCY_CAPPING: ExperimentRecommender(
-        recommender=SoftFrequencyCappingRecommender,
-        search_hyper_parameters=SearchHyperParametersSFCRecommender,
-        priority=50,
-        use_gpu=True,
-        do_early_stopping=True,
-    ),
-}
-
-MAPPER_AVAILABLE_RECOMMENDERS = (
-    _MAPPER_COLLABORATIVE_RECOMMENDERS | _MAPPER_IMPRESSIONS_RECOMMENDERS
 )
 
 
@@ -584,7 +504,7 @@ def run_experiments_dask(
         experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
             experiment_case.benchmark
         ]
-        experiment_recommender = MAPPER_AVAILABLE_RECOMMENDERS[
+        experiment_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
             experiment_case.recommender
         ]
 
