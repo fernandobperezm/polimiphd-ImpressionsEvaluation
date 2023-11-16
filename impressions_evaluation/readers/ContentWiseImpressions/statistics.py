@@ -4,25 +4,21 @@ dataset.
 
 """
 import enum
+import logging
 import os
 from typing import cast, Sequence, Union, Literal, Optional, Any
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import powerlaw
 import scipy.stats as sp_st
 import sparse
-from matplotlib import dates
-
-import impressions_evaluation.readers.ContentWiseImpressionsReader as cw_impressions_reader
-
-import matplotlib.axes
-import matplotlib.pyplot as plt
 import tikzplotlib
-
 from recsys_framework_extensions.data.io import DataIO
 from tqdm import tqdm
-import logging
+
+import impressions_evaluation.readers.ContentWiseImpressionsReader as cw_impressions_reader
 
 plt.style.use("ggplot")
 tqdm.pandas()
@@ -238,26 +234,61 @@ def _compute_basic_statistics(
         data=arr_data,
         discrete=data_discrete,
     )
-    results_powerlaw_lognormal = cast(
-        tuple[float, float],
-        results_powerlaw.distribution_compare("power_law", "lognormal"),
-    )
-    results_powerlaw_exponential = cast(
-        tuple[float, float],
-        results_powerlaw.distribution_compare("power_law", "exponential"),
-    )
-    results_powerlaw_truncated_powerlaw = cast(
-        tuple[float, float],
-        results_powerlaw.distribution_compare("power_law", "truncated_power_law"),
-    )
-    results_powerlaw_stretched_exponential = cast(
-        tuple[float, float],
-        results_powerlaw.distribution_compare("power_law", "stretched_exponential"),
-    )
-    results_powerlaw_lognormal_positive = cast(
-        tuple[float, float],
-        results_powerlaw.distribution_compare("power_law", "lognormal_positive"),
-    )
+
+    try:
+        results_powerlaw_lognormal = cast(
+            tuple[float, float],
+            results_powerlaw.distribution_compare("power_law", "lognormal"),
+        )
+    except ZeroDivisionError:
+        print(
+            f"Encountered ZeroDivisionError when comparing 'power_law' to 'lognormal'"
+        )
+        results_powerlaw_lognormal = (-1.0, -1.0)
+
+    try:
+        results_powerlaw_exponential = cast(
+            tuple[float, float],
+            results_powerlaw.distribution_compare("power_law", "exponential"),
+        )
+    except ZeroDivisionError:
+        print(
+            f"Encountered ZeroDivisionError when comparing 'power_law' to 'truncated_power_law'"
+        )
+        results_powerlaw_exponential = (-1.0, -1.0)
+
+    try:
+        results_powerlaw_truncated_powerlaw = cast(
+            tuple[float, float],
+            results_powerlaw.distribution_compare("power_law", "truncated_power_law"),
+        )
+    except ZeroDivisionError:
+        print(
+            f"Encountered ZeroDivisionError when comparing 'power_law' to 'truncated_power_law'"
+        )
+        results_powerlaw_truncated_powerlaw = (-1.0, -1.0)
+
+    try:
+        results_powerlaw_stretched_exponential = cast(
+            tuple[float, float],
+            results_powerlaw.distribution_compare("power_law", "stretched_exponential"),
+        )
+    except ZeroDivisionError:
+        print(
+            f"Encountered ZeroDivisionError when comparing 'power_law' to 'stretched_exponential'"
+        )
+        results_powerlaw_stretched_exponential = (-1.0, -1.0)
+
+    try:
+        results_powerlaw_lognormal_positive = cast(
+            tuple[float, float],
+            results_powerlaw.distribution_compare("power_law", "lognormal_positive"),
+        )
+    except ZeroDivisionError:
+        print(
+            f"Encountered ZeroDivisionError when comparing 'power_law' to 'lognormal_positive'"
+        )
+        results_powerlaw_lognormal_positive = (-1.0, -1.0)
 
     return {
         "name": name,
@@ -4247,43 +4278,43 @@ def contentwise_impressions_compute_statistics_thesis(
         ]
     )
 
-    # results = compute_number_unique_items_by_item_type(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
-    #     df_interactions_outside_impressions=df_interactions_outside_impressions,
-    #     df_interactions_inside_impressions=df_interactions_inside_impressions,
-    #     metadata=metadata,
-    # )
-    # dict_results.update(results)
+    results = compute_number_unique_items_by_item_type(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+        df_interactions_outside_impressions=df_interactions_outside_impressions,
+        df_interactions_inside_impressions=df_interactions_inside_impressions,
+        metadata=metadata,
+    )
+    dict_results.update(results)
 
-    # results = compute_number_unique_items_by_interaction_type(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
-    #     df_interactions_outside_impressions=df_interactions_outside_impressions,
-    #     df_interactions_inside_impressions=df_interactions_inside_impressions,
-    #     metadata=metadata,
-    # )
-    # dict_results.update(results)
+    results = compute_number_unique_items_by_interaction_type(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+        df_interactions_outside_impressions=df_interactions_outside_impressions,
+        df_interactions_inside_impressions=df_interactions_inside_impressions,
+        metadata=metadata,
+    )
+    dict_results.update(results)
 
-    # results = compute_number_interactions_by_item_type(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
-    #     df_interactions_outside_impressions=df_interactions_outside_impressions,
-    #     df_interactions_inside_impressions=df_interactions_inside_impressions,
-    # )
-    # dict_results.update(results)
-    #
-    # results = compute_number_of_interactions_by_interaction_type(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
-    #     df_interactions_outside_impressions=df_interactions_outside_impressions,
-    #     df_interactions_inside_impressions=df_interactions_inside_impressions,
-    # )
-    # dict_results.update(results)
+    results = compute_number_interactions_by_item_type(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+        df_interactions_outside_impressions=df_interactions_outside_impressions,
+        df_interactions_inside_impressions=df_interactions_inside_impressions,
+    )
+    dict_results.update(results)
+
+    results = compute_number_of_interactions_by_interaction_type(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+        df_interactions_outside_impressions=df_interactions_outside_impressions,
+        df_interactions_inside_impressions=df_interactions_inside_impressions,
+    )
+    dict_results.update(results)
 
     results = compute_popularity_interactions(
         dir_results=dir_results,
@@ -4294,12 +4325,12 @@ def contentwise_impressions_compute_statistics_thesis(
     )
     dict_results.update(results)
 
-    # results = compute_temporal_distribution_of_interactions(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
-    # )
-    # dict_results.update(results)
+    results = compute_temporal_distribution_of_interactions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+    )
+    dict_results.update(results)
 
     results = compute_popularity_impressions_contextual(
         dir_results=dir_results,
@@ -4308,12 +4339,12 @@ def contentwise_impressions_compute_statistics_thesis(
     )
     dict_results.update(results)
 
-    # results = compute_temporal_distribution_of_impressions_contextual(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_inside_impressions=df_interactions_inside_impressions,
-    # )
-    # dict_results.update(results)
+    results = compute_temporal_distribution_of_impressions_contextual(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_inside_impressions=df_interactions_inside_impressions,
+    )
+    dict_results.update(results)
 
     results = compute_popularity_impressions_global(
         dir_results=dir_results,
@@ -4328,38 +4359,38 @@ def contentwise_impressions_compute_statistics_thesis(
     )
     dict_results.update(results)
 
-    # results = compute_position_interactions(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_inside_impressions=df_interactions_inside_impressions,
-    # )
-    # dict_results.update(results)
+    results = compute_position_interactions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_inside_impressions=df_interactions_inside_impressions,
+    )
+    dict_results.update(results)
 
-    # results = compute_position_impressions(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
-    #     df_impressions_global=df_impressions_global,
-    # )
-    # dict_results.update(results)
+    results = compute_position_impressions(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+        df_impressions_global=df_impressions_global,
+    )
+    dict_results.update(results)
 
-    # results = compute_vision_factor(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
-    #     df_interactions_outside_impressions=df_interactions_outside_impressions,
-    #     df_interactions_inside_impressions=df_interactions_inside_impressions,
-    # )
-    # dict_results.update(results)
+    results = compute_vision_factor(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+        df_interactions_outside_impressions=df_interactions_outside_impressions,
+        df_interactions_inside_impressions=df_interactions_inside_impressions,
+    )
+    dict_results.update(results)
 
-    # results = compute_ratings(
-    #     dir_results=dir_results,
-    #     dict_results=dict_results,
-    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
-    #     df_interactions_outside_impressions=df_interactions_outside_impressions,
-    #     df_interactions_inside_impressions=df_interactions_inside_impressions,
-    # )
-    # dict_results.update(results)
+    results = compute_ratings(
+        dir_results=dir_results,
+        dict_results=dict_results,
+        df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+        df_interactions_outside_impressions=df_interactions_outside_impressions,
+        df_interactions_inside_impressions=df_interactions_inside_impressions,
+    )
+    dict_results.update(results)
 
     # (
     #     df_interactions_with_impressions_all,
@@ -4368,16 +4399,17 @@ def contentwise_impressions_compute_statistics_thesis(
     #     df_impressions_contextual_only_non_null_impressions,
     #     df_impressions_global,
     # ) = transform_dataframes_for_ctr_computation(
-    #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
+    #     df_interactions_all=df_interactions_with_impressions_all,
     #     df_interactions_outside_impressions=df_interactions_outside_impressions,
-    #     df_interactions_inside_impressions=df_interactions_inside_impressions,
+    #     df_interactions_only_non_null_impressions=df_interactions_inside_impressions,
     #     df_impressions_contextual=df_impressions_contextual,
     #     df_impressions_global=df_impressions_global,
     # )
-    #
+
     # results = compute_table_ctr(
     #     dir_results=dir_results,
     #     dict_results=dict_results,
+    #     df_interactions_all=df_interactions_with_impressions_all,
     #     df_interactions_with_impressions_all=df_interactions_with_impressions_all,
     #     df_interactions_inside_impressions=df_interactions_inside_impressions,
     #     df_impressions_contextual_all=df_impressions_contextual_all,
@@ -4385,7 +4417,7 @@ def contentwise_impressions_compute_statistics_thesis(
     #     df_impressions_global=df_impressions_global,
     # )
     # dict_results.update(results)
-
+    #
     # results = compute_ctr_1d(
     #     dir_results=dir_results,
     #     dict_results=dict_results,

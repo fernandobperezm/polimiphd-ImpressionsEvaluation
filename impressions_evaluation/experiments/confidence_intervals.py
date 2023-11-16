@@ -6,20 +6,34 @@ from recsys_framework_extensions.dask import DaskInterface
 import logging
 
 import impressions_evaluation.experiments.commons as commons
-from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES as FOLDER_BASE_BASELINES
-from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES as \
-    FOLDER_HYPER_PARAMETER_TUNING_BASELINES
-from impressions_evaluation.experiments.time_aware import DIR_TRAINED_MODELS_TIME_AWARE as FOLDER_BASE_HEURISTICS
-from impressions_evaluation.experiments.time_aware import DIR_TRAINED_MODELS_TIME_AWARE as \
-    FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_HEURISTICS
-from impressions_evaluation.experiments.re_ranking import DIR_TRAINED_MODELS_RE_RANKING as FOLDER_BASE_RE_RANKING
-from impressions_evaluation.experiments.re_ranking import DIR_TRAINED_MODELS_RE_RANKING as \
-    FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_RE_RANKING
-from impressions_evaluation.experiments.user_profiles import DIR_TRAINED_MODELS_USER_PROFILES as FOLDER_BASE_USER_PROFILES
-from impressions_evaluation.experiments.user_profiles import DIR_TRAINED_MODELS_USER_PROFILES as \
-    FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_USER_PROFILES
+from impressions_evaluation.experiments.baselines import (
+    DIR_TRAINED_MODELS_BASELINES as FOLDER_BASE_BASELINES,
+)
+from impressions_evaluation.experiments.baselines import (
+    DIR_TRAINED_MODELS_BASELINES as FOLDER_HYPER_PARAMETER_TUNING_BASELINES,
+)
+from impressions_evaluation.experiments.impression_aware.heuristics import (
+    DIR_TRAINED_MODELS_IMPRESSION_AWARE_HEURISTICS as FOLDER_BASE_HEURISTICS,
+)
+from impressions_evaluation.experiments.impression_aware.heuristics import (
+    DIR_TRAINED_MODELS_IMPRESSION_AWARE_HEURISTICS as FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_HEURISTICS,
+)
+from impressions_evaluation.experiments.impression_aware.re_ranking import (
+    DIR_TRAINED_MODELS_RE_RANKING as FOLDER_BASE_RE_RANKING,
+)
+from impressions_evaluation.experiments.impression_aware.re_ranking import (
+    DIR_TRAINED_MODELS_RE_RANKING as FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_RE_RANKING,
+)
+from impressions_evaluation.experiments.impression_aware.user_profiles import (
+    DIR_TRAINED_MODELS_USER_PROFILES as FOLDER_BASE_USER_PROFILES,
+)
+from impressions_evaluation.experiments.impression_aware.user_profiles import (
+    DIR_TRAINED_MODELS_USER_PROFILES as FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_USER_PROFILES,
+)
 
-from impressions_evaluation.impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
+from impressions_evaluation.impression_recommenders.user_profile.folding import (
+    FoldedMatrixFactorizationRecommender,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -79,9 +93,11 @@ def _compute_confidence_intervals_recommender_trained_baseline(
     experiment_baseline_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
         experiment_case_baseline.recommender
     ]
-    experiment_baseline_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-        experiment_case_baseline.hyper_parameter_tuning_parameters
-    ]
+    experiment_baseline_hyper_parameters = (
+        commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+            experiment_case_baseline.hyper_parameter_tuning_parameters
+        ]
+    )
 
     assert experiment_baseline_recommender.search_hyper_parameters is not None
 
@@ -105,7 +121,9 @@ def _compute_confidence_intervals_recommender_trained_baseline(
         evaluation_strategy=experiment_baseline_hyper_parameters.evaluation_strategy.value,
     )
 
-    file_name_postfix = commons.MAPPER_FILE_NAME_POSTFIX[commons.TrainedRecommenderType.TRAIN_VALIDATION]
+    file_name_postfix = commons.MAPPER_FILE_NAME_POSTFIX[
+        commons.TrainedRecommenderType.TRAIN_VALIDATION
+    ]
 
     urm_train = interactions_data_splits.sp_urm_train_validation
 
@@ -160,9 +178,11 @@ def _compute_confidence_intervals_recommender_trained_folded(
     experiment_baseline_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
         experiment_case_baseline.recommender
     ]
-    experiment_baseline_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-        experiment_case_baseline.hyper_parameter_tuning_parameters
-    ]
+    experiment_baseline_hyper_parameters = (
+        commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+            experiment_case_baseline.hyper_parameter_tuning_parameters
+        ]
+    )
 
     assert experiment_baseline_recommender.search_hyper_parameters is not None
 
@@ -190,7 +210,9 @@ def _compute_confidence_intervals_recommender_trained_folded(
         evaluation_strategy=experiment_baseline_hyper_parameters.evaluation_strategy.value,
     )
 
-    file_name_postfix = commons.MAPPER_FILE_NAME_POSTFIX[commons.TrainedRecommenderType.TRAIN_VALIDATION]
+    file_name_postfix = commons.MAPPER_FILE_NAME_POSTFIX[
+        commons.TrainedRecommenderType.TRAIN_VALIDATION
+    ]
 
     urm_train = interactions_data_splits.sp_urm_train_validation
 
@@ -206,11 +228,11 @@ def _compute_confidence_intervals_recommender_trained_folded(
         return
 
     recommender_trained_folded = commons.load_recommender_trained_folded(
-            recommender_baseline_instance=recommender_trained_baseline,
-            folder_path=folder_path_recommender_folded,
-            file_name_postfix=file_name_postfix,
-            urm_train=urm_train.copy()
-        )
+        recommender_baseline_instance=recommender_trained_baseline,
+        folder_path=folder_path_recommender_folded,
+        file_name_postfix=file_name_postfix,
+        urm_train=urm_train.copy(),
+    )
 
     if recommender_trained_folded is None:
         # We require a recommender that is already optimized.
@@ -254,9 +276,11 @@ def _compute_confidence_intervals_recommender_trained_impressions_heuristics(
     experiment_impressions_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
         experiment_case_impressions.recommender
     ]
-    experiment_impressions_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-        experiment_case_impressions.hyper_parameter_tuning_parameters
-    ]
+    experiment_impressions_hyper_parameters = (
+        commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+            experiment_case_impressions.hyper_parameter_tuning_parameters
+        ]
+    )
 
     assert experiment_impressions_recommender.search_hyper_parameters is not None
 
@@ -336,7 +360,9 @@ def _compute_confidence_intervals_recommender_trained_impressions_heuristics(
         evaluation_strategy=experiment_impressions_hyper_parameters.evaluation_strategy.value,
     )
 
-    file_name_postfix = commons.MAPPER_FILE_NAME_POSTFIX[commons.TrainedRecommenderType.TRAIN_VALIDATION]
+    file_name_postfix = commons.MAPPER_FILE_NAME_POSTFIX[
+        commons.TrainedRecommenderType.TRAIN_VALIDATION
+    ]
 
     urm_train = interactions_data_splits.sp_urm_train_validation
     uim_train = impressions_data_splits.sp_uim_train_validation
@@ -401,9 +427,11 @@ def _compute_confidence_intervals_recommender_trained_impressions(
     experiment_impressions_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
         experiment_case_impressions.recommender
     ]
-    experiment_impressions_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-        experiment_case_impressions.hyper_parameter_tuning_parameters
-    ]
+    experiment_impressions_hyper_parameters = (
+        commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+            experiment_case_impressions.hyper_parameter_tuning_parameters
+        ]
+    )
 
     experiment_baseline_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
         experiment_case_baseline.benchmark
@@ -411,9 +439,11 @@ def _compute_confidence_intervals_recommender_trained_impressions(
     experiment_baseline_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
         experiment_case_baseline.recommender
     ]
-    experiment_baseline_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-        experiment_case_baseline.hyper_parameter_tuning_parameters
-    ]
+    experiment_baseline_hyper_parameters = (
+        commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+            experiment_case_baseline.hyper_parameter_tuning_parameters
+        ]
+    )
 
     assert experiment_impressions_recommender.search_hyper_parameters is not None
 
@@ -484,7 +514,9 @@ def _compute_confidence_intervals_recommender_trained_impressions(
             )
         )
 
-    from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES as folder_hyper_parameter_tuning_baselines
+    from impressions_evaluation.experiments.baselines import (
+        DIR_TRAINED_MODELS_BASELINES as folder_hyper_parameter_tuning_baselines,
+    )
 
     folder_path_recommender_baseline = folder_hyper_parameter_tuning_baselines.format(
         benchmark=experiment_baseline_benchmark.benchmark.value,
@@ -499,7 +531,9 @@ def _compute_confidence_intervals_recommender_trained_impressions(
         evaluation_strategy=experiment_baseline_hyper_parameters.evaluation_strategy.value,
     )
 
-    file_name_postfix = commons.MAPPER_FILE_NAME_POSTFIX[commons.TrainedRecommenderType.TRAIN_VALIDATION]
+    file_name_postfix = commons.MAPPER_FILE_NAME_POSTFIX[
+        commons.TrainedRecommenderType.TRAIN_VALIDATION
+    ]
 
     urm_train = interactions_data_splits.sp_urm_train_validation
     uim_train = impressions_data_splits.sp_uim_train_validation
@@ -521,7 +555,7 @@ def _compute_confidence_intervals_recommender_trained_impressions(
             recommender_baseline_instance=recommender_trained_baseline,
             folder_path=folder_path_recommender_folded,
             file_name_postfix=file_name_postfix,
-            urm_train=urm_train.copy()
+            urm_train=urm_train.copy(),
         )
 
     if try_folded_recommender and recommender_trained_folded is None:
@@ -541,7 +575,7 @@ def _compute_confidence_intervals_recommender_trained_impressions(
             recommender_trained_folded
             if try_folded_recommender
             else recommender_trained_baseline
-        )
+        ),
     )
 
     if recommender_trained_impressions is None:
@@ -592,9 +626,11 @@ def compute_confidence_intervals(
         baseline_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
             case_baseline.recommender
         ]
-        baseline_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-            case_baseline.hyper_parameter_tuning_parameters
-        ]
+        baseline_hyper_parameters = (
+            commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+                case_baseline.hyper_parameter_tuning_parameters
+            ]
+        )
 
         similarities = commons.get_similarities_by_recommender_class(
             recommender_class=baseline_recommender.recommender,
@@ -611,8 +647,7 @@ def compute_confidence_intervals(
                     f"|{uuid.uuid4()}"
                 ),
                 job_priority=(
-                    baseline_benchmark.priority
-                    * baseline_recommender.priority
+                    baseline_benchmark.priority * baseline_recommender.priority
                 ),
                 job_info={
                     "recommender": baseline_recommender.recommender.RECOMMENDER_NAME,
@@ -623,7 +658,7 @@ def compute_confidence_intervals(
                 method_kwargs={
                     "experiment_case_baseline": case_baseline,
                     "experiment_baseline_similarity": similarity,
-                }
+                },
             )
 
     # Then folded baselines
@@ -634,9 +669,11 @@ def compute_confidence_intervals(
         baseline_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
             case_baseline.recommender
         ]
-        baseline_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-            case_baseline.hyper_parameter_tuning_parameters
-        ]
+        baseline_hyper_parameters = (
+            commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+                case_baseline.hyper_parameter_tuning_parameters
+            ]
+        )
 
         similarities = commons.get_similarities_by_recommender_class(
             recommender_class=baseline_recommender.recommender,
@@ -653,8 +690,7 @@ def compute_confidence_intervals(
                     f"|{uuid.uuid4()}"
                 ),
                 job_priority=(
-                    baseline_benchmark.priority
-                    * baseline_recommender.priority
+                    baseline_benchmark.priority * baseline_recommender.priority
                 ),
                 job_info={
                     "recommender": baseline_recommender.recommender.RECOMMENDER_NAME,
@@ -665,11 +701,13 @@ def compute_confidence_intervals(
                 method_kwargs={
                     "experiment_case_baseline": case_baseline,
                     "experiment_baseline_similarity": similarity,
-                }
+                },
             )
 
     # Then impressions heuristics
-    for case_impressions_heuristics in experiment_cases_interface_impressions_heuristics.experiment_cases:
+    for (
+        case_impressions_heuristics
+    ) in experiment_cases_interface_impressions_heuristics.experiment_cases:
         impressions_heuristics_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
             case_impressions_heuristics.benchmark
         ]
@@ -695,15 +733,18 @@ def compute_confidence_intervals(
             method=_compute_confidence_intervals_recommender_trained_impressions_heuristics,
             method_kwargs={
                 "experiment_case_impressions": case_impressions_heuristics,
-            }
+            },
         )
 
     # Then impressions re-ranking
-    for case_impressions_re_ranking in experiment_cases_interface_impressions_re_ranking.experiment_cases:
+    for (
+        case_impressions_re_ranking
+    ) in experiment_cases_interface_impressions_re_ranking.experiment_cases:
         for case_baseline in experiment_cases_interface_baselines.experiment_cases:
             experiment_can_be_tested = (
                 case_impressions_re_ranking.benchmark == case_baseline.benchmark
-                and case_baseline.hyper_parameter_tuning_parameters == case_baseline.hyper_parameter_tuning_parameters
+                and case_baseline.hyper_parameter_tuning_parameters
+                == case_baseline.hyper_parameter_tuning_parameters
             )
 
             if not experiment_can_be_tested:
@@ -719,9 +760,11 @@ def compute_confidence_intervals(
             baseline_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
                 case_baseline.recommender
             ]
-            baseline_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-                case_baseline.hyper_parameter_tuning_parameters
-            ]
+            baseline_hyper_parameters = (
+                commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+                    case_baseline.hyper_parameter_tuning_parameters
+                ]
+            )
 
             similarities = commons.get_similarities_by_recommender_class(
                 recommender_class=baseline_recommender.recommender,
@@ -760,15 +803,18 @@ def compute_confidence_intervals(
                             "folder_hyper_parameter_tuning_impressions": FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_RE_RANKING,
                             "folder_path_export_confidence_intervals": DIR_CI_RECOMMENDER_RE_RANKING,
                             "try_folded_recommender": try_folded_recommender,
-                        }
+                        },
                     )
 
     # Then impressions user-profiles
-    for case_impressions_user_profiles in experiment_cases_interface_impressions_user_profiles.experiment_cases:
+    for (
+        case_impressions_user_profiles
+    ) in experiment_cases_interface_impressions_user_profiles.experiment_cases:
         for case_baseline in experiment_cases_interface_baselines.experiment_cases:
             experiment_can_be_tested = (
                 case_impressions_user_profiles.benchmark == case_baseline.benchmark
-                and case_baseline.hyper_parameter_tuning_parameters == case_baseline.hyper_parameter_tuning_parameters
+                and case_baseline.hyper_parameter_tuning_parameters
+                == case_baseline.hyper_parameter_tuning_parameters
             )
 
             if not experiment_can_be_tested:
@@ -784,9 +830,11 @@ def compute_confidence_intervals(
             baseline_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
                 case_baseline.recommender
             ]
-            baseline_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-                case_baseline.hyper_parameter_tuning_parameters
-            ]
+            baseline_hyper_parameters = (
+                commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+                    case_baseline.hyper_parameter_tuning_parameters
+                ]
+            )
 
             similarities = commons.get_similarities_by_recommender_class(
                 recommender_class=baseline_recommender.recommender,
@@ -825,5 +873,5 @@ def compute_confidence_intervals(
                             "folder_hyper_parameter_tuning_impressions": FOLDER_HYPER_PARAMETER_TUNING_IMPRESSIONS_USER_PROFILES,
                             "folder_path_export_confidence_intervals": DIR_CI_RECOMMENDER_USER_PROFILES,
                             "try_folded_recommender": try_folded_recommender,
-                        }
+                        },
                     )

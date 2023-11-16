@@ -155,9 +155,21 @@ def remove_interactions_from_uim(
 def _compute_mind_statistics_from_config(
     config: Union[mind_reader.MINDSmallConfig, mind_reader.MINDLargeConfig],
 ) -> dict:
+    mind_raw_data = mind_reader.MINDRawData(config=config)
     pandas_raw_data = mind_reader.PandasMINDRawData(
         config=config,
     )
+
+    df_train = mind_raw_data.train
+    df_val = mind_raw_data.validation
+    df_test = mind_raw_data.test
+
+    import pdb
+
+    pdb.set_trace()
+    print(df_train)
+    print(df_val)
+    print(df_test)
 
     df_raw_data = pandas_raw_data.data
     df_previous_interactions = pandas_raw_data.previous_interactions
@@ -256,7 +268,7 @@ def mind_small_statistics_full_dataset() -> dict:
     # )
     #
     # logger.debug("Computing set unique items")
-    # unique_items = _set_unique_items(
+    # unique_items = _set_unique_series(
     #     df=df_raw_data,
     #     df_previous_interactions=df_previous_interactions,
     # )

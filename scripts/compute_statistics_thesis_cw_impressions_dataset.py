@@ -28,7 +28,7 @@ if __name__ == "__main__":
     dir_export_parquet = os.path.join(dir_export_base, "parquet", "")
     dir_export_latex = os.path.join(dir_export_base, "latex", "")
     dir_export_plots = os.path.join(dir_export_base, "plots", "")
-    filename_export = "script_dataset_statistics"
+    filename_export = "script_statistics_thesis_contentwise_impressions_dataset"
 
     os.makedirs(dir_export_parquet, exist_ok=True)
     os.makedirs(dir_export_latex, exist_ok=True)

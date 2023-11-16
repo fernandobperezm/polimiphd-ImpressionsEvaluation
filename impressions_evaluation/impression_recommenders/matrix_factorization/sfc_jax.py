@@ -53,8 +53,8 @@ class SearchHyperParametersSFCRecommender(SearchHyperParametersBaseRecommender):
     )
     batch_size: Integer = attrs.field(
         default=Integer(  # The paper does not specify ranges.
-            low=2**7,  # 128
-            high=2**10,  # 1024
+            low=2**5,  # 32
+            high=2**7,  # 128
             # high=2**14,  # 16384
             prior="uniform",
         ),
@@ -62,7 +62,8 @@ class SearchHyperParametersSFCRecommender(SearchHyperParametersBaseRecommender):
     embedding_size: Integer = attrs.field(
         default=Integer(  # The paper does not specify ranges.
             low=2**0,
-            high=2**10,
+            high=2**7,  # 128
+            # high=2**10,  # 1024
             prior="uniform",
         ),
     )

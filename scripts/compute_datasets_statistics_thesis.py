@@ -34,11 +34,14 @@ if __name__ == "__main__":
     os.makedirs(dir_export_latex, exist_ok=True)
     os.makedirs(dir_export_plots, exist_ok=True)
 
-    results_cw_impressions = contentwise_impressions_compute_statistics_thesis(
-        dir_results=dir_export_plots,
-    )
+    results = mind_large_statistics_full_dataset()
+    print(results)
 
-    print(results_cw_impressions)
+    # results_cw_impressions = contentwise_impressions_compute_statistics_thesis(
+    #     dir_results=dir_export_plots,
+    # )
+
+    # print(results_cw_impressions)
 
     # statistics_cw_full = content_wise_impressions_statistics_full_dataset()
     # statistics_finn_full = finn_no_slates_statistics_full_dataset()

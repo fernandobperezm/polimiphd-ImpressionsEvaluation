@@ -2,16 +2,24 @@ import os
 import uuid
 from typing import Optional
 
-from Recommenders.BaseSimilarityMatrixRecommender import BaseItemSimilarityMatrixRecommender, \
-    BaseUserSimilarityMatrixRecommender
+from Recommenders.BaseSimilarityMatrixRecommender import (
+    BaseItemSimilarityMatrixRecommender,
+    BaseUserSimilarityMatrixRecommender,
+)
 from recsys_framework_extensions.dask import DaskInterface
 import logging
 
 import impressions_evaluation.experiments.commons as commons
 from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES
-from impressions_evaluation.experiments.re_ranking import DIR_TRAINED_MODELS_RE_RANKING
-from impressions_evaluation.experiments.user_profiles import DIR_TRAINED_MODELS_USER_PROFILES
-from impressions_evaluation.impression_recommenders.user_profile.folding import FoldedMatrixFactorizationRecommender
+from impressions_evaluation.experiments.impression_aware.re_ranking import (
+    DIR_TRAINED_MODELS_RE_RANKING,
+)
+from impressions_evaluation.experiments.impression_aware.user_profiles import (
+    DIR_TRAINED_MODELS_USER_PROFILES,
+)
+from impressions_evaluation.impression_recommenders.user_profile.folding import (
+    FoldedMatrixFactorizationRecommender,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,9 +52,11 @@ def _compute_statistical_test_on_users(
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
         experiment_case_baseline.benchmark
     ]
-    experiment_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-        experiment_case_baseline.hyper_parameter_tuning_parameters
-    ]
+    experiment_hyper_parameters = (
+        commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+            experiment_case_baseline.hyper_parameter_tuning_parameters
+        ]
+    )
 
     experiment_recommender_baseline = commons.MAPPER_AVAILABLE_RECOMMENDERS[
         experiment_case_baseline.recommender
@@ -54,18 +64,24 @@ def _compute_statistical_test_on_users(
     experiment_recommender_folded = commons.MAPPER_AVAILABLE_RECOMMENDERS[
         commons.RecommenderFolded.FOLDED
     ]
-    experiment_recommender_impressions_reranking_cycling = commons.MAPPER_AVAILABLE_RECOMMENDERS[
-        commons.RecommenderImpressions.CYCLING
-    ]
-    experiment_recommender_impressions_reranking_impressions_discounting = commons.MAPPER_AVAILABLE_RECOMMENDERS[
-        commons.RecommenderImpressions.IMPRESSIONS_DISCOUNTING
-    ]
-    experiment_recommender_impressions_profiles_user = commons.MAPPER_AVAILABLE_RECOMMENDERS[
-        commons.RecommenderImpressions.USER_WEIGHTED_USER_PROFILE
-    ]
-    experiment_recommender_impressions_profiles_item = commons.MAPPER_AVAILABLE_RECOMMENDERS[
-        commons.RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE
-    ]
+    experiment_recommender_impressions_reranking_cycling = (
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[commons.RecommenderImpressions.CYCLING]
+    )
+    experiment_recommender_impressions_reranking_impressions_discounting = (
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[
+            commons.RecommenderImpressions.IMPRESSIONS_DISCOUNTING
+        ]
+    )
+    experiment_recommender_impressions_profiles_user = (
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[
+            commons.RecommenderImpressions.USER_WEIGHTED_USER_PROFILE
+        ]
+    )
+    experiment_recommender_impressions_profiles_item = (
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[
+            commons.RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE
+        ]
+    )
 
     benchmark_reader = commons.get_reader_from_benchmark(
         benchmark_config=experiment_benchmark.config,
@@ -142,20 +158,26 @@ def _compute_statistical_test_on_users(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
-    folder_path_recommender_impressions_re_ranking = DIR_TRAINED_MODELS_RE_RANKING.format(
-        benchmark=experiment_benchmark.benchmark.value,
-        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+    folder_path_recommender_impressions_re_ranking = (
+        DIR_TRAINED_MODELS_RE_RANKING.format(
+            benchmark=experiment_benchmark.benchmark.value,
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+        )
     )
-    folder_path_recommender_impressions_user_profiles = DIR_TRAINED_MODELS_USER_PROFILES.format(
-        benchmark=experiment_benchmark.benchmark.value,
-        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+    folder_path_recommender_impressions_user_profiles = (
+        DIR_TRAINED_MODELS_USER_PROFILES.format(
+            benchmark=experiment_benchmark.benchmark.value,
+            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+        )
     )
     folder_path_export_statistical_tests = DIR_STATISTICAL_TESTS.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
 
-    file_name_postfix = commons.MAPPER_FILE_NAME_POSTFIX[commons.TrainedRecommenderType.TRAIN_VALIDATION]
+    file_name_postfix = commons.MAPPER_FILE_NAME_POSTFIX[
+        commons.TrainedRecommenderType.TRAIN_VALIDATION
+    ]
 
     urm_train = interactions_data_splits.sp_urm_train_validation
     uim_train = impressions_data_splits.sp_uim_train_validation
@@ -172,7 +194,9 @@ def _compute_statistical_test_on_users(
         return
 
     recommender_baseline = recommender_trained_baseline
-    recommender_baseline_name = f"{recommender_trained_baseline.RECOMMENDER_NAME}_{file_name_postfix}"
+    recommender_baseline_name = (
+        f"{recommender_trained_baseline.RECOMMENDER_NAME}_{file_name_postfix}"
+    )
     recommender_baseline_folder = folder_path_recommender_baseline
 
     recommender_trained_folded: Optional[FoldedMatrixFactorizationRecommender] = None
@@ -181,14 +205,16 @@ def _compute_statistical_test_on_users(
             recommender_baseline_instance=recommender_trained_baseline,
             folder_path=folder_path_recommender_folded,
             file_name_postfix=file_name_postfix,
-            urm_train=urm_train.copy()
+            urm_train=urm_train.copy(),
         )
 
         if recommender_trained_folded is None:
             return
         else:
             recommender_baseline = recommender_trained_folded
-            recommender_baseline_name = f"{recommender_trained_baseline.RECOMMENDER_NAME}_{file_name_postfix}"
+            recommender_baseline_name = (
+                f"{recommender_trained_baseline.RECOMMENDER_NAME}_{file_name_postfix}"
+            )
             recommender_baseline_folder = folder_path_recommender_baseline
 
     recommenders_impressions = []
@@ -243,14 +269,12 @@ def _compute_statistical_test_on_users(
             folder_path_recommender_impressions_re_ranking,
         )
 
-    recommender_has_user_similarity = (
-        isinstance(recommender_trained_baseline, BaseUserSimilarityMatrixRecommender)
-        or isinstance(recommender_trained_folded, BaseUserSimilarityMatrixRecommender)
-    )
-    recommender_has_item_similarity = (
-        isinstance(recommender_trained_baseline, BaseItemSimilarityMatrixRecommender)
-        or isinstance(recommender_trained_folded, BaseItemSimilarityMatrixRecommender)
-    )
+    recommender_has_user_similarity = isinstance(
+        recommender_trained_baseline, BaseUserSimilarityMatrixRecommender
+    ) or isinstance(recommender_trained_folded, BaseUserSimilarityMatrixRecommender)
+    recommender_has_item_similarity = isinstance(
+        recommender_trained_baseline, BaseItemSimilarityMatrixRecommender
+    ) or isinstance(recommender_trained_folded, BaseItemSimilarityMatrixRecommender)
 
     if recommender_has_user_similarity:
         recommender_class_impressions = experiment_recommender_impressions_profiles_user
@@ -259,23 +283,23 @@ def _compute_statistical_test_on_users(
     else:
         return
 
-    recommender_trained_impressions_user_profiles = commons.load_recommender_trained_impressions(
-        recommender_class_impressions=recommender_class_impressions.recommender,
-        folder_path=folder_path_recommender_impressions_user_profiles,
-        file_name_postfix=file_name_postfix,
-        urm_train=urm_train.copy(),
-        uim_train=uim_train.copy(),
-        uim_frequency=impressions_feature_frequency_train_validation.copy(),
-        uim_position=impressions_feature_position_train_validation.copy(),
-        uim_timestamp=impressions_feature_timestamp_train_validation.copy(),
-        uim_last_seen=impressions_feature_last_seen_train_validation.copy(),
-        recommender_baseline=recommender_baseline,
+    recommender_trained_impressions_user_profiles = (
+        commons.load_recommender_trained_impressions(
+            recommender_class_impressions=recommender_class_impressions.recommender,
+            folder_path=folder_path_recommender_impressions_user_profiles,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train.copy(),
+            uim_train=uim_train.copy(),
+            uim_frequency=impressions_feature_frequency_train_validation.copy(),
+            uim_position=impressions_feature_position_train_validation.copy(),
+            uim_timestamp=impressions_feature_timestamp_train_validation.copy(),
+            uim_last_seen=impressions_feature_last_seen_train_validation.copy(),
+            recommender_baseline=recommender_baseline,
+        )
     )
 
     if recommender_trained_impressions_user_profiles is not None:
-        recommenders_impressions.append(
-            recommender_trained_impressions_user_profiles
-        )
+        recommenders_impressions.append(recommender_trained_impressions_user_profiles)
         recommenders_impressions_names.append(
             f"{recommender_trained_impressions_user_profiles.RECOMMENDER_NAME}_{file_name_postfix}",
         )
@@ -330,9 +354,11 @@ def compute_statistical_tests(
         baseline_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
             case_baseline.recommender
         ]
-        baseline_hyper_parameters = commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-            case_baseline.hyper_parameter_tuning_parameters
-        ]
+        baseline_hyper_parameters = (
+            commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
+                case_baseline.hyper_parameter_tuning_parameters
+            ]
+        )
 
         similarities = commons.get_similarities_by_recommender_class(
             recommender_class=baseline_recommender.recommender,
@@ -351,8 +377,7 @@ def compute_statistical_tests(
                         f"|{uuid.uuid4()}"
                     ),
                     job_priority=(
-                        baseline_benchmark.priority
-                        * baseline_recommender.priority
+                        baseline_benchmark.priority * baseline_recommender.priority
                     ),
                     job_info={
                         "recommender": baseline_recommender.recommender.RECOMMENDER_NAME,
@@ -364,5 +389,5 @@ def compute_statistical_tests(
                         "experiment_case_baseline": case_baseline,
                         "experiment_baseline_similarity": similarity,
                         "try_folded_recommender": try_folded_recommender,
-                    }
+                    },
                 )

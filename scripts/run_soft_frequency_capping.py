@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import logging
 
 from tap import Tap
@@ -28,15 +32,6 @@ class ConsoleArguments(Tap):
     include_impressions: bool = False
     """If the flag is included, then the script tunes the hyper-parameters of the collaborative+impressions recommenders"""
 
-    use_gpu: bool = False
-    """"""
-
-    compute_confidence_intervals: bool = False
-    """TODO: fernando-debugger"""
-
-    compute_statistical_tests: bool = False
-    """TODO: fernando-debugger"""
-
     print_evaluation_results: bool = False
     """Export to CSV and LaTeX the accuracy, beyond-accuracy, optimal hyper-parameters, and scalability metrics of 
     all tuned recommenders."""
@@ -57,8 +52,8 @@ class ConsoleArguments(Tap):
 ####################################################################################################
 ####################################################################################################
 _TO_USE_BENCHMARKS = [
-    Benchmarks.ContentWiseImpressions,
-    Benchmarks.MINDSmall,
+    # Benchmarks.ContentWiseImpressions,
+    # Benchmarks.MINDSmall,
     Benchmarks.FINNNoSlates,
 ]
 
@@ -96,9 +91,7 @@ if __name__ == "__main__":
     )
 
     if input_flags.create_datasets:
-        ensure_datasets_exist(
-            experiment_cases_interface=experiments_impressions_interface,
-        )
+        ensure_datasets_exist(to_use_benchmarks=experiments_impressions_interface)
 
     if input_flags.include_impressions:
         run_experiments_sequentially(
