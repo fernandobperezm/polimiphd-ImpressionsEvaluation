@@ -17,6 +17,8 @@ logs/
 **/Cython/*.html
 **/Cython/*.c
 **/Cython/build/*
+**/cython/*.c
+**/cython/*.so
 
 # Distribution / packaging
 .Python
