@@ -6,6 +6,10 @@ from typing import Union
 
 from dotenv import load_dotenv
 
+from impressions_evaluation.experiments.statistical_tests import (
+    compute_statistical_tests,
+)
+
 load_dotenv()
 
 import logging
@@ -14,6 +18,7 @@ from tap import Tap
 
 from impressions_evaluation import configure_logger
 from impressions_evaluation.experiments.commons import (
+    ExperimentCasesStatisticalTestInterface,
     create_necessary_folders,
     ExperimentCasesInterface,
     Benchmarks,
@@ -198,6 +203,29 @@ if __name__ == "__main__":
         to_use_training_functions=TO_USE_TRAINING_FUNCTIONS_IMPRESSIONS_FREQUENCY,
     )
 
+    experiments_statistical_tests_interface = ExperimentCasesStatisticalTestInterface(
+        to_use_benchmarks=TO_USE_BENCHMARKS,
+        to_use_hyper_parameter_tuning_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        to_use_recommenders=[
+            RecommenderBaseline.P3_ALPHA,
+            RecommenderBaseline.RP3_BETA,
+        ],
+        to_use_recommenders_impressions=[
+            [
+                RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
+                RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+                RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS_FREQUENCY,
+                RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
+            ],
+            [
+                RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
+                RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
+                RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS_FREQUENCY,
+                RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
+            ],
+        ],
+    )
+
     create_necessary_folders(
         benchmarks=experiments_interface_baselines.benchmarks,
         evaluation_strategies=experiments_interface_baselines.evaluation_strategies,
@@ -243,6 +271,9 @@ if __name__ == "__main__":
         export_evaluation_results(
             benchmarks=TO_USE_BENCHMARKS,
             hyper_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        )
+        compute_statistical_tests(
+            experiment_cases_statistical_tests_interface=experiments_statistical_tests_interface,
         )
 
     if input_flags.analyze_hyper_parameters:

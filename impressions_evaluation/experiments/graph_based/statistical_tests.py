@@ -17,6 +17,10 @@ from Recommenders.BaseSimilarityMatrixRecommender import (
 )
 from recsys_framework_extensions.dask import DaskInterface
 
+from impressions_evaluation.experiments.print_results import (
+    DIR_RESULTS_MODEL_EVALUATION,
+)
+
 logger = logging.getLogger(__name__)
 
 ####################################################################################################
@@ -293,63 +297,6 @@ def _compute_statistical_test_on_users(
     )
 
 
-def compute_statistical_tests_on_dask(
-    dask_interface: DaskInterface,
-    experiment_cases_interface_baselines: commons.ExperimentCasesInterface,
-) -> None:
-    """
-    Public method that instructs dask to run in dask workers the hyper-parameter tuning of the impressions discounting
-    recommenders.
-
-    Processes are always preferred than threads as the hyper-parameter tuning loop is probably not thread-safe.
-    """
-    # First compute baselines.
-    for case_baseline in experiment_cases_interface_baselines.experiment_cases:
-        baseline_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
-            case_baseline.benchmark
-        ]
-        baseline_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
-            case_baseline.recommender
-        ]
-        baseline_hyper_parameters = (
-            commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-                case_baseline.hyper_parameter_tuning_parameters
-            ]
-        )
-
-        similarities = commons.get_similarities_by_recommender_class(
-            recommender_class=baseline_recommender.recommender,
-            knn_similarities=baseline_hyper_parameters.knn_similarity_types,
-        )
-
-        for similarity in similarities:
-            for try_folded_recommender in [True, False]:
-                dask_interface.submit_job(
-                    job_key=(
-                        f"_compute_statistical_test_on_users"
-                        f"|{baseline_benchmark.benchmark.value}"
-                        f"|{baseline_recommender.recommender.RECOMMENDER_NAME}"
-                        f"|{similarity}"
-                        f"|{try_folded_recommender}"
-                        f"|{uuid.uuid4()}"
-                    ),
-                    job_priority=(
-                        baseline_benchmark.priority * baseline_recommender.priority
-                    ),
-                    job_info={
-                        "recommender": baseline_recommender.recommender.RECOMMENDER_NAME,
-                        "benchmark": baseline_benchmark.benchmark.value,
-                        "similarity": similarity,
-                    },
-                    method=_compute_statistical_test_on_users,
-                    method_kwargs={
-                        "experiment_case_baseline": case_baseline,
-                        "experiment_baseline_similarity": similarity,
-                        "try_folded_recommender": try_folded_recommender,
-                    },
-                )
-
-
 def compute_statistical_tests(
     experiment_cases_statistical_tests_interface: commons.ExperimentCasesStatisticalTestInterface,
 ) -> None:
@@ -360,26 +307,7 @@ def compute_statistical_tests(
     for (
         experiment_case_statistical_test
     ) in experiment_cases_statistical_tests_interface.experiment_cases:
-        baseline_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
-            experiment_case_statistical_test.benchmark
-        ]
-        baseline_hyper_parameters = (
-            commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[
-                experiment_case_statistical_test.hyper_parameter_tuning_parameters
-            ]
+        _compute_statistical_test_on_users(
+            experiment_case_statistical_test=experiment_case_statistical_test,
+            experiment_baseline_similarity=similarity,
         )
-
-        baseline_recommender = commons.MAPPER_AVAILABLE_RECOMMENDERS[
-            experiment_case_statistical_test.recommender
-        ]
-
-        similarities = commons.get_similarities_by_recommender_class(
-            recommender_class=baseline_recommender.recommender,
-            knn_similarities=baseline_hyper_parameters.knn_similarity_types,
-        )
-
-        for similarity in similarities:
-            _compute_statistical_test_on_users(
-                experiment_case_statistical_test=experiment_case_statistical_test,
-                experiment_baseline_similarity=similarity,
-            )

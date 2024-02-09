@@ -415,6 +415,14 @@ class ExperimentCaseSignalAnalysis:
 
 
 @attrs.define(frozen=True, kw_only=True)
+class ExperimentCaseStatisticalTest:
+    benchmark: Benchmarks = attrs.field()
+    hyper_parameter_tuning_parameters: EHyperParameterTuningParameters = attrs.field()
+    recommender_baseline: RecommenderBaseline = attrs.field()
+    recommenders_impressions: list[RecommenderImpressions] = attrs.field()
+
+
+@attrs.define(frozen=True, kw_only=True)
 class ExperimentCasesInterface:
     to_use_benchmarks: list[Benchmarks] = attrs.field()
     to_use_hyper_parameter_tuning_parameters: list[
@@ -504,6 +512,35 @@ class ExperimentCasesSignalAnalysisInterface:
                 training_function=training_function,
             )
             for benchmark, hyper_parameter_tuning_parameters, recommender_baseline, recommender_impressions_and_case, training_function in list_cases
+        ]
+
+
+@attrs.define(frozen=True, kw_only=True)
+class ExperimentCasesStatisticalTestInterface:
+    to_use_benchmarks: list[Benchmarks] = attrs.field()
+    to_use_hyper_parameter_tuning_parameters: list[
+        EHyperParameterTuningParameters
+    ] = attrs.field()
+    to_use_recommenders_baselines: list[RecommenderBaseline] = attrs.field()
+    to_use_recommenders_impressions: list[list[RecommenderImpressions]] = attrs.field()
+
+    @property
+    def experiment_cases(self) -> list[ExperimentCaseStatisticalTest]:
+        list_cases = itertools.product(
+            self.to_use_benchmarks,
+            self.to_use_hyper_parameter_tuning_parameters,
+            self.to_use_recommenders_baselines,
+            self.to_use_recommenders_impressions,
+        )
+
+        return [
+            ExperimentCaseStatisticalTest(
+                benchmark=benchmark,
+                hyper_parameter_tuning_parameters=hyper_parameter_tuning_parameters,
+                recommender_baseline=recommender_baseline,
+                recommenders_impressions=recommenders_impressions,
+            )
+            for benchmark, hyper_parameter_tuning_parameters, recommender_baseline, recommenders_impressions in list_cases
         ]
 
 
