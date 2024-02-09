@@ -1,5 +1,5 @@
 [tool.mypy]
-python_version = 3.10
+python_version = "3.10"
 allow_redefinition = false
 check_untyped_defs = true
 ignore_errors = false
@@ -15,11 +15,11 @@ warn_unused_configs = true
 warn_unreachable = true
 warn_no_return = true
 
-[email.gmail]
-path_credential_json = "./credentials.json"
-path_token_json = "./token.json"
+# [email.gmail]
+# path_credential_json = "./credentials.json"
+# path_token_json = "./token.json"
 
-[dask]
+[tool.dask]
 use_processes = true
 num_workers = 6
 threads_per_worker = 1
@@ -27,7 +27,7 @@ memory_limit = 0 # "30GiB"
 dashboard_address = ":8787"
 scheduler_port = 8786
 
-[logs]
+[tool.logging]
 dir_logs = ".logs"
 filename_logs = "impressions_evaluation.log"
 
