@@ -120,6 +120,9 @@ ENV/
 # Dask
 dask-worker-space/
 
+# VSCode
+.vscode
+
 # macOS cache
 **/.DS_Store
 
