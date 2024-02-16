@@ -60,6 +60,7 @@ lightgbm = "^4.0.0"
 tikzplotlib = "^0.10.1"
 powerlaw = "^1.5"
 paxplot = "^0.1.4b2"
+matplotlib = "~3.7"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.6.1"
