@@ -6,7 +6,7 @@ from typing import Union
 
 from dotenv import load_dotenv
 
-from impressions_evaluation.experiments.statistical_tests import (
+from impressions_evaluation.experiments.graph_based.statistical_tests import (
     compute_statistical_tests,
 )
 
@@ -78,8 +78,8 @@ class ConsoleArguments(Tap):
 ####################################################################################################
 TO_USE_BENCHMARKS = [
     Benchmarks.ContentWiseImpressions,
-    Benchmarks.MINDSmall,
-    Benchmarks.FINNNoSlates,
+    # Benchmarks.MINDSmall,
+    # Benchmarks.FINNNoSlates,
 ]
 
 
@@ -165,13 +165,15 @@ TO_PRINT_RECOMMENDERS: tuple[
 
 TO_USE_BENCHMARKS_RESULTS = [
     Benchmarks.ContentWiseImpressions,
-    Benchmarks.MINDSmall,
-    Benchmarks.FINNNoSlates,
+    # Benchmarks.MINDSmall,
+    # Benchmarks.FINNNoSlates,
 ]
 
 TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS = [
     EHyperParameterTuningParameters.LEAVE_LAST_OUT_BAYESIAN_50_16
 ]
+
+TO_USE_SCRIPT_NAME = "script_evaluation_study_graph_based_impression_aware"
 
 
 if __name__ == "__main__":
@@ -206,7 +208,8 @@ if __name__ == "__main__":
     experiments_statistical_tests_interface = ExperimentCasesStatisticalTestInterface(
         to_use_benchmarks=TO_USE_BENCHMARKS,
         to_use_hyper_parameter_tuning_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
-        to_use_recommenders=[
+        to_use_script_name=TO_USE_SCRIPT_NAME,
+        to_use_recommenders_baselines=[
             RecommenderBaseline.P3_ALPHA,
             RecommenderBaseline.RP3_BETA,
         ],
@@ -252,29 +255,30 @@ if __name__ == "__main__":
         )
 
     if input_flags.print_evaluation_results:
-        dir_trained_models = os.path.join(
-            DIR_TRAINED_MODELS,
-            "script_graph_based_recommenders_with_impressions",
-            "",
-        )
-
-        dir_latex_results = DIR_LATEX_RESULTS
-        dir_csv_results = DIR_CSV_RESULTS
-        dir_parquet_results = DIR_PARQUET_RESULTS
-
-        process_results(
-            results_interface=TO_PRINT_RECOMMENDERS,
-            dir_csv_results=dir_csv_results,
-            dir_latex_results=dir_latex_results,
-            dir_parquet_results=dir_parquet_results,
-        )
-        export_evaluation_results(
-            benchmarks=TO_USE_BENCHMARKS,
-            hyper_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
-        )
         compute_statistical_tests(
             experiment_cases_statistical_tests_interface=experiments_statistical_tests_interface,
         )
+
+        # dir_trained_models = os.path.join(
+        #     DIR_TRAINED_MODELS,
+        #     "script_graph_based_recommenders_with_impressions",
+        #     "",
+        # )
+
+        # dir_latex_results = DIR_LATEX_RESULTS
+        # dir_csv_results = DIR_CSV_RESULTS
+        # dir_parquet_results = DIR_PARQUET_RESULTS
+
+        # process_results(
+        #     results_interface=TO_PRINT_RECOMMENDERS,
+        #     dir_csv_results=dir_csv_results,
+        #     dir_latex_results=dir_latex_results,
+        #     dir_parquet_results=dir_parquet_results,
+        # )
+        # export_evaluation_results(
+        #     benchmarks=TO_USE_BENCHMARKS,
+        #     hyper_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        # )
 
     if input_flags.analyze_hyper_parameters:
         recommenders = [

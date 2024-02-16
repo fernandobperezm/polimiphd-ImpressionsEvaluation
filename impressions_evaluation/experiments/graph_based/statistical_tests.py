@@ -1,25 +1,12 @@
 import logging
 import os
-import uuid
 
-import impressions_evaluation.experiments.commons as commons
+from impressions_evaluation.experiments import commons
 from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES
-from impressions_evaluation.experiments.impression_aware.re_ranking import (
-    DIR_TRAINED_MODELS_RE_RANKING,
-)
-from impressions_evaluation.experiments.impression_aware.user_profiles import (
-    DIR_TRAINED_MODELS_USER_PROFILES,
+from impressions_evaluation.experiments.graph_based import (
+    DIR_TRAINED_MODELS_IMPRESSION_AWARE,
 )
 
-from Recommenders.BaseSimilarityMatrixRecommender import (
-    BaseItemSimilarityMatrixRecommender,
-    BaseUserSimilarityMatrixRecommender,
-)
-from recsys_framework_extensions.dask import DaskInterface
-
-from impressions_evaluation.experiments.print_results import (
-    DIR_RESULTS_MODEL_EVALUATION,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +17,7 @@ logger = logging.getLogger(__name__)
 ####################################################################################################
 DIR_STATISTICAL_TESTS = os.path.join(
     commons.DIR_RESULTS_EXPORT,
+    "{script_name}",
     "statistical_tests",
     "{benchmark}",
     "{evaluation_strategy}",
@@ -46,7 +34,6 @@ commons.FOLDERS.add(DIR_STATISTICAL_TESTS)
 ####################################################################################################
 def _compute_statistical_test_on_users(
     experiment_case_statistical_test: commons.ExperimentCaseStatisticalTest,
-    experiment_baseline_similarity: str,
 ) -> None:
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
         experiment_case_statistical_test.benchmark
@@ -58,7 +45,7 @@ def _compute_statistical_test_on_users(
     )
 
     experiment_recommender_baseline = commons.MAPPER_AVAILABLE_RECOMMENDERS[
-        experiment_case_statistical_test.recommender
+        experiment_case_statistical_test.recommender_baseline
     ]
     experiment_recommenders_impressions = [
         commons.MAPPER_AVAILABLE_RECOMMENDERS[recommender_impressions]
@@ -136,20 +123,14 @@ def _compute_statistical_test_on_users(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
-
-    folder_path_recommender_impressions_re_ranking = (
-        DIR_TRAINED_MODELS_RE_RANKING.format(
-            benchmark=experiment_benchmark.benchmark.value,
-            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
-        )
-    )
-    folder_path_recommender_impressions_user_profiles = (
-        DIR_TRAINED_MODELS_USER_PROFILES.format(
+    folder_path_recommender_impression_aware = (
+        DIR_TRAINED_MODELS_IMPRESSION_AWARE.format(
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
     )
     folder_path_export_statistical_tests = DIR_STATISTICAL_TESTS.format(
+        script_name=experiment_case_statistical_test.script_name,
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
@@ -166,7 +147,7 @@ def _compute_statistical_test_on_users(
         folder_path=folder_path_recommender_baseline,
         file_name_postfix=file_name_postfix,
         urm_train=urm_train.copy(),
-        similarity=experiment_baseline_similarity,
+        similarity=None,
     )
 
     if recommender_trained_baseline is None:
@@ -178,76 +159,10 @@ def _compute_statistical_test_on_users(
     )
     recommender_baseline_folder = folder_path_recommender_baseline
 
-    recommenders_impressions = []
-    recommenders_impressions_names = []
-    recommenders_impressions_folders = []
-
-    recommender_trained_impressions_re_ranking_cycling = commons.load_recommender_trained_impressions(
-        recommender_class_impressions=experiment_recommender_impressions_reranking_cycling.recommender,
-        folder_path=folder_path_recommender_impressions_re_ranking,
-        file_name_postfix=file_name_postfix,
-        urm_train=urm_train.copy(),
-        uim_train=uim_train.copy(),
-        uim_frequency=impressions_feature_frequency_train_validation.copy(),
-        uim_position=impressions_feature_position_train_validation.copy(),
-        uim_timestamp=impressions_feature_timestamp_train_validation.copy(),
-        uim_last_seen=impressions_feature_last_seen_train_validation.copy(),
-        recommender_baseline=recommender_baseline,
-    )
-
-    if recommender_trained_impressions_re_ranking_cycling is not None:
-        recommenders_impressions.append(
-            recommender_trained_impressions_re_ranking_cycling
-        )
-        recommenders_impressions_names.append(
-            f"{recommender_trained_impressions_re_ranking_cycling.RECOMMENDER_NAME}_{file_name_postfix}",
-        )
-        recommenders_impressions_folders.append(
-            folder_path_recommender_impressions_re_ranking,
-        )
-
-    recommender_trained_impressions_re_ranking_impressions_discounting = commons.load_recommender_trained_impressions(
-        recommender_class_impressions=experiment_recommender_impressions_reranking_impressions_discounting.recommender,
-        folder_path=folder_path_recommender_impressions_re_ranking,
-        file_name_postfix=file_name_postfix,
-        urm_train=urm_train.copy(),
-        uim_train=uim_train.copy(),
-        uim_frequency=impressions_feature_frequency_train_validation.copy(),
-        uim_position=impressions_feature_position_train_validation.copy(),
-        uim_timestamp=impressions_feature_timestamp_train_validation.copy(),
-        uim_last_seen=impressions_feature_last_seen_train_validation.copy(),
-        recommender_baseline=recommender_baseline,
-    )
-
-    if recommender_trained_impressions_re_ranking_impressions_discounting is not None:
-        recommenders_impressions.append(
-            recommender_trained_impressions_re_ranking_impressions_discounting
-        )
-        recommenders_impressions_names.append(
-            f"{recommender_trained_impressions_re_ranking_impressions_discounting.RECOMMENDER_NAME}_{file_name_postfix}",
-        )
-        recommenders_impressions_folders.append(
-            folder_path_recommender_impressions_re_ranking,
-        )
-
-    recommender_has_user_similarity = isinstance(
-        recommender_trained_baseline, BaseUserSimilarityMatrixRecommender
-    ) or isinstance(recommender_trained_folded, BaseUserSimilarityMatrixRecommender)
-    recommender_has_item_similarity = isinstance(
-        recommender_trained_baseline, BaseItemSimilarityMatrixRecommender
-    ) or isinstance(recommender_trained_folded, BaseItemSimilarityMatrixRecommender)
-
-    if recommender_has_user_similarity:
-        recommender_class_impressions = experiment_recommender_impressions_profiles_user
-    elif recommender_has_item_similarity:
-        recommender_class_impressions = experiment_recommender_impressions_profiles_item
-    else:
-        return
-
-    recommender_trained_impressions_user_profiles = (
+    recommenders_impressions = [
         commons.load_recommender_trained_impressions(
-            recommender_class_impressions=recommender_class_impressions.recommender,
-            folder_path=folder_path_recommender_impressions_user_profiles,
+            recommender_class_impressions=experiment_recommender.recommender,
+            folder_path=folder_path_recommender_impression_aware,
             file_name_postfix=file_name_postfix,
             urm_train=urm_train.copy(),
             uim_train=uim_train.copy(),
@@ -257,21 +172,30 @@ def _compute_statistical_test_on_users(
             uim_last_seen=impressions_feature_last_seen_train_validation.copy(),
             recommender_baseline=recommender_baseline,
         )
-    )
+        for experiment_recommender in experiment_recommenders_impressions
+    ]
 
-    if recommender_trained_impressions_user_profiles is not None:
-        recommenders_impressions.append(recommender_trained_impressions_user_profiles)
-        recommenders_impressions_names.append(
-            f"{recommender_trained_impressions_user_profiles.RECOMMENDER_NAME}_{file_name_postfix}",
-        )
-        recommenders_impressions_folders.append(
-            folder_path_recommender_impressions_user_profiles,
-        )
+    recommenders_impressions = [
+        rec_imp for rec_imp in recommenders_impressions if rec_imp is not None
+    ]
+
+    recommenders_impressions_names = [
+        f"{rec_imp.RECOMMENDER_NAME}_{file_name_postfix}"
+        for rec_imp in recommenders_impressions
+        if rec_imp is not None
+    ]
+
+    recommenders_impressions_folders = [
+        folder_path_recommender_impression_aware
+        for rec_imp in recommenders_impressions
+        if rec_imp is not None
+    ]
 
     if len(recommenders_impressions) == 0:
         # We require a recommender that is already optimized.
         logger.warning(
-            f"Early-skipping on {_compute_statistical_test_on_users.__name__}."
+            "Early-skipping on %(recommender_name)s.",
+            {"recommender_name": _compute_statistical_test_on_users.__name__},
         )
         return
 
@@ -284,6 +208,19 @@ def _compute_statistical_test_on_users(
     evaluators = commons.get_evaluators(
         data_splits=interactions_data_splits,
         experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
+    )
+
+    logger.debug(
+        "Running statistical tests with the following parameters: %s",
+        {
+            "recommender_baseline": recommender_baseline,
+            "recommender_baseline_name": recommender_baseline_name,
+            "recommender_baseline_folder": recommender_baseline_folder,
+            "recommender_others": recommenders_impressions,
+            "recommender_others_names": recommenders_impressions_names,
+            "recommender_others_folders": recommenders_impressions_folders,
+            "folder_export_results": folder_path_export_statistical_tests,
+        },
     )
 
     evaluators.test.compute_recommenders_statistical_tests(
@@ -309,5 +246,4 @@ def compute_statistical_tests(
     ) in experiment_cases_statistical_tests_interface.experiment_cases:
         _compute_statistical_test_on_users(
             experiment_case_statistical_test=experiment_case_statistical_test,
-            experiment_baseline_similarity=similarity,
         )

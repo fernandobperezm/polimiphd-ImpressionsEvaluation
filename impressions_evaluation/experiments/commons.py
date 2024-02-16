@@ -56,15 +56,15 @@ from impressions_evaluation.impression_recommenders.graph_based.lightgcn import 
 )
 from impressions_evaluation.impression_recommenders.graph_based.p3_alpha import (
     ImpressionsDirectedP3AlphaRecommender,
+    ImpressionsDirectedWithFrequencyP3AlphaRecommender,
     ImpressionsProfileP3AlphaRecommender,
     ImpressionsProfileWithFrequencyP3AlphaRecommender,
-    ImpressionsDirectedWithFrequencyP3AlphaRecommender,
 )
 from impressions_evaluation.impression_recommenders.graph_based.rp3_beta import (
     ImpressionsDirectedRP3BetaRecommender,
+    ImpressionsDirectedWithFrequencyRP3BetaRecommender,
     ImpressionsProfileRP3BetaRecommender,
     ImpressionsProfileWithFrequencyRP3BetaRecommender,
-    ImpressionsDirectedWithFrequencyRP3BetaRecommender,
 )
 from impressions_evaluation.impression_recommenders.re_ranking.hard_frequency_capping import (
     SearchHyperParametersHardFrequencyCappingRecommender,
@@ -418,6 +418,7 @@ class ExperimentCaseSignalAnalysis:
 class ExperimentCaseStatisticalTest:
     benchmark: Benchmarks = attrs.field()
     hyper_parameter_tuning_parameters: EHyperParameterTuningParameters = attrs.field()
+    script_name: str = attrs.field()
     recommender_baseline: RecommenderBaseline = attrs.field()
     recommenders_impressions: list[RecommenderImpressions] = attrs.field()
 
@@ -521,26 +522,26 @@ class ExperimentCasesStatisticalTestInterface:
     to_use_hyper_parameter_tuning_parameters: list[
         EHyperParameterTuningParameters
     ] = attrs.field()
+    to_use_script_name: str = attrs.field(default="")
     to_use_recommenders_baselines: list[RecommenderBaseline] = attrs.field()
     to_use_recommenders_impressions: list[list[RecommenderImpressions]] = attrs.field()
 
     @property
     def experiment_cases(self) -> list[ExperimentCaseStatisticalTest]:
-        list_cases = itertools.product(
-            self.to_use_benchmarks,
-            self.to_use_hyper_parameter_tuning_parameters,
-            self.to_use_recommenders_baselines,
-            self.to_use_recommenders_impressions,
-        )
-
         return [
             ExperimentCaseStatisticalTest(
                 benchmark=benchmark,
                 hyper_parameter_tuning_parameters=hyper_parameter_tuning_parameters,
+                script_name=self.to_use_script_name,
                 recommender_baseline=recommender_baseline,
                 recommenders_impressions=recommenders_impressions,
             )
-            for benchmark, hyper_parameter_tuning_parameters, recommender_baseline, recommenders_impressions in list_cases
+            for benchmark, hyper_parameter_tuning_parameters in itertools.product(
+                self.to_use_benchmarks, self.to_use_hyper_parameter_tuning_parameters
+            )
+            for recommender_baseline, recommenders_impressions in zip(
+                self.to_use_recommenders_baselines, self.to_use_recommenders_impressions
+            )
         ]
 
 
@@ -1095,6 +1096,94 @@ def load_recommender_trained_impressions(
             uim_position=uim_position,
         )
 
+    elif recommender_class_impressions == ImpressionsDirectedP3AlphaRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=ImpressionsDirectedP3AlphaRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_train=uim_train,
+        )
+
+    elif (
+        recommender_class_impressions
+        == ImpressionsDirectedWithFrequencyP3AlphaRecommender
+    ):
+        recommender_impressions = load_extended_recommender(
+            recommender_class=ImpressionsDirectedWithFrequencyP3AlphaRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_train=uim_train,
+            uim_frequency=uim_frequency,
+        )
+
+    elif recommender_class_impressions == ImpressionsProfileP3AlphaRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=ImpressionsProfileP3AlphaRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_train=uim_train,
+        )
+
+    elif (
+        recommender_class_impressions
+        == ImpressionsProfileWithFrequencyP3AlphaRecommender
+    ):
+        recommender_impressions = load_extended_recommender(
+            recommender_class=ImpressionsProfileWithFrequencyP3AlphaRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_train=uim_train,
+            uim_frequency=uim_frequency,
+        )
+
+    elif recommender_class_impressions == ImpressionsDirectedRP3BetaRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=ImpressionsDirectedRP3BetaRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_train=uim_train,
+        )
+
+    elif (
+        recommender_class_impressions
+        == ImpressionsDirectedWithFrequencyRP3BetaRecommender
+    ):
+        recommender_impressions = load_extended_recommender(
+            recommender_class=ImpressionsDirectedWithFrequencyRP3BetaRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_train=uim_train,
+            uim_frequency=uim_frequency,
+        )
+
+    elif recommender_class_impressions == ImpressionsProfileRP3BetaRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=ImpressionsProfileRP3BetaRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_train=uim_train,
+        )
+
+    elif (
+        recommender_class_impressions
+        == ImpressionsProfileWithFrequencyRP3BetaRecommender
+    ):
+        recommender_impressions = load_extended_recommender(
+            recommender_class=ImpressionsProfileWithFrequencyRP3BetaRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_train=uim_train,
+            uim_frequency=uim_frequency,
+        )
+
     else:
         raise NotImplementedError("Non-supported impressions recommender.")
 
@@ -1107,16 +1196,22 @@ def load_recommender_trained_impressions(
 ####################################################################################################
 ####################################################################################################
 def create_necessary_folders(
-    benchmarks: list[Benchmarks], evaluation_strategies: list[EvaluationStrategy]
+    benchmarks: list[Benchmarks],
+    evaluation_strategies: list[EvaluationStrategy],
+    script_name: Optional[str] = None,
 ):
     """
     Public method to create the results' folder structure needed by the framework.
     """
+    if script_name is None:
+        script_name = ""
+
     for folder in FOLDERS:
         for benchmark, evaluation_strategy in itertools.product(
             benchmarks, evaluation_strategies
         ):
             formatted = folder.format(
+                script_name=script_name,
                 benchmark=benchmark.value,
                 evaluation_strategy=evaluation_strategy.value,
             )
@@ -1176,7 +1271,7 @@ def get_evaluators(
     experiment_hyper_parameter_tuning_parameters: HyperParameterTuningParameters,
 ) -> Evaluators:
     """
-    Encapsulates the configures of `Evaluators` object so the different methods that do hyper-parameter
+    Encapsulates the configuration of `Evaluators` object so the different methods that do hyper-parameter
     tuning do not have to do it.
     """
     if (
