@@ -137,19 +137,19 @@ class ContentWiseImpressionsConfig(MixinSHA256Hash):
         "position_interactions": pd.Int32Dtype(),
     }
 
-    min_number_of_interactions = attrs.field(
+    min_number_of_interactions: int = attrs.field(
         default=3,
         validator=[
             attrs.validators.gt(0),
         ],
     )
-    binarize_impressions = attrs.field(
+    binarize_impressions: bool = attrs.field(
         default=True,
         validator=[
             attrs.validators.instance_of(bool),
         ],
     )
-    binarize_interactions = attrs.field(
+    binarize_interactions: bool = attrs.field(
         default=True,
         validator=[
             attrs.validators.instance_of(bool),
