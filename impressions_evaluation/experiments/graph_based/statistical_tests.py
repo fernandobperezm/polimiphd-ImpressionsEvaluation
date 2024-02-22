@@ -1,5 +1,9 @@
+import itertools
 import logging
 import os
+from typing import Union
+
+import pandas as pd
 
 from impressions_evaluation.experiments import commons
 from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES
@@ -24,7 +28,12 @@ DIR_STATISTICAL_TESTS = os.path.join(
     "",
 )
 
+DIR_STATISTICAL_TESTS_EXPORT = os.path.join(
+    commons.DIR_RESULTS_EXPORT, "{script_name}", "statistical_tests", "",
+)
+
 commons.FOLDERS.add(DIR_STATISTICAL_TESTS)
+commons.FOLDERS.add(DIR_STATISTICAL_TESTS_EXPORT)
 
 
 ####################################################################################################
@@ -34,7 +43,7 @@ commons.FOLDERS.add(DIR_STATISTICAL_TESTS)
 ####################################################################################################
 def _compute_statistical_test_on_users(
     experiment_case_statistical_test: commons.ExperimentCaseStatisticalTest,
-) -> None:
+) -> Union[tuple[pd.DataFrame, pd.DataFrame], tuple[None, None]]:
     experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[
         experiment_case_statistical_test.benchmark
     ]
@@ -151,7 +160,7 @@ def _compute_statistical_test_on_users(
     )
 
     if recommender_trained_baseline is None:
-        return
+        return None, None
 
     recommender_baseline = recommender_trained_baseline
     recommender_baseline_name = (
@@ -197,7 +206,7 @@ def _compute_statistical_test_on_users(
             "Early-skipping on %(recommender_name)s.",
             {"recommender_name": _compute_statistical_test_on_users.__name__},
         )
-        return
+        return None, None
 
     import random
     import numpy as np
@@ -223,7 +232,11 @@ def _compute_statistical_test_on_users(
         },
     )
 
-    evaluators.test.compute_recommenders_statistical_tests(
+    (
+        df_statistical_tests_groupwise,
+        df_statistical_tests_pairwise,
+    ) = evaluators.test.compute_recommenders_statistical_tests(
+        dataset=experiment_benchmark.benchmark.value,
         recommender_baseline=recommender_baseline,
         recommender_baseline_name=recommender_baseline_name,
         recommender_baseline_folder=recommender_baseline_folder,
@@ -231,6 +244,164 @@ def _compute_statistical_test_on_users(
         recommender_others_names=recommenders_impressions_names,
         recommender_others_folders=recommenders_impressions_folders,
         folder_export_results=folder_path_export_statistical_tests,
+    )
+
+    return df_statistical_tests_groupwise, df_statistical_tests_pairwise
+
+
+def _export_pairwise_statistical_tests(
+    *,
+    df_results_pairwise: pd.DataFrame,
+    cutoffs: list[int],
+    metrics: list[str],
+    folder_path_results_to_export: str,
+    results_name: str,
+) -> None:
+    # We are only interested in the statistical test with a bonferroni correction to adjust for multiple pair-wise comparisons.
+    statistical_tests = [
+        "wilcoxon",
+        "wilcoxon_zsplit",
+        "bonferroni-wilcoxon",
+        "bonferroni-wilcoxon_zsplit",
+    ]
+    # We want to know only if impression-aware recommenders are better than baselines.
+    alternative_hipotheses = ["greater"]
+    alpha_significance_levels = [0.05]
+    inside_columns = ["p_value"]
+
+    for (
+        statistical_test,
+        alternative_hipothesis,
+        alpha,
+        inside_col,
+    ) in itertools.product(
+        statistical_tests,
+        alternative_hipotheses,
+        alpha_significance_levels,
+        inside_columns,
+    ):
+        columns_to_test = [
+            ("dataset", "", "", "", "", ""),
+            ("recommender_base", "", "", "", "", ""),
+            ("recommender_other", "", "", "", "", ""),
+        ] + [
+            (
+                str(cutoff),
+                str(metric),
+                str(statistical_test),
+                str(alternative_hipothesis),
+                str(alpha),
+                str(inside_col),
+            )
+            for cutoff, metric in itertools.product(cutoffs, metrics)
+        ]
+
+        df_to_export = df_results_pairwise[columns_to_test].copy()
+        df_to_export[("recommender_base", "", "", "", "", "")] = (
+            df_to_export[("recommender_base", "", "", "", "", "")]
+            .str.replace("_best_model_last", "")
+            .str.replace("Recommender", "")
+        )
+
+        df_to_export[("recommender_other", "", "", "", "", "")] = (
+            df_to_export[("recommender_other", "", "", "", "", "")]
+            .str.replace("_best_model_last", "")
+            .str.replace("Recommender", "")
+            .str.replace("P3Alpha", "")
+            .str.replace("RP3Beta", "")
+            .str.replace("ImpressionsProfileWithFrequency", "IP-F")
+            .str.replace("ImpressionsProfile", "IP-E")
+            .str.replace("ImpressionsDirectedWithFrequency", "DG-F")
+            .str.replace("ImpressionsDirected", "DG-E")
+        )
+
+        # Removes the multi-level columns: <statistical_test>, <alternative_hipothesis>, <alpha>, "p_value"
+        df_to_export = df_to_export.droplevel([2, 3, 4, 5], axis="columns")
+
+        df_to_export.to_csv(
+            os.path.join(
+                folder_path_results_to_export,
+                f"table-statistical_test_pvalues-{results_name}-{statistical_test}-{alternative_hipothesis}.csv",
+            ),
+            index=False,
+            sep=";",
+        )
+
+
+def export_statistical_tests(
+    experiment_cases_statistical_tests_interface: commons.ExperimentCasesStatisticalTestInterface,
+) -> None:
+    list_df_results_groupwise = []
+    list_df_results_pairwise = []
+
+    column_dataset = ("dataset", "", "", "", "", "")
+
+    for benchmark, hyper_parameters in itertools.product(
+        experiment_cases_statistical_tests_interface.to_use_benchmarks,
+        experiment_cases_statistical_tests_interface.to_use_hyper_parameter_tuning_parameters,
+    ):
+        for (
+            experiment_case_statistical_test
+        ) in experiment_cases_statistical_tests_interface.experiment_cases:
+            if (
+                benchmark != experiment_case_statistical_test.benchmark
+                or hyper_parameters
+                != experiment_case_statistical_test.hyper_parameter_tuning_parameters
+            ):
+                continue
+
+            (
+                df_statistical_tests_groupwise,
+                df_statistical_tests_pairwise,
+            ) = _compute_statistical_test_on_users(
+                experiment_case_statistical_test=experiment_case_statistical_test,
+            )
+
+            if df_statistical_tests_groupwise is not None:
+                if column_dataset not in df_statistical_tests_groupwise.columns:
+                    logger.warning("Adding dataset column to groupwise df.")
+                    df_statistical_tests_groupwise[column_dataset] = benchmark.value
+
+                list_df_results_groupwise.append(df_statistical_tests_groupwise)
+
+            if df_statistical_tests_pairwise is not None:
+                if column_dataset not in df_statistical_tests_pairwise.columns:
+                    logger.warning("Adding dataset column to pairwise df.")
+                    df_statistical_tests_pairwise[column_dataset] = benchmark.value
+
+                list_df_results_pairwise.append(df_statistical_tests_pairwise)
+
+    df_results_groupwise = pd.concat(
+        objs=list_df_results_groupwise,
+        axis="index",
+        ignore_index=True,
+    )
+
+    df_results_pairwise = pd.concat(
+        objs=list_df_results_pairwise,
+        axis="index",
+        ignore_index=True,
+    )
+
+    folder_path_results_to_export = DIR_STATISTICAL_TESTS_EXPORT.format(
+        script_name=experiment_cases_statistical_tests_interface.to_use_script_name,
+    )
+    os.makedirs(folder_path_results_to_export, exist_ok=True)
+
+    _export_pairwise_statistical_tests(
+        df_results_pairwise=df_results_pairwise,
+        cutoffs=[20],
+        metrics=["NDCG", "PRECISION", "RECALL", "F1"],
+        folder_path_results_to_export=folder_path_results_to_export,
+        results_name="one_cutoff-all_metrics",
+    )
+
+    _export_pairwise_statistical_tests(
+        df_results_pairwise=df_results_pairwise,
+        cutoffs=[5, 10, 20, 50, 100],
+        metrics=["NDCG"],
+        folder_path_results_to_export=folder_path_results_to_export,
+        results_name="all_cutoffs-one_metric",
     )
 
 

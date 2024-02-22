@@ -1,20 +1,15 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import logging
 import os
+
 from typing import Union
+from tap import Tap
 
 from dotenv import load_dotenv
 
-from impressions_evaluation.experiments.graph_based.statistical_tests import (
-    compute_statistical_tests,
-)
-
 load_dotenv()
-
-import logging
-
-from tap import Tap
 
 from impressions_evaluation import configure_logger
 from impressions_evaluation.experiments.commons import (
@@ -29,6 +24,11 @@ from impressions_evaluation.experiments.commons import (
     RecommenderImpressions,
     DIR_TRAINED_MODELS,
 )
+from impressions_evaluation.experiments.hyperparameters import (
+    DIR_ANALYSIS_HYPER_PARAMETERS,
+    plot_parallel_hyper_parameters_recommenders,
+)
+
 from impressions_evaluation.experiments.graph_based import (
     _run_collaborative_filtering_hyper_parameter_tuning,
     _run_pure_impressions_hyper_parameter_tuning,
@@ -42,9 +42,9 @@ from impressions_evaluation.experiments.graph_based.results import (
     DIR_CSV_RESULTS,
     DIR_LATEX_RESULTS,
 )
-from impressions_evaluation.experiments.hyperparameters import (
-    DIR_ANALYSIS_HYPER_PARAMETERS,
-    plot_parallel_hyper_parameters_recommenders,
+from impressions_evaluation.experiments.graph_based.statistical_tests import (
+    compute_statistical_tests,
+    export_statistical_tests,
 )
 
 
@@ -60,6 +60,12 @@ class ConsoleArguments(Tap):
 
     include_impressions_frequency: bool = False
     """Tunes the hyper-parameters of graph-based recommenders using impressions frequency, i.e., the UIM-F"""
+
+    compute_statistical_tests: bool = False
+    """Compute statistical significance tests comparing the performance of impression-aware recommenders against collaborative filtering baselines."""
+
+    print_statistical_tests: bool = False
+    """Exports to CSV the p-values of several statistical significance tests comparing the performance of impression-aware recommenders against collaborative filtering baselines."""
 
     print_evaluation_results: bool = False
     """Exports to Parquet, CSV, and LaTeX the accuracy, beyond-accuracy, optimal hyper-parameters, and scalability metrics of all tuned recommenders."""
@@ -78,8 +84,8 @@ class ConsoleArguments(Tap):
 ####################################################################################################
 TO_USE_BENCHMARKS = [
     Benchmarks.ContentWiseImpressions,
-    # Benchmarks.MINDSmall,
-    # Benchmarks.FINNNoSlates,
+    Benchmarks.MINDSmall,
+    Benchmarks.FINNNoSlates,
 ]
 
 
@@ -165,8 +171,8 @@ TO_PRINT_RECOMMENDERS: tuple[
 
 TO_USE_BENCHMARKS_RESULTS = [
     Benchmarks.ContentWiseImpressions,
-    # Benchmarks.MINDSmall,
-    # Benchmarks.FINNNoSlates,
+    Benchmarks.MINDSmall,
+    Benchmarks.FINNNoSlates,
 ]
 
 TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS = [
@@ -216,14 +222,14 @@ if __name__ == "__main__":
         to_use_recommenders_impressions=[
             [
                 RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
-                RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
                 RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS_FREQUENCY,
+                RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
                 RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
             ],
             [
                 RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
-                RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
                 RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS_FREQUENCY,
+                RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
                 RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
             ],
         ],
@@ -232,6 +238,7 @@ if __name__ == "__main__":
     create_necessary_folders(
         benchmarks=experiments_interface_baselines.benchmarks,
         evaluation_strategies=experiments_interface_baselines.evaluation_strategies,
+        script_name=TO_USE_SCRIPT_NAME,
     )
 
     if input_flags.create_datasets:
@@ -254,31 +261,37 @@ if __name__ == "__main__":
             experiment_cases_interface=experiments_impressions_frequency_interface,
         )
 
-    if input_flags.print_evaluation_results:
+    if input_flags.compute_statistical_tests:
         compute_statistical_tests(
             experiment_cases_statistical_tests_interface=experiments_statistical_tests_interface,
         )
 
-        # dir_trained_models = os.path.join(
-        #     DIR_TRAINED_MODELS,
-        #     "script_graph_based_recommenders_with_impressions",
-        #     "",
-        # )
+    if input_flags.print_statistical_tests:
+        export_statistical_tests(
+            experiment_cases_statistical_tests_interface=experiments_statistical_tests_interface,
+        )
 
-        # dir_latex_results = DIR_LATEX_RESULTS
-        # dir_csv_results = DIR_CSV_RESULTS
-        # dir_parquet_results = DIR_PARQUET_RESULTS
+    if input_flags.print_evaluation_results:
+        dir_trained_models = os.path.join(
+            DIR_TRAINED_MODELS,
+            "script_graph_based_recommenders_with_impressions",
+            "",
+        )
 
-        # process_results(
-        #     results_interface=TO_PRINT_RECOMMENDERS,
-        #     dir_csv_results=dir_csv_results,
-        #     dir_latex_results=dir_latex_results,
-        #     dir_parquet_results=dir_parquet_results,
-        # )
-        # export_evaluation_results(
-        #     benchmarks=TO_USE_BENCHMARKS,
-        #     hyper_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
-        # )
+        dir_latex_results = DIR_LATEX_RESULTS
+        dir_csv_results = DIR_CSV_RESULTS
+        dir_parquet_results = DIR_PARQUET_RESULTS
+
+        process_results(
+            results_interface=TO_PRINT_RECOMMENDERS,
+            dir_csv_results=dir_csv_results,
+            dir_latex_results=dir_latex_results,
+            dir_parquet_results=dir_parquet_results,
+        )
+        export_evaluation_results(
+            benchmarks=TO_USE_BENCHMARKS,
+            hyper_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        )
 
     if input_flags.analyze_hyper_parameters:
         recommenders = [
@@ -287,7 +300,7 @@ if __name__ == "__main__":
             #
             "ExtendedP3AlphaRecommender",
             "ExtendedRP3BetaRecommender",
-            "ExtendedLightGCNRecommender",
+            # "ExtendedLightGCNRecommender",
             #
             "ImpressionsProfileP3AlphaRecommender",
             "ImpressionsProfileWithFrequencyP3AlphaRecommender",
@@ -299,10 +312,10 @@ if __name__ == "__main__":
             "ImpressionsDirectedRP3BetaRecommender",
             "ImpressionsDirectedWithFrequencyRP3BetaRecommender",
             #
-            "ImpressionsProfileLightGCNRecommender",
-            "ImpressionsProfileWithFrequencyLightGCNRecommender",
-            "ImpressionsDirectedLightGCNRecommender",
-            "ImpressionsDirectedWithFrequencyLightGCNRecommender",
+            # "ImpressionsProfileLightGCNRecommender",
+            # "ImpressionsProfileWithFrequencyLightGCNRecommender",
+            # "ImpressionsDirectedLightGCNRecommender",
+            # "ImpressionsDirectedWithFrequencyLightGCNRecommender",
         ]
 
         metrics_to_optimize = ["COVERAGE_ITEM", "NDCG"]
@@ -325,4 +338,7 @@ if __name__ == "__main__":
             dir_analysis_hyper_parameters=dir_analysis_hyper_parameters,
         )
 
-    logger.info(f"Finished running script: {__file__}")
+    logger.info(
+        "Finished running script: %(script_name)s",
+        {"script_name": __file__},
+    )
