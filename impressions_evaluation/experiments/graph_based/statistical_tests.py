@@ -29,7 +29,10 @@ DIR_STATISTICAL_TESTS = os.path.join(
 )
 
 DIR_STATISTICAL_TESTS_EXPORT = os.path.join(
-    commons.DIR_RESULTS_EXPORT, "{script_name}", "statistical_tests", "",
+    commons.DIR_RESULTS_EXPORT,
+    "{script_name}",
+    "statistical_tests",
+    "",
 )
 
 commons.FOLDERS.add(DIR_STATISTICAL_TESTS)
@@ -261,8 +264,7 @@ def _export_pairwise_statistical_tests(
     statistical_tests = [
         "wilcoxon",
         "wilcoxon_zsplit",
-        "bonferroni-wilcoxon",
-        "bonferroni-wilcoxon_zsplit",
+        "sign",
     ]
     # We want to know only if impression-aware recommenders are better than baselines.
     alternative_hipotheses = ["greater"]
@@ -327,9 +329,42 @@ def _export_pairwise_statistical_tests(
             sep=";",
         )
 
+        for cutoff, metric in itertools.product(cutoffs, metrics):
+            str_cutoff, str_metric = str(cutoff), str(metric)
 
-def export_statistical_tests(
-    experiment_cases_statistical_tests_interface: commons.ExperimentCasesStatisticalTestInterface,
+            df_to_export[(str_cutoff, str_metric)] = (
+                df_to_export[(str_cutoff, str_metric)]
+                .map(lambda df_val: "*" if df_val <= 0.05 else "")
+                .astype(pd.StringDtype())
+            )
+
+        df_to_export.to_csv(
+            os.path.join(
+                folder_path_results_to_export,
+                f"table-statistical_test_stars-{results_name}-{statistical_test}-{alternative_hipothesis}.csv",
+            ),
+            index=False,
+            sep=";",
+        )
+
+
+def compute_graph_based_statistical_tests(
+    experiment_cases_statistical_tests_interface: commons.ExperimentCasesGraphBasedStatisticalTestInterface,
+) -> None:
+    """
+    Public method runs the statistical tests on the recommendations.
+    """
+    # First compute baselines.
+    for (
+        experiment_case_statistical_test
+    ) in experiment_cases_statistical_tests_interface.experiment_cases:
+        _compute_statistical_test_on_users(
+            experiment_case_statistical_test=experiment_case_statistical_test,
+        )
+
+
+def export_graph_based_statistical_tests(
+    experiment_cases_statistical_tests_interface: commons.ExperimentCasesGraphBasedStatisticalTestInterface,
 ) -> None:
     list_df_results_groupwise = []
     list_df_results_pairwise = []
@@ -403,18 +438,3 @@ def export_statistical_tests(
         folder_path_results_to_export=folder_path_results_to_export,
         results_name="all_cutoffs-one_metric",
     )
-
-
-def compute_statistical_tests(
-    experiment_cases_statistical_tests_interface: commons.ExperimentCasesStatisticalTestInterface,
-) -> None:
-    """
-    Public method runs the statistical tests on the recommendations.
-    """
-    # First compute baselines.
-    for (
-        experiment_case_statistical_test
-    ) in experiment_cases_statistical_tests_interface.experiment_cases:
-        _compute_statistical_test_on_users(
-            experiment_case_statistical_test=experiment_case_statistical_test,
-        )
