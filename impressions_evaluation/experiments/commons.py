@@ -517,7 +517,7 @@ class ExperimentCasesSignalAnalysisInterface:
 
 
 @attrs.define(frozen=True, kw_only=True)
-class ExperimentCasesStatisticalTestInterface:
+class ExperimentCasesGraphBasedStatisticalTestInterface:
     to_use_benchmarks: list[Benchmarks] = attrs.field()
     to_use_hyper_parameter_tuning_parameters: list[
         EHyperParameterTuningParameters
@@ -545,6 +545,33 @@ class ExperimentCasesStatisticalTestInterface:
         ]
 
 
+@attrs.define(frozen=True, kw_only=True)
+class ExperimentCasesStatisticalTestInterface:
+    to_use_benchmarks: list[Benchmarks] = attrs.field()
+    to_use_hyper_parameter_tuning_parameters: list[
+        EHyperParameterTuningParameters
+    ] = attrs.field()
+    to_use_script_name: str = attrs.field(default="")
+    to_use_recommenders_baselines: list[RecommenderBaseline] = attrs.field()
+    to_use_recommenders_impressions: list[RecommenderImpressions] = attrs.field()
+
+    @property
+    def experiment_cases(self) -> list[ExperimentCaseStatisticalTest]:
+        return [
+            ExperimentCaseStatisticalTest(
+                benchmark=benchmark,
+                hyper_parameter_tuning_parameters=hyper_parameter_tuning_parameters,
+                script_name=self.to_use_script_name,
+                recommender_baseline=recommender_baseline,
+                recommenders_impressions=self.to_use_recommenders_impressions,
+            )
+            for benchmark, hyper_parameter_tuning_parameters in itertools.product(
+                self.to_use_benchmarks, self.to_use_hyper_parameter_tuning_parameters
+            )
+            for recommender_baseline in self.to_use_recommenders_baselines
+        ]
+
+
 DIR_TRAINED_MODELS = os.path.join(
     os.getcwd(),
     "trained_models",
@@ -563,6 +590,7 @@ DIR_DATASET_POPULARITY = os.path.join(
     "dataset_popularity",
     "{benchmark}",
     "{evaluation_strategy}",
+    "",
 )
 
 # Each module calls common.FOLDERS.add(<folder_name>) on this variable so they make aware the folder-creator function
@@ -1067,6 +1095,16 @@ def load_recommender_trained_impressions(
             trained_recommender=recommender_baseline,
         )
 
+    elif recommender_class_impressions == HardFrequencyCappingRecommender:
+        recommender_impressions = load_extended_recommender(
+            recommender_class=HardFrequencyCappingRecommender,
+            folder_path=folder_path,
+            file_name_postfix=file_name_postfix,
+            urm_train=urm_train,
+            uim_frequency=uim_frequency,
+            trained_recommender=recommender_baseline,
+        )
+
     elif recommender_class_impressions == FrequencyRecencyRecommender:
         recommender_impressions = load_extended_recommender(
             recommender_class=FrequencyRecencyRecommender,
@@ -1185,7 +1223,7 @@ def load_recommender_trained_impressions(
         )
 
     else:
-        raise NotImplementedError("Non-supported impressions recommender.")
+        raise NotImplementedError(f"Non-supported impressions recommender. Received {recommender_class_impressions}")
 
     return recommender_impressions
 
