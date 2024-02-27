@@ -29,8 +29,9 @@ logger = logging.getLogger(__file__)
 ####################################################################################################
 ####################################################################################################
 DIR_RESULTS_TO_EXPORT = os.path.join(
-    DIR_RESULTS_MODEL_EVALUATION,
-    "experiment_graph_based_impression_aware_recommenders",
+    commons.DIR_RESULTS_EXPORT,
+    "{script_name}",
+    "model_evaluation",
     "",
 )
 DIR_RESULTS_TO_PROCESS = os.path.join(
@@ -866,6 +867,7 @@ def _export_results_hyper_parameters(
 
 
 def process_results(
+    *,
     results_interface: tuple[
         list[commons.Benchmarks],
         list[commons.EHyperParameterTuningParameters],
@@ -880,6 +882,7 @@ def process_results(
     dir_latex_results: str,
     dir_csv_results: str,
     dir_parquet_results: str,
+    script_name: str,
 ) -> None:
     """
     Public method that exports into CSV and LaTeX tables the evaluation metrics, hyper-parameters, and times.
@@ -910,14 +913,17 @@ def process_results(
         num_test_users = cast(int, np.sum(np.ediff1d(urm_test.indptr) >= 1))
 
         folder_path_export_latex = dir_latex_results.format(
+            script_name=script_name,
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
         folder_path_export_csv = dir_csv_results.format(
+            script_name=script_name,
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
         folder_path_export_parquet = dir_parquet_results.format(
+            script_name=script_name,
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
@@ -1053,8 +1059,10 @@ def process_results(
 
 
 def export_evaluation_results(
+    *,
     benchmarks: list[commons.Benchmarks],
     hyper_parameters: list[commons.EHyperParameterTuningParameters],
+    script_name: str,
 ) -> None:
     results_accuracy_metrics: list[pd.DataFrame] = []
     results_times: list[pd.DataFrame] = []
@@ -1094,8 +1102,13 @@ def export_evaluation_results(
         results_times.append(df_results_times)
         results_hyper_parameters.append(df_results_hyper_parameters)
 
-    folder_path_results_to_export = DIR_RESULTS_TO_EXPORT
-    os.makedirs(folder_path_results_to_export, exist_ok=True)
+    folder_path_results_to_export = DIR_RESULTS_TO_EXPORT.format(
+        script_name=script_name,
+    )
+    os.makedirs(
+        folder_path_results_to_export,
+        exist_ok=True,
+    )
 
     df_results_accuracy = pd.concat(
         objs=results_accuracy_metrics,
