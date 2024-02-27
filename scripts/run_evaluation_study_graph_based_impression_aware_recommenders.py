@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from typing import Union
 from tap import Tap
@@ -13,7 +12,7 @@ load_dotenv()
 
 from impressions_evaluation import configure_logger
 from impressions_evaluation.experiments.commons import (
-    ExperimentCasesStatisticalTestInterface,
+    ExperimentCasesGraphBasedStatisticalTestInterface,
     create_necessary_folders,
     ExperimentCasesInterface,
     Benchmarks,
@@ -22,7 +21,6 @@ from impressions_evaluation.experiments.commons import (
     EHyperParameterTuningParameters,
     RecommenderBaseline,
     RecommenderImpressions,
-    DIR_TRAINED_MODELS,
 )
 from impressions_evaluation.experiments.hyperparameters import (
     DIR_ANALYSIS_HYPER_PARAMETERS,
@@ -43,8 +41,8 @@ from impressions_evaluation.experiments.graph_based.results import (
     DIR_LATEX_RESULTS,
 )
 from impressions_evaluation.experiments.graph_based.statistical_tests import (
-    compute_statistical_tests,
-    export_statistical_tests,
+    compute_graph_based_statistical_tests,
+    export_graph_based_statistical_tests,
 )
 
 
@@ -147,23 +145,23 @@ TO_PRINT_RECOMMENDERS: tuple[
         *[
             RecommenderBaseline.P3_ALPHA,
             RecommenderBaseline.RP3_BETA,
-            RecommenderBaseline.LIGHT_GCN,
+            # RecommenderBaseline.LIGHT_GCN,
         ],
         *[
             RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS,
             RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS,
             RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS,
             RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS,
-            RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS,
-            RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS,
+            # RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS,
+            # RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS,
         ],
         *[
             RecommenderImpressions.P3_ALPHA_ONLY_IMPRESSIONS_FREQUENCY,
             RecommenderImpressions.P3_ALPHA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
             RecommenderImpressions.RP3_BETA_ONLY_IMPRESSIONS_FREQUENCY,
             RecommenderImpressions.RP3_BETA_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
-            RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS_FREQUENCY,
-            RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
+            # RecommenderImpressions.LIGHT_GCN_ONLY_IMPRESSIONS_FREQUENCY,
+            # RecommenderImpressions.LIGHT_GCN_DIRECTED_INTERACTIONS_IMPRESSIONS_FREQUENCY,
         ],
     ],
 )
@@ -211,7 +209,7 @@ if __name__ == "__main__":
         to_use_training_functions=TO_USE_TRAINING_FUNCTIONS_IMPRESSIONS_FREQUENCY,
     )
 
-    experiments_statistical_tests_interface = ExperimentCasesStatisticalTestInterface(
+    experiments_statistical_tests_interface = ExperimentCasesGraphBasedStatisticalTestInterface(
         to_use_benchmarks=TO_USE_BENCHMARKS,
         to_use_hyper_parameter_tuning_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
         to_use_script_name=TO_USE_SCRIPT_NAME,
@@ -262,35 +260,27 @@ if __name__ == "__main__":
         )
 
     if input_flags.compute_statistical_tests:
-        compute_statistical_tests(
+        compute_graph_based_statistical_tests(
             experiment_cases_statistical_tests_interface=experiments_statistical_tests_interface,
         )
 
     if input_flags.print_statistical_tests:
-        export_statistical_tests(
+        export_graph_based_statistical_tests(
             experiment_cases_statistical_tests_interface=experiments_statistical_tests_interface,
         )
 
     if input_flags.print_evaluation_results:
-        dir_trained_models = os.path.join(
-            DIR_TRAINED_MODELS,
-            "script_graph_based_recommenders_with_impressions",
-            "",
-        )
-
-        dir_latex_results = DIR_LATEX_RESULTS
-        dir_csv_results = DIR_CSV_RESULTS
-        dir_parquet_results = DIR_PARQUET_RESULTS
-
         process_results(
             results_interface=TO_PRINT_RECOMMENDERS,
-            dir_csv_results=dir_csv_results,
-            dir_latex_results=dir_latex_results,
-            dir_parquet_results=dir_parquet_results,
+            dir_csv_results=DIR_CSV_RESULTS,
+            dir_latex_results=DIR_LATEX_RESULTS,
+            dir_parquet_results=DIR_PARQUET_RESULTS,
+            script_name=TO_USE_SCRIPT_NAME,
         )
         export_evaluation_results(
             benchmarks=TO_USE_BENCHMARKS,
             hyper_parameters=TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+            script_name=TO_USE_SCRIPT_NAME,
         )
 
     if input_flags.analyze_hyper_parameters:
@@ -321,10 +311,8 @@ if __name__ == "__main__":
         metrics_to_optimize = ["COVERAGE_ITEM", "NDCG"]
         cutoff_to_optimize = 10
 
-        dir_analysis_hyper_parameters = os.path.join(
-            DIR_ANALYSIS_HYPER_PARAMETERS,
-            "script_graph_based_recommenders_with_impressions",
-            "",
+        dir_analysis_hyper_parameters = DIR_ANALYSIS_HYPER_PARAMETERS.format(
+            script_name=TO_USE_SCRIPT_NAME,
         )
 
         dir_parquet_results = DIR_PARQUET_RESULTS
