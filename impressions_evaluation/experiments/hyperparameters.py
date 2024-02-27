@@ -17,9 +17,12 @@ from impressions_evaluation.readers.ContentWiseImpressions.statistics import (
 
 DIR_ANALYSIS_HYPER_PARAMETERS = os.path.join(
     commons.DIR_RESULTS_EXPORT,
+    "{script_name}",
     "analysis_hyperparameters",
     "",
 )
+
+commons.FOLDERS.add(DIR_ANALYSIS_HYPER_PARAMETERS)
 
 
 def plot_parallel_coordinates(
@@ -165,7 +168,10 @@ def distribution_hyper_parameters_plug_in_impression_aware_recommenders(
     )
 
     folder_path_results_to_export = dir_analysis_hyper_parameters
-    os.makedirs(folder_path_results_to_export, exist_ok=True)
+    os.makedirs(
+        folder_path_results_to_export,
+        exist_ok=True,
+    )
 
     # "benchmark", "model_type", "hyperparameter_name"
     unique_benchmarks = df_results_hyper_parameters["benchmark"].unique().tolist()
@@ -233,7 +239,7 @@ def distribution_hyper_parameters_plug_in_impression_aware_recommenders(
         col_dtype = dtypes[model_type][hyper_parameter_name]
         try:
             df = df.astype({"hyperparameter_value": col_dtype})
-        except ValueError as e:
+        except ValueError:
             print(
                 f"COULD NOT CONVERT COLUMN TO SPECIFIED DTYPE {str(col_dtype)}. CONVERTING TO STRING."
             )
@@ -507,17 +513,22 @@ def _prepare_recommender_data_for_parallel_plot(
     metrics_to_optimize: list[str],
     cutoff_to_optimize: int,
 ) -> Optional[pd.DataFrame]:
-    df_hyperparameters: pd.DataFrame = data_recommender["hyperparameters_df"]
-    df_results_validation: pd.DataFrame = data_recommender["result_on_validation_df"]
+    df_hyperparameters: Optional[pd.DataFrame] = data_recommender["hyperparameters_df"]
+    df_results_validation: Optional[pd.DataFrame] = data_recommender[
+        "result_on_validation_df"
+    ]
 
-    if data_recommender["hyperparameters_df"] is None:
+    if df_hyperparameters is None:
+        print("The dataframe of hyper-parameters is empty.")
         return None
 
-    if data_recommender["result_on_validation_df"] is None:
+    if df_results_validation is None:
+        print("The dataframe of metrics is empty.")
         return None
 
     df_results_on_metric_and_cutoff = df_results_validation.reset_index(
-        drop=False, level=1
+        drop=False,
+        level=1,
     )
 
     df_results_on_metric_and_cutoff = df_results_on_metric_and_cutoff[
@@ -532,8 +543,19 @@ def _prepare_recommender_data_for_parallel_plot(
     )
 
     if np.any(df_hyperparameters_and_result.isna()):
-        print(f"Detected NA value.")
-        return None
+        print(
+            "Found NaNs in the recommender hyper-parameters and results."
+            " Will drop every row with only NaNs."
+            " Will set to zero metrics where at least one hyper-parameter is not NaN."
+        )
+        df_hyperparameters_and_result = df_hyperparameters_and_result.dropna(
+            axis="index",
+            how="all",
+            inplace=False,
+        ).fillna(
+            {metric: 0.0 for metric in metrics_to_optimize},
+            inplace=False,
+        )
 
     for col, mapping in dict_mappings.items():
         try:
@@ -555,7 +577,8 @@ def _prepare_recommender_data_for_parallel_plot(
 
     if len(list_columns_to_remove) > 0:
         df_hyperparameters_and_result = df_hyperparameters_and_result.drop(
-            columns=list_columns_to_remove, inplace=False
+            columns=list_columns_to_remove,
+            inplace=False,
         )
 
     return df_hyperparameters_and_result
@@ -727,6 +750,7 @@ def plot_parallel_hyper_parameters_plug_in_impression_aware_recommenders(
 
 
 def plot_parallel_hyper_parameters_recommenders(
+    *,
     benchmarks: list[commons.Benchmarks],
     hyper_parameters: list[commons.EHyperParameterTuningParameters],
     recommenders: list[str],
@@ -739,7 +763,10 @@ def plot_parallel_hyper_parameters_recommenders(
             "Must select at least one metric to plot the parallel coordinates of hyper-parameters."
         )
 
-    os.makedirs(dir_analysis_hyper_parameters, exist_ok=True)
+    os.makedirs(
+        dir_analysis_hyper_parameters,
+        exist_ok=True,
+    )
 
     main_metric = metrics_to_optimize[-1]
 
