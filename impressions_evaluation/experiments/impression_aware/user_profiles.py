@@ -37,13 +37,7 @@ logger = logging.getLogger(__name__)
 #                                FOLDERS VARIABLES                            #
 ####################################################################################################
 ####################################################################################################
-DIR_TRAINED_MODELS_USER_PROFILES = os.path.join(
-    DIR_TRAINED_MODELS_IMPRESSION_AWARE,
-    "{benchmark}",
-    "{evaluation_strategy}",
-    # "user_profiles",
-    "",
-)
+DIR_TRAINED_MODELS_USER_PROFILES = DIR_TRAINED_MODELS_IMPRESSION_AWARE
 
 commons.FOLDERS.add(DIR_TRAINED_MODELS_USER_PROFILES)
 

@@ -26,13 +26,7 @@ logger = logging.getLogger(__name__)
 #                                FOLDERS VARIABLES                            #
 ####################################################################################################
 ####################################################################################################
-DIR_TRAINED_MODELS_IMPRESSION_AWARE_HEURISTICS = os.path.join(
-    DIR_TRAINED_MODELS_IMPRESSION_AWARE,
-    "{benchmark}",
-    "{evaluation_strategy}",
-    # "heuristics",
-    "",
-)
+DIR_TRAINED_MODELS_IMPRESSION_AWARE_HEURISTICS = DIR_TRAINED_MODELS_IMPRESSION_AWARE
 
 commons.FOLDERS.add(DIR_TRAINED_MODELS_IMPRESSION_AWARE_HEURISTICS)
 
