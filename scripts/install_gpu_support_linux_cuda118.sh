@@ -1,5 +1,7 @@
 poetry lock --no-update
 poetry install --sync
+poetry run pip install --upgrade pip setuptools wheel
+poetry run pip install --no-use-pep517 lightfm
 
 # Installs the wheel compatible with CUDA 11.8. See: https://pytorch.org/get-started/locally/
 poetry run pip install --upgrade torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118

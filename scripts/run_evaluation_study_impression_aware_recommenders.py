@@ -2,11 +2,14 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from dotenv import load_dotenv
-from recsys_framework_extensions.dask import configure_dask_cluster
 from tap import Tap
+
+load_dotenv()
+
+from recsys_framework_extensions.dask import configure_dask_cluster
+
 
 from impressions_evaluation import configure_logger
 from impressions_evaluation.experiments.hyperparameters import (
@@ -19,8 +22,6 @@ from impressions_evaluation.experiments.print_results import (
     export_evaluation_results,
     DIR_PARQUET_RESULTS,
 )
-
-load_dotenv()
 
 from impressions_evaluation.experiments.baselines import (
     run_baselines_experiments,
@@ -40,6 +41,7 @@ from impressions_evaluation.experiments.commons import (
     EHyperParameterTuningParameters,
     RecommenderBaseline,
     ExperimentCasesSignalAnalysisInterface,
+    ExperimentCasesStatisticalTestInterface,
 )
 from impressions_evaluation.experiments.graph_based import (
     _run_collaborative_filtering_hyper_parameter_tuning,
@@ -56,6 +58,10 @@ from impressions_evaluation.experiments.impression_aware.re_ranking import (
 from impressions_evaluation.experiments.impression_aware.user_profiles import (
     run_impressions_user_profiles_experiments,
     _run_impressions_user_profiles_hyper_parameter_tuning,
+)
+from impressions_evaluation.experiments.statistical_tests import (
+    compute_statistical_tests,
+    export_statistical_tests,
 )
 
 
@@ -97,7 +103,10 @@ class ConsoleArguments(Tap):
     """TODO: fernando-debugger"""
 
     compute_statistical_tests: bool = False
-    """TODO: fernando-debugger"""
+    """Compute statistical significance tests comparing the performance of impression-aware recommenders against collaborative filtering baselines."""
+
+    print_statistical_tests: bool = False
+    """Exports to CSV the p-values of several statistical significance tests comparing the performance of impression-aware recommenders against collaborative filtering baselines."""
 
     send_email: bool = False
     """Send a notification email via GMAIL when experiments start and finish."""
@@ -108,10 +117,16 @@ class ConsoleArguments(Tap):
 #                                            MAIN                                                  #
 ####################################################################################################
 ####################################################################################################
-_TO_USE_BENCHMARKS = [
+_TO_USE_ALL_BENCHMARKS = [
     Benchmarks.ContentWiseImpressions,
     Benchmarks.MINDSmall,
     Benchmarks.FINNNoSlates,
+]
+
+_TO_USE_BENCHMARKS = [
+    # Benchmarks.ContentWiseImpressions,
+    Benchmarks.MINDSmall,
+    # Benchmarks.FINNNoSlates,
 ]
 
 _TO_USE_BENCHMARKS_RESULTS = [
@@ -139,8 +154,8 @@ _TO_USE_RECOMMENDERS_BASELINE = [
     RecommenderBaseline.SLIM_BPR,
     #
     RecommenderBaseline.LIGHT_FM,
-    RecommenderBaseline.EASE_R,
-    RecommenderBaseline.MULT_VAE,
+    # RecommenderBaseline.EASE_R,
+    # RecommenderBaseline.MULT_VAE,
 ]
 
 _TO_USE_RECOMMENDERS_BASELINE_FOLDED = [
@@ -235,14 +250,13 @@ _TO_USE_TRAINING_FUNCTIONS_IMPRESSION_AWARE_PROFILES = [
     _run_impressions_user_profiles_hyper_parameter_tuning,
 ]
 
+_TO_USE_SCRIPT_NAME = "script_evaluation_study_impression_aware"
 
 if __name__ == "__main__":
     input_flags = ConsoleArguments().parse_args()
 
     configure_logger()
     logger = logging.getLogger(__name__)
-
-    print(f"Running script: {__file__} with arguments: {input_flags.as_dict()}")
 
     logger.info(
         "Running script: %(script_name)s with arguments: %(args)s",
@@ -308,14 +322,54 @@ if __name__ == "__main__":
         to_use_training_functions=_TO_USE_TRAINING_FUNCTIONS_IMPRESSION_AWARE_PROFILES,
     )
 
+    experiments_statistical_tests_interface = ExperimentCasesStatisticalTestInterface(
+        to_use_benchmarks=[
+            Benchmarks.ContentWiseImpressions,
+            Benchmarks.MINDSmall,
+            Benchmarks.FINNNoSlates,
+        ],
+        to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
+        to_use_script_name=_TO_USE_SCRIPT_NAME,
+        to_use_recommenders_baselines=[
+            #
+            # RecommenderBaseline.RANDOM,
+            # RecommenderBaseline.TOP_POPULAR,
+            #
+            # RecommenderBaseline.USER_KNN,
+            RecommenderBaseline.ITEM_KNN,
+            #
+            # RecommenderBaseline.P3_ALPHA,
+            RecommenderBaseline.RP3_BETA,
+            #
+            RecommenderBaseline.PURE_SVD,
+            RecommenderBaseline.NMF,
+            # RecommenderBaseline.MF_BPR,
+            # RecommenderBaseline.SVDpp,
+            #
+            # RecommenderBaseline.SLIM_ELASTIC_NET,
+            # RecommenderBaseline.SLIM_BPR,
+            #
+            # RecommenderBaseline.LIGHT_FM,
+            # RecommenderBaseline.EASE_R,
+        ],
+        to_use_recommenders_impressions=[
+            RecommenderImpressions.HARD_FREQUENCY_CAPPING,
+            RecommenderImpressions.CYCLING,
+            RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
+            RecommenderImpressions.USER_WEIGHTED_USER_PROFILE,
+            RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE,
+        ],
+    )
+
     create_necessary_folders(
-        benchmarks=experiments_interface_baselines.benchmarks,
+        benchmarks=_TO_USE_ALL_BENCHMARKS,
         evaluation_strategies=experiments_interface_baselines.evaluation_strategies,
+        script_name=_TO_USE_SCRIPT_NAME,
     )
 
     if input_flags.create_datasets:
         ensure_datasets_exist(
-            to_use_benchmarks=_TO_USE_BENCHMARKS,
+            to_use_benchmarks=_TO_USE_ALL_BENCHMARKS,
         )
 
     if input_flags.include_baselines:
@@ -335,6 +389,8 @@ if __name__ == "__main__":
             dask_interface=dask_interface,
             experiment_cases_interface=experiments_impressions_heuristics_interface,
         )
+
+    dask_interface.wait_for_jobs()
 
     if input_flags.include_impressions_reranking:
         run_impressions_re_ranking_experiments(
@@ -380,14 +436,19 @@ if __name__ == "__main__":
     #         experiment_cases_interface_impressions_re_ranking=experiments_impressions_re_ranking_interface,
     #         experiment_cases_interface_impressions_user_profiles=experiments_impressions_user_profiles_interface,
     #     )
-    #
-    # if input_flags.compute_statistical_tests:
-    #     compute_statistical_tests(
-    #         dask_interface=dask_interface,
-    #         experiment_cases_interface_baselines=experiments_interface_baselines,
-    #     )
-    #
-    # dask_interface.wait_for_jobs()
+
+    if input_flags.compute_statistical_tests:
+        compute_statistical_tests(
+            experiment_cases_statistical_tests_interface=experiments_statistical_tests_interface,
+        )
+
+    if input_flags.print_statistical_tests:
+        export_statistical_tests(
+            experiment_cases_statistical_tests_interface=experiments_statistical_tests_interface,
+        )
+
+    dask_interface.wait_for_jobs()
+
     if input_flags.analyze_hyper_parameters:
         baseline_recommenders = [
             "ItemKNNCFRecommender_asymmetric",
@@ -422,10 +483,8 @@ if __name__ == "__main__":
         metrics_to_optimize = ["COVERAGE_ITEM", "NDCG"]
         cutoff_to_optimize = 10
 
-        dir_analysis_hyper_parameters = os.path.join(
-            DIR_ANALYSIS_HYPER_PARAMETERS,
-            "script_2022_evaluation_study_impression_aware_recommenders",
-            "",
+        dir_analysis_hyper_parameters = DIR_ANALYSIS_HYPER_PARAMETERS.format(
+            script_name=_TO_USE_SCRIPT_NAME,
         )
 
         dir_parquet_results = DIR_PARQUET_RESULTS
@@ -460,4 +519,7 @@ if __name__ == "__main__":
             hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
         )
 
-    logger.info(f"Finished running script: {__file__}")
+    logger.info(
+        "Finished running script: %(scriptname)s",
+        {"scriptname": __file__},
+    )

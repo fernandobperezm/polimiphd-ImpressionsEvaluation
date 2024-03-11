@@ -21,9 +21,9 @@ warn_no_return = true
 
 [tool.dask]
 use_processes = true
-num_workers = 6
+num_workers = 5
 threads_per_worker = 1
-memory_limit = 0 # "30GiB"
+memory_limit = 0 # "20GiB"
 dashboard_address = ":8787"
 scheduler_port = 8786
 

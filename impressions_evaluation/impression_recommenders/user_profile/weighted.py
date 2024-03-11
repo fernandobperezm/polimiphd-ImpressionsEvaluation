@@ -1,4 +1,5 @@
 import enum
+import logging
 from abc import ABC
 from typing import Optional
 
@@ -12,7 +13,6 @@ from Recommenders.BaseSimilarityMatrixRecommender import (
 )
 from Recommenders.Recommender_utils import check_matrix
 from recsys_framework_extensions.data.io import DataIO, attach_to_extended_json_decoder
-import logging
 from recsys_framework_extensions.recommenders.base import (
     SearchHyperParametersBaseRecommender,
     AbstractExtendedBaseRecommender,
@@ -148,7 +148,9 @@ class BaseWeightedUserProfileRecommender(AbstractExtendedBaseRecommender, ABC):
         self._sparse_similarity: sp.csr_matrix = sp.csr_matrix([], dtype=np.float32)
 
         self._uim_train: sp.csr_matrix = check_matrix(
-            X=uim_train, format="csr", dtype=np.float32
+            X=uim_train,
+            format="csr",
+            dtype=np.float32,
         )
         self._alpha: float = 0.0
         self._sign: int = 1
@@ -204,9 +206,9 @@ class BaseWeightedUserProfileRecommender(AbstractExtendedBaseRecommender, ABC):
 
         sp_similarity = getattr(self.trained_recommender, self.ATTR_NAME_W_SPARSE)
 
-        format = "csr" if sp.issparse(sp_similarity) else "npy"
+        fmt = "csr" if sp.issparse(sp_similarity) else "npy"
         self._sparse_similarity = check_matrix(
-            X=sp_similarity, format=format, dtype=np.float32
+            X=sp_similarity, format=fmt, dtype=np.float32
         )
         self._sparse_user_profile = check_matrix(
             X=sparse_user_profile, format="csr", dtype=np.float32
@@ -291,10 +293,14 @@ class ItemWeightedUserProfileRecommender(BaseWeightedUserProfileRecommender):
 
         # Create the scores only for the users inside `user_id_array`
         # Apparently, this already returns a numpy array, so the call to .toarray() is not needed anymore. Probably happened due to an update on Scipy or Numpy.
-        item_scores_all = self._sparse_user_profile[user_id_array, :].dot(
-            self._sparse_similarity,
+        # Update to the previous comment: it does not return a numpy array anymore, so we include the call `.toarray()` again.
+        item_scores_all = (
+            self._sparse_user_profile[user_id_array, :]
+            .dot(
+                self._sparse_similarity,
+            )
+            .toarray()
         )
-        # ).toarray()
         assert (num_score_users, num_score_items) == item_scores_all.shape
 
         # In case we're asked to compute the similarity only on a subset of items, then, we create a matrix of -inf

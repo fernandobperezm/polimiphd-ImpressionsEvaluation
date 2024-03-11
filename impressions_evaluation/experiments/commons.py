@@ -770,7 +770,7 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
         priority=500,
     ),
     RecommenderBaseline.MULT_VAE: ExperimentRecommender(
-        recommender=recommenders.MultVAERecommender,
+        recommender=recommenders.MultVAERecommender_PyTorch,
         search_hyper_parameters=SearchHyperParametersBaseRecommender,
         priority=500,
     ),

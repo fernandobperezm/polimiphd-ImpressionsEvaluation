@@ -419,7 +419,8 @@ def _run_baselines_hyper_parameter_tuning(
 
     logger = logging.getLogger(__name__)
     logger.info(
-        f"Running hyper-parameter tuning of a baseline, function %(function)s. Received arguments: benchmark=%(benchmark)s - recommender=%(recommender)s - hyper_parameters=%(hyper_parameters)s",
+        "Running hyper-parameter tuning of a baseline, function %(function)s."
+        " Received arguments: benchmark=%(benchmark)s - recommender=%(recommender)s - hyper_parameters=%(hyper_parameters)s",
         {
             "function": _run_baselines_hyper_parameter_tuning.__name__,
             "benchmark": experiment_case.benchmark,
@@ -473,10 +474,15 @@ def _run_baselines_hyper_parameter_tuning(
         "urm_train_shape": data_splits.sp_urm_train.shape,
         "urm_validation_shape": data_splits.sp_urm_validation.shape,
         "urm_train_and_validation_shape": data_splits.sp_urm_train_validation.shape,
-        "hyper_parameter_tuning_parameters": experiment_hyper_parameter_tuning_parameters.__repr__(),
+        "hyper_parameter_tuning_parameters": repr(
+            experiment_hyper_parameter_tuning_parameters
+        ),
     }
 
-    logger.info(f"Hyper-parameter tuning arguments:" f"\n\t* {logger_info}")
+    logger.info(
+        "Hyper-parameter tuning arguments: \n\t* %(logger_info)s",
+        {"logger_info": logger_info},
+    )
     run_hyper_parameter_search_collaborative(
         allow_weighting=True,
         allow_bias_URM=False,
@@ -519,6 +525,20 @@ def run_baselines_experiments(
             experiment_case.recommender
         ]
 
+        # TODO: FERNANDO-DEBUGGER. REMOVE WHEN DEBUGGED.
+        # try:
+        #     _run_baselines_hyper_parameter_tuning(
+        #         experiment_case=experiment_case,
+        #     )
+        # except Exception as e:
+        #     import pdb
+
+        #     pdb.set_trace()
+
+        #     print("FUNCTION FAILED. INSPECT")
+        #     print(e)
+
+        # TODO: FERNANDO-DEBUGGER. INSTANTIATE AGAIN DASK.
         dask_interface.submit_job(
             job_key=(
                 f"_run_baselines_hyper_parameter_tuning"
