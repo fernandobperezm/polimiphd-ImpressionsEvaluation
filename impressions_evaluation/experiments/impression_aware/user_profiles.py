@@ -21,9 +21,6 @@ from impressions_evaluation.experiments.baselines import (
 from impressions_evaluation.experiments.impression_aware import (
     DIR_TRAINED_MODELS_IMPRESSION_AWARE,
 )
-from impressions_evaluation.impression_recommenders.user_profile.folding import (
-    FoldedMatrixFactorizationRecommender,
-)
 from impressions_evaluation.impression_recommenders.user_profile.weighted import (
     UserWeightedUserProfileRecommender,
     ItemWeightedUserProfileRecommender,
@@ -88,197 +85,181 @@ def _run_impressions_user_profiles_hyper_parameter_tuning(
         evaluation_strategy=experiment_user_profiles_hyper_parameters.evaluation_strategy,
     )
 
-    # TODO: COME BACK TO FOLDED MATRIX FACTORIZATION RECOMMENDERS
-    #  for try_folded_recommender in [True, False]
-    for try_folded_recommender in [False]:
-        baseline_recommender_trained_train = load_trained_recommender(
-            experiment_benchmark=experiment_baseline_benchmark,
-            experiment_hyper_parameter_tuning_parameters=experiment_baseline_hyper_parameters,
-            experiment_recommender=experiment_baseline_recommender,
-            similarity=experiment_baseline_similarity,
-            data_splits=interactions_data_splits,
-            model_type=TrainedRecommenderType.TRAIN,
-            try_folded_recommender=try_folded_recommender,
-        )
+    baseline_recommender_trained_train = load_trained_recommender(
+        experiment_benchmark=experiment_baseline_benchmark,
+        experiment_hyper_parameter_tuning_parameters=experiment_baseline_hyper_parameters,
+        experiment_recommender=experiment_baseline_recommender,
+        similarity=experiment_baseline_similarity,
+        data_splits=interactions_data_splits,
+        model_type=TrainedRecommenderType.TRAIN,
+    )
 
-        baseline_recommender_trained_train_validation = load_trained_recommender(
-            experiment_benchmark=experiment_baseline_benchmark,
-            experiment_hyper_parameter_tuning_parameters=experiment_baseline_hyper_parameters,
-            experiment_recommender=experiment_baseline_recommender,
-            similarity=experiment_baseline_similarity,
-            data_splits=interactions_data_splits,
-            model_type=TrainedRecommenderType.TRAIN_VALIDATION,
-            try_folded_recommender=try_folded_recommender,
-        )
+    baseline_recommender_trained_train_validation = load_trained_recommender(
+        experiment_benchmark=experiment_baseline_benchmark,
+        experiment_hyper_parameter_tuning_parameters=experiment_baseline_hyper_parameters,
+        experiment_recommender=experiment_baseline_recommender,
+        similarity=experiment_baseline_similarity,
+        data_splits=interactions_data_splits,
+        model_type=TrainedRecommenderType.TRAIN_VALIDATION,
+    )
 
-        if (
-            baseline_recommender_trained_train is None
-            or baseline_recommender_trained_train_validation is None
-        ):
-            # We require a recommender that is already optimized.
-            logger.warning(
-                f"Early-skipping on {_run_impressions_user_profiles_hyper_parameter_tuning.__name__}. Could not load "
-                f"trained recommenders for {experiment_baseline_recommender.recommender} with the benchmark "
-                f"{experiment_baseline_benchmark.benchmark}. Folded Recommender? {try_folded_recommender}"
-            )
-            continue
-
-        instances_are_folded_recommenders = isinstance(
-            baseline_recommender_trained_train, FoldedMatrixFactorizationRecommender
-        ) and isinstance(
-            baseline_recommender_trained_train_validation,
-            FoldedMatrixFactorizationRecommender,
-        )
-
-        if try_folded_recommender and not instances_are_folded_recommenders:
-            # Skip cases where the recommender cannot be folded.
-            logger.warning(
-                f"Skipping recommender {experiment_baseline_recommender.recommender} and "
-                f"{experiment_user_profiles_recommender.recommender} because it cannot be folded and folded flag is set"
-                f" to {True}"
-            )
-            continue
-
-        requires_user_similarity = issubclass(
-            experiment_user_profiles_recommender.recommender,
-            UserWeightedUserProfileRecommender,
-        )
-        requires_item_similarity = issubclass(
-            experiment_user_profiles_recommender.recommender,
-            ItemWeightedUserProfileRecommender,
-        )
-
-        recommender_has_user_similarity = isinstance(
-            baseline_recommender_trained_train, BaseUserSimilarityMatrixRecommender
-        ) and isinstance(
-            baseline_recommender_trained_train_validation,
-            BaseUserSimilarityMatrixRecommender,
-        )
-        recommender_has_item_similarity = isinstance(
-            baseline_recommender_trained_train, BaseItemSimilarityMatrixRecommender
-        ) and isinstance(
-            baseline_recommender_trained_train_validation,
-            BaseItemSimilarityMatrixRecommender,
-        )
-
-        if requires_user_similarity and not recommender_has_user_similarity:
-            # We require a recommender that can be folded. In case we did not receive it, we return
-            # to gracefully say that this case finished (as there is nothing to search).
-            logger.warning(
-                f"Early-returning from {_run_impressions_user_profiles_hyper_parameter_tuning.__name__} as the loaded recommender "
-                f"({baseline_recommender_trained_train.RECOMMENDER_NAME} the one requested in the hyper-parameter search) "
-                f"cannot load a User-User similarity recommender for the recommender "
-                f"{experiment_baseline_recommender.recommender}, i.e., to be an instance of {BaseUserSimilarityMatrixRecommender}. "
-                f"\n This is not an issue, as not all recommenders cannot be folded-in. This means that there is nothing "
-                f"to search here."
-            )
-            continue
-
-        if requires_item_similarity and not recommender_has_item_similarity:
-            # We require a recommender that can be folded. In case we did not receive it, we return
-            # to gracefully say that this case finished (as there is nothing to search).
-            logger.warning(
-                f"Skipping {_run_impressions_user_profiles_hyper_parameter_tuning.__name__} as the loaded recommender "
-                f"({baseline_recommender_trained_train.RECOMMENDER_NAME} the one requested in the hyper-parameter search) "
-                f"cannot load a Item-Item similarity recommender for the recommender "
-                f"{experiment_baseline_recommender.recommender}, i.e., to be an instance of {BaseItemSimilarityMatrixRecommender}. "
-                f"\n This is not an issue, as not all recommenders cannot be folded-in. This means that there is nothing "
-                f"to search here."
-            )
-            continue
-
-        assert (
-            baseline_recommender_trained_train.RECOMMENDER_NAME
-            == baseline_recommender_trained_train_validation.RECOMMENDER_NAME
-        )
-
-        experiments_folder_path = DIR_TRAINED_MODELS_IMPRESSION_AWARE.format(
-            benchmark=experiment_user_profiles_benchmark.benchmark.value,
-            evaluation_strategy=experiment_user_profiles_hyper_parameters.evaluation_strategy.value,
-        )
-        experiment_file_name_root = (
-            f"{experiment_user_profiles_recommender.recommender.RECOMMENDER_NAME}"
-            f"_{baseline_recommender_trained_train.RECOMMENDER_NAME}"
-        )
-
-        import random
-        import numpy as np
-
-        random.seed(experiment_user_profiles_hyper_parameters.reproducibility_seed)
-        np.random.seed(experiment_user_profiles_hyper_parameters.reproducibility_seed)
-
-        evaluators = commons.get_evaluators(
-            data_splits=interactions_data_splits,
-            experiment_hyper_parameter_tuning_parameters=experiment_user_profiles_hyper_parameters,
-        )
-
-        recommender_init_validation_args_kwargs = SearchInputRecommenderArgs(
-            CONSTRUCTOR_POSITIONAL_ARGS=[],
-            CONSTRUCTOR_KEYWORD_ARGS={
-                "urm_train": interactions_data_splits.sp_urm_train.copy(),
-                "uim_train": impressions_data_splits.sp_uim_train.copy(),
-                "trained_recommender": baseline_recommender_trained_train,
+    if (
+        baseline_recommender_trained_train is None
+        or baseline_recommender_trained_train_validation is None
+    ):
+        # We require a recommender that is already optimized.
+        logger.warning(
+            "Early-skipping on %(function_name)s. Could not load trained recommenders for %(baseline_recommender)s with the benchmark %(benchmark)s.",
+            {
+                "function_name": _run_impressions_user_profiles_hyper_parameter_tuning.__name__,
+                "baseline_recommender": experiment_baseline_recommender.recommender,
+                "benchmark": experiment_baseline_benchmark.benchmark,
             },
-            FIT_POSITIONAL_ARGS=[],
-            FIT_KEYWORD_ARGS={},
-            EARLYSTOPPING_KEYWORD_ARGS={},
         )
+        return
 
-        recommender_init_test_args_kwargs = SearchInputRecommenderArgs(
-            CONSTRUCTOR_POSITIONAL_ARGS=[],
-            CONSTRUCTOR_KEYWORD_ARGS={
-                "urm_train": interactions_data_splits.sp_urm_train_validation.copy(),
-                "uim_train": impressions_data_splits.sp_uim_train_validation.copy(),
-                "trained_recommender": baseline_recommender_trained_train_validation,
+    requires_user_similarity = issubclass(
+        experiment_user_profiles_recommender.recommender,
+        UserWeightedUserProfileRecommender,
+    )
+    requires_item_similarity = issubclass(
+        experiment_user_profiles_recommender.recommender,
+        ItemWeightedUserProfileRecommender,
+    )
+
+    recommender_has_user_similarity = isinstance(
+        baseline_recommender_trained_train, BaseUserSimilarityMatrixRecommender
+    ) and isinstance(
+        baseline_recommender_trained_train_validation,
+        BaseUserSimilarityMatrixRecommender,
+    )
+    recommender_has_item_similarity = isinstance(
+        baseline_recommender_trained_train, BaseItemSimilarityMatrixRecommender
+    ) and isinstance(
+        baseline_recommender_trained_train_validation,
+        BaseItemSimilarityMatrixRecommender,
+    )
+
+    if requires_user_similarity and not recommender_has_user_similarity:
+        # We require a recommender that has a user-to-user similarity. In case we did not receive it, we return
+        # to gracefully say that this case finished (as there is nothing to search).
+        logger.warning(
+            "Early-returning from %(function_name)s as the loaded recommender (%(baseline_recommender_name)s the one requested in the hyper-parameter search) cannot load a User-User similarity recommender for the recommender %(baseline_recommender_class)s , i.e., to be an instance of %(expected_recommender_class)s. This is not a problem as not all recommenders compute User-to-User similarities.",
+            {
+                "function_name": _run_impressions_user_profiles_hyper_parameter_tuning.__name__,
+                "baseline_recommender_name": baseline_recommender_trained_train.RECOMMENDER_NAME,
+                "baseline_recommender_class": experiment_baseline_recommender.recommender,
+                "expected_recommender_class": BaseUserSimilarityMatrixRecommender,
             },
-            FIT_POSITIONAL_ARGS=[],
-            FIT_KEYWORD_ARGS={},
-            EARLYSTOPPING_KEYWORD_ARGS={},
         )
+        return
 
-        hyper_parameter_search_space = attrs.asdict(
-            experiment_user_profiles_recommender.search_hyper_parameters()
+    if requires_item_similarity and not recommender_has_item_similarity:
+        # We require a recommender that has an item-to-item similarity.. In case we did not receive it, we return
+        # to gracefully say that this case finished (as there is nothing to search).
+        logger.warning(
+            "Early-returning from %(function_name)s as the loaded recommender (%(baseline_recommender_name)s the one requested in the hyper-parameter search) cannot load an Item-to-Item similarity recommender for the recommender %(baseline_recommender_class)s , i.e., to be an instance of %(expected_recommender_class)s. This is not a problem as not all recommenders compute User-to-User similarities.",
+            {
+                "function_name": _run_impressions_user_profiles_hyper_parameter_tuning.__name__,
+                "baseline_recommender_name": baseline_recommender_trained_train.RECOMMENDER_NAME,
+                "baseline_recommender_class": experiment_baseline_recommender.recommender,
+                "expected_recommender_class": BaseItemSimilarityMatrixRecommender,
+            },
         )
+        return
 
-        logger_info = {
-            "recommender_user_profiles": experiment_user_profiles_recommender.recommender.RECOMMENDER_NAME,
-            "recommender_baseline": experiment_baseline_recommender.recommender.RECOMMENDER_NAME,
-            "dataset": experiment_user_profiles_benchmark.benchmark.value,
-            "urm_test_shape": interactions_data_splits.sp_urm_test.shape,
-            "urm_train_shape": interactions_data_splits.sp_urm_train.shape,
-            "urm_validation_shape": interactions_data_splits.sp_urm_validation.shape,
-            "urm_train_and_validation_shape": interactions_data_splits.sp_urm_train_validation.shape,
-            "hyper_parameter_tuning_parameters": repr(
-                experiment_user_profiles_hyper_parameters
-            ),
-            "hyper_parameter_search_space": hyper_parameter_search_space,
-        }
+    assert (
+        baseline_recommender_trained_train.RECOMMENDER_NAME
+        == baseline_recommender_trained_train_validation.RECOMMENDER_NAME
+    )
 
-        logger.info(f"Hyper-parameter tuning arguments:" f"\n\t* {logger_info}")
+    experiments_folder_path = DIR_TRAINED_MODELS_IMPRESSION_AWARE.format(
+        benchmark=experiment_user_profiles_benchmark.benchmark.value,
+        evaluation_strategy=experiment_user_profiles_hyper_parameters.evaluation_strategy.value,
+    )
+    experiment_file_name_root = (
+        f"{experiment_user_profiles_recommender.recommender.RECOMMENDER_NAME}"
+        f"_{baseline_recommender_trained_train.RECOMMENDER_NAME}"
+    )
 
-        search_bayesian_skopt = SearchBayesianSkopt(
-            recommender_class=experiment_user_profiles_recommender.recommender,
-            evaluator_validation=evaluators.validation,
-            evaluator_test=evaluators.test,
-            verbose=True,
-        )
-        search_bayesian_skopt.search(
-            cutoff_to_optimize=experiment_user_profiles_hyper_parameters.cutoff_to_optimize,
-            evaluate_on_test=experiment_user_profiles_hyper_parameters.evaluate_on_test,
-            hyperparameter_search_space=hyper_parameter_search_space,
-            max_total_time=experiment_user_profiles_hyper_parameters.max_total_time,
-            metric_to_optimize=experiment_user_profiles_hyper_parameters.metric_to_optimize,
-            n_cases=experiment_user_profiles_hyper_parameters.num_cases,
-            n_random_starts=experiment_user_profiles_hyper_parameters.num_random_starts,
-            output_file_name_root=experiment_file_name_root,
-            output_folder_path=experiments_folder_path,
-            recommender_input_args=recommender_init_validation_args_kwargs,
-            recommender_input_args_last_test=recommender_init_test_args_kwargs,
-            resume_from_saved=experiment_user_profiles_hyper_parameters.resume_from_saved,
-            save_metadata=experiment_user_profiles_hyper_parameters.save_metadata,
-            save_model=experiment_user_profiles_hyper_parameters.save_model,
-            terminate_on_memory_error=experiment_user_profiles_hyper_parameters.terminate_on_memory_error,
-        )
+    import random
+    import numpy as np
+
+    random.seed(experiment_user_profiles_hyper_parameters.reproducibility_seed)
+    np.random.seed(experiment_user_profiles_hyper_parameters.reproducibility_seed)
+
+    evaluators = commons.get_evaluators(
+        data_splits=interactions_data_splits,
+        experiment_hyper_parameter_tuning_parameters=experiment_user_profiles_hyper_parameters,
+    )
+
+    recommender_init_validation_args_kwargs = SearchInputRecommenderArgs(
+        CONSTRUCTOR_POSITIONAL_ARGS=[],
+        CONSTRUCTOR_KEYWORD_ARGS={
+            "urm_train": interactions_data_splits.sp_urm_train.copy(),
+            "uim_train": impressions_data_splits.sp_uim_train.copy(),
+            "trained_recommender": baseline_recommender_trained_train,
+        },
+        FIT_POSITIONAL_ARGS=[],
+        FIT_KEYWORD_ARGS={},
+        EARLYSTOPPING_KEYWORD_ARGS={},
+    )
+
+    recommender_init_test_args_kwargs = SearchInputRecommenderArgs(
+        CONSTRUCTOR_POSITIONAL_ARGS=[],
+        CONSTRUCTOR_KEYWORD_ARGS={
+            "urm_train": interactions_data_splits.sp_urm_train_validation.copy(),
+            "uim_train": impressions_data_splits.sp_uim_train_validation.copy(),
+            "trained_recommender": baseline_recommender_trained_train_validation,
+        },
+        FIT_POSITIONAL_ARGS=[],
+        FIT_KEYWORD_ARGS={},
+        EARLYSTOPPING_KEYWORD_ARGS={},
+    )
+
+    hyper_parameter_search_space = attrs.asdict(
+        experiment_user_profiles_recommender.search_hyper_parameters()
+    )
+
+    logger_info = {
+        "recommender_user_profiles": experiment_user_profiles_recommender.recommender.RECOMMENDER_NAME,
+        "recommender_baseline": experiment_baseline_recommender.recommender.RECOMMENDER_NAME,
+        "dataset": experiment_user_profiles_benchmark.benchmark.value,
+        "urm_test_shape": interactions_data_splits.sp_urm_test.shape,
+        "urm_train_shape": interactions_data_splits.sp_urm_train.shape,
+        "urm_validation_shape": interactions_data_splits.sp_urm_validation.shape,
+        "urm_train_and_validation_shape": interactions_data_splits.sp_urm_train_validation.shape,
+        "hyper_parameter_tuning_parameters": repr(
+            experiment_user_profiles_hyper_parameters
+        ),
+        "hyper_parameter_search_space": hyper_parameter_search_space,
+    }
+
+    logger.info(f"Hyper-parameter tuning arguments:" f"\n\t* {logger_info}")
+
+    search_bayesian_skopt = SearchBayesianSkopt(
+        recommender_class=experiment_user_profiles_recommender.recommender,
+        evaluator_validation=evaluators.validation,
+        evaluator_test=evaluators.test,
+        verbose=True,
+    )
+    search_bayesian_skopt.search(
+        cutoff_to_optimize=experiment_user_profiles_hyper_parameters.cutoff_to_optimize,
+        evaluate_on_test=experiment_user_profiles_hyper_parameters.evaluate_on_test,
+        hyperparameter_search_space=hyper_parameter_search_space,
+        max_total_time=experiment_user_profiles_hyper_parameters.max_total_time,
+        metric_to_optimize=experiment_user_profiles_hyper_parameters.metric_to_optimize,
+        n_cases=experiment_user_profiles_hyper_parameters.num_cases,
+        n_random_starts=experiment_user_profiles_hyper_parameters.num_random_starts,
+        output_file_name_root=experiment_file_name_root,
+        output_folder_path=experiments_folder_path,
+        recommender_input_args=recommender_init_validation_args_kwargs,
+        recommender_input_args_last_test=recommender_init_test_args_kwargs,
+        resume_from_saved=experiment_user_profiles_hyper_parameters.resume_from_saved,
+        save_metadata=experiment_user_profiles_hyper_parameters.save_metadata,
+        save_model=experiment_user_profiles_hyper_parameters.save_model,
+        terminate_on_memory_error=experiment_user_profiles_hyper_parameters.terminate_on_memory_error,
+    )
 
 
 def run_impressions_user_profiles_experiments(

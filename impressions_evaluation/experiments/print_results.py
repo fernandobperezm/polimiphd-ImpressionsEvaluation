@@ -7,9 +7,6 @@ import Recommenders.Recommender_import_list as recommenders
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-from Recommenders.BaseMatrixFactorizationRecommender import (
-    BaseMatrixFactorizationRecommender,
-)
 from Recommenders.BaseRecommender import BaseRecommender
 from Recommenders.BaseSimilarityMatrixRecommender import (
     BaseSimilarityMatrixRecommender,
@@ -34,11 +31,11 @@ from impressions_evaluation.experiments.impression_aware import (
 from impressions_evaluation.impression_recommenders.re_ranking.cycling import (
     CyclingRecommender,
 )
+from impressions_evaluation.impression_recommenders.re_ranking.hard_frequency_capping import (
+    HardFrequencyCappingRecommender,
+)
 from impressions_evaluation.impression_recommenders.re_ranking.impressions_discounting import (
     ImpressionsDiscountingRecommender,
-)
-from impressions_evaluation.impression_recommenders.user_profile.folding import (
-    FoldedMatrixFactorizationRecommender,
 )
 from impressions_evaluation.impression_recommenders.user_profile.weighted import (
     BaseWeightedUserProfileRecommender,
@@ -116,6 +113,7 @@ ALL_METRICS_LIST = [
 ####################################################################################################
 ####################################################################################################
 def mock_trained_recommender(
+    *,
     experiment_recommender: commons.ExperimentRecommender,
     experiment_benchmark: commons.ExperimentBenchmark,
     experiment_hyper_parameter_tuning_parameters: commons.HyperParameterTuningParameters,
@@ -123,12 +121,10 @@ def mock_trained_recommender(
     data_splits: InteractionsDataSplits,
     similarity: Optional[str],
     model_type: baselines.TrainedRecommenderType,
-    try_folded_recommender: bool,
 ) -> Optional[BaseRecommender]:
     """Loads to memory an mock of an already-trained recommender.
 
-    This function loads the requested recommender (`experiment_recommender`) on disk. It can load a folded-in
-    or the original version of the recommender.
+    This function loads the requested recommender (`experiment_recommender`) on disk.
 
     """
     if baselines.TrainedRecommenderType.TRAIN == model_type:
@@ -182,34 +178,7 @@ def mock_trained_recommender(
     )
     trained_recommender_instance.RECOMMENDER_NAME = recommender_name
 
-    can_recommender_be_folded = isinstance(
-        trained_recommender_instance,
-        BaseMatrixFactorizationRecommender,
-    )
-
-    if try_folded_recommender:
-        if can_recommender_be_folded:
-            trained_recommender_instance = cast(
-                BaseMatrixFactorizationRecommender,
-                trained_recommender_instance,
-            )
-
-            setattr(
-                trained_recommender_instance,
-                FoldedMatrixFactorizationRecommender.ATTR_NAME_ITEM_FACTORS,
-                np.array([], np.float32),
-            )
-
-            trained_folded_recommender_instance = FoldedMatrixFactorizationRecommender(
-                urm_train=urm_train.copy(),
-                trained_recommender=trained_recommender_instance,
-            )
-
-            return trained_folded_recommender_instance
-        else:
-            return None
-    else:
-        return trained_recommender_instance
+    return trained_recommender_instance
 
 
 ####################################################################################################
@@ -240,40 +209,10 @@ def _print_baselines_metrics(
         commons.MAPPER_AVAILABLE_RECOMMENDERS[rec] for rec in recommenders_baselines
     ]
 
-    base_algorithm_list = []
-    for baseline_experiment_recommender in baseline_experiment_recommenders:
-        base_algorithm_list.append(baseline_experiment_recommender.recommender)
-
-        similarities: list[commons.T_SIMILARITY_TYPE] = [None]  # type: ignore
-        if baseline_experiment_recommender.recommender in [
-            recommenders.ItemKNNCFRecommender,
-            recommenders.UserKNNCFRecommender,
-        ]:
-            similarities = knn_similarity_list
-
-        # TODO: REMOVE FOLDED RECOMMENDERS
-        # for similarity in similarities:
-        #     # This inner loop is to load Folded Recommenders. If we cannot mock a Folded recommender,
-        #     # then this method returns None.
-        #     loaded_recommender = mock_trained_recommender(
-        #         experiment_recommender=baseline_experiment_recommender,
-        #         experiment_benchmark=experiment_benchmark,
-        #         experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
-        #         experiment_model_dir=experiments_folder_path,
-        #         data_splits=interaction_data_splits,
-        #         similarity=similarity,
-        #         model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
-        #         try_folded_recommender=True,
-        #     )
-        #
-        #     if loaded_recommender is None:
-        #         logger.warning(
-        #             f"The recommender {baseline_experiment_recommender.recommender} for the dataset {experiment_benchmark} "
-        #             f"returned empty. Skipping."
-        #         )
-        #         continue
-        #
-        #     base_algorithm_list.append(loaded_recommender)
+    base_algorithm_list = [
+        baseline_experiment_recommender.recommender
+        for baseline_experiment_recommender in baseline_experiment_recommenders
+    ]
 
     return generate_accuracy_and_beyond_metrics_pandas(
         experiments_folder_path=experiments_folder_path,
@@ -372,43 +311,44 @@ def _print_impressions_re_ranking_metrics(
                 similarities = knn_similarity_list
 
             for similarity in similarities:
-                # TODO: REMOVE FOLDED RECOMMENDERS, IT WAS [True, False]
-                for try_folded_recommender in [False]:
-                    loaded_baseline_recommender = mock_trained_recommender(
-                        experiment_recommender=baseline_experiment_recommender,
-                        experiment_benchmark=experiment_benchmark,
-                        experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
-                        experiment_model_dir=baseline_experiments_folder_path,
-                        data_splits=interaction_data_splits,
-                        similarity=similarity,
-                        model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
-                        try_folded_recommender=try_folded_recommender,
-                    )
+                loaded_baseline_recommender = mock_trained_recommender(
+                    experiment_recommender=baseline_experiment_recommender,
+                    experiment_benchmark=experiment_benchmark,
+                    experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
+                    experiment_model_dir=baseline_experiments_folder_path,
+                    data_splits=interaction_data_splits,
+                    similarity=similarity,
+                    model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
+                )
 
-                    if loaded_baseline_recommender is None:
-                        continue
+                if loaded_baseline_recommender is None:
+                    continue
 
-                    re_ranking_class = cast(
-                        Type[
-                            Union[CyclingRecommender, ImpressionsDiscountingRecommender]
-                        ],
-                        re_ranking_experiment_recommender.recommender,
-                    )
+                re_ranking_class = cast(
+                    Type[
+                        Union[
+                            CyclingRecommender,
+                            ImpressionsDiscountingRecommender,
+                            HardFrequencyCappingRecommender,
+                        ]
+                    ],
+                    re_ranking_experiment_recommender.recommender,
+                )
 
-                    re_ranking_recommender = re_ranking_class(
-                        urm_train=interaction_data_splits.sp_urm_train_validation,
-                        uim_position=sp.csr_matrix([[]]),
-                        uim_frequency=sp.csr_matrix([[]]),
-                        uim_last_seen=sp.csr_matrix([[]]),
-                        trained_recommender=loaded_baseline_recommender,
-                    )
+                re_ranking_recommender = re_ranking_class(
+                    urm_train=interaction_data_splits.sp_urm_train_validation,
+                    uim_position=sp.csr_matrix([[]]),
+                    uim_frequency=sp.csr_matrix([[]]),
+                    uim_last_seen=sp.csr_matrix([[]]),
+                    trained_recommender=loaded_baseline_recommender,
+                )
 
-                    re_ranking_recommender.RECOMMENDER_NAME = (
-                        f"{re_ranking_class.RECOMMENDER_NAME}"
-                        f"_{loaded_baseline_recommender.RECOMMENDER_NAME}"
-                    )
+                re_ranking_recommender.RECOMMENDER_NAME = (
+                    f"{re_ranking_class.RECOMMENDER_NAME}"
+                    f"_{loaded_baseline_recommender.RECOMMENDER_NAME}"
+                )
 
-                    base_algorithm_list.append(re_ranking_recommender)
+                base_algorithm_list.append(re_ranking_recommender)
 
     return generate_accuracy_and_beyond_metrics_pandas(
         experiments_folder_path=re_ranking_experiments_folder_path,
@@ -471,44 +411,42 @@ def _print_ablation_impressions_re_ranking_metrics(
                 similarities = knn_similarity_list
 
             for similarity in similarities:
-                # TODO: REMOVE FOLDED RECOMMENDERS, IT WAS [True, False]
-                for try_folded_recommender in [False]:
-                    loaded_baseline_recommender = mock_trained_recommender(
-                        experiment_recommender=baseline_experiment_recommender,
-                        experiment_benchmark=baseline_experiment_benchmark,
-                        experiment_hyper_parameter_tuning_parameters=baseline_experiment_hyper_parameters,
-                        experiment_model_dir=baseline_experiments_folder_path,
-                        data_splits=interaction_data_splits,
-                        similarity=similarity,
-                        model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
-                        try_folded_recommender=try_folded_recommender,
-                    )
+                
+                loaded_baseline_recommender = mock_trained_recommender(
+                    experiment_recommender=baseline_experiment_recommender,
+                    experiment_benchmark=baseline_experiment_benchmark,
+                    experiment_hyper_parameter_tuning_parameters=baseline_experiment_hyper_parameters,
+                    experiment_model_dir=baseline_experiments_folder_path,
+                    data_splits=interaction_data_splits,
+                    similarity=similarity,
+                    model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
+                )
 
-                    if loaded_baseline_recommender is None:
-                        continue
+                if loaded_baseline_recommender is None:
+                    continue
 
-                    re_ranking_class = cast(
-                        Type[
-                            Union[CyclingRecommender, ImpressionsDiscountingRecommender]
-                        ],
-                        re_ranking_experiment_recommender.recommender,
-                    )
+                re_ranking_class = cast(
+                    Type[
+                        Union[CyclingRecommender, ImpressionsDiscountingRecommender, HardFrequencyCappingRecommender]
+                    ],
+                    re_ranking_experiment_recommender.recommender,
+                )
 
-                    re_ranking_recommender = re_ranking_class(
-                        urm_train=interaction_data_splits.sp_urm_train_validation,
-                        uim_position=sp.csr_matrix([[]]),
-                        uim_frequency=sp.csr_matrix([[]]),
-                        uim_last_seen=sp.csr_matrix([[]]),
-                        trained_recommender=loaded_baseline_recommender,
-                    )
+                re_ranking_recommender = re_ranking_class(
+                    urm_train=interaction_data_splits.sp_urm_train_validation,
+                    uim_position=sp.csr_matrix([[]]),
+                    uim_frequency=sp.csr_matrix([[]]),
+                    uim_last_seen=sp.csr_matrix([[]]),
+                    trained_recommender=loaded_baseline_recommender,
+                )
 
-                    re_ranking_recommender.RECOMMENDER_NAME = (
-                        f"ABLATION_UIM_FREQUENCY"
-                        f"_{re_ranking_class.RECOMMENDER_NAME}"
-                        f"_{loaded_baseline_recommender.RECOMMENDER_NAME}"
-                    )
+                re_ranking_recommender.RECOMMENDER_NAME = (
+                    f"ABLATION_UIM_FREQUENCY"
+                    f"_{re_ranking_class.RECOMMENDER_NAME}"
+                    f"_{loaded_baseline_recommender.RECOMMENDER_NAME}"
+                )
 
-                    base_algorithm_list.append(re_ranking_recommender)
+                base_algorithm_list.append(re_ranking_recommender)
 
     return generate_accuracy_and_beyond_metrics_pandas(
         experiments_folder_path=re_ranking_experiments_folder_path,
@@ -581,84 +519,81 @@ def _print_impressions_user_profiles_metrics(
                 similarities = knn_similarity_list
 
             for similarity in similarities:
-                # TODO: REMOVE FOLDED RECOMMENDERS, IT WAS [True, False]
-                for try_folded_recommender in [False]:
-                    loaded_baseline_recommender = mock_trained_recommender(
-                        experiment_recommender=baseline_experiment_recommender,
-                        experiment_benchmark=experiment_benchmark,
-                        experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
-                        experiment_model_dir=baseline_experiments_folder_path,
-                        data_splits=interaction_data_splits,
-                        similarity=similarity,
-                        model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
-                        try_folded_recommender=try_folded_recommender,
+                
+                loaded_baseline_recommender = mock_trained_recommender(
+                    experiment_recommender=baseline_experiment_recommender,
+                    experiment_benchmark=experiment_benchmark,
+                    experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
+                    experiment_model_dir=baseline_experiments_folder_path,
+                    data_splits=interaction_data_splits,
+                    similarity=similarity,
+                    model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
+                )
+
+                if loaded_baseline_recommender is None:
+                    logger.warning(
+                        "The recommender %(recommender)s for the dataset %(benchmark)s returned empty. Skipping.",
+                        {"recommender": baseline_experiment_recommender.recommender,
+                        "benchmark": experiment_benchmark,},
                     )
+                    continue
 
-                    if loaded_baseline_recommender is None:
-                        logger.warning(
-                            f"The recommender {baseline_experiment_recommender.recommender} for the dataset "
-                            f"{experiment_benchmark} returned empty. Skipping."
-                        )
-                        continue
+                requires_user_similarity = issubclass(
+                    user_profiles_experiment_recommender.recommender,
+                    UserWeightedUserProfileRecommender,
+                )
 
-                    requires_user_similarity = issubclass(
-                        user_profiles_experiment_recommender.recommender,
-                        UserWeightedUserProfileRecommender,
+                requires_item_similarity = issubclass(
+                    user_profiles_experiment_recommender.recommender,
+                    ItemWeightedUserProfileRecommender,
+                )
+
+                recommender_has_user_similarity = isinstance(
+                    loaded_baseline_recommender,
+                    BaseUserSimilarityMatrixRecommender,
+                )
+                recommender_has_item_similarity = isinstance(
+                    loaded_baseline_recommender,
+                    BaseItemSimilarityMatrixRecommender,
+                )
+
+                if requires_user_similarity and not recommender_has_user_similarity:
+                    logger.warning(
+                        "Recommender %(recommender)s requires a user-user similarity but instance of %(loaded_recommender)s does not inherit from %(expected_recommender_class)s. Skiping.",
+                        {"recommender": user_profiles_experiment_recommender.recommender, "loaded_recommender": loaded_baseline_recommender.__class__, "expected_recommender_class": BaseUserSimilarityMatrixRecommender,}
                     )
+                    continue
 
-                    requires_item_similarity = issubclass(
-                        user_profiles_experiment_recommender.recommender,
-                        ItemWeightedUserProfileRecommender,
+                if requires_item_similarity and not recommender_has_item_similarity:
+                    logger.warning(
+                        "Recommender %(recommender)s requires a user-user similarity but instance of %(loaded_recommender)s does not inherit from %(expected_recommender_class)s. Skiping.",
+                        {"recommender": user_profiles_experiment_recommender.recommender, "loaded_recommender": loaded_baseline_recommender.__class__, "expected_recommender_class": BaseItemSimilarityMatrixRecommender,}
                     )
+                    continue
 
-                    recommender_has_user_similarity = isinstance(
-                        loaded_baseline_recommender,
-                        BaseUserSimilarityMatrixRecommender,
-                    )
-                    recommender_has_item_similarity = isinstance(
-                        loaded_baseline_recommender,
-                        BaseItemSimilarityMatrixRecommender,
-                    )
+                loaded_baseline_recommender = cast(
+                    BaseSimilarityMatrixRecommender,
+                    loaded_baseline_recommender,
+                )
 
-                    if requires_user_similarity and not recommender_has_user_similarity:
-                        logger.warning(
-                            f"Recommender {user_profiles_experiment_recommender.recommender} requires a user-user similarity "
-                            f"but instance of {loaded_baseline_recommender.__class__} does not inherit from "
-                            f"{BaseUserSimilarityMatrixRecommender}. Skip"
-                        )
-                        continue
+                user_profiles_class = cast(
+                    Type[BaseWeightedUserProfileRecommender],
+                    user_profiles_experiment_recommender.recommender,
+                )
 
-                    if requires_item_similarity and not recommender_has_item_similarity:
-                        logger.warning(
-                            f"Recommender {user_profiles_experiment_recommender.recommender} requires an item-item similarity "
-                            f"but instance of {loaded_baseline_recommender.__class__} does not inherit from "
-                            f"{BaseItemSimilarityMatrixRecommender}. Skip"
-                        )
-                        continue
+                setattr(
+                    loaded_baseline_recommender,
+                    BaseWeightedUserProfileRecommender.ATTR_NAME_W_SPARSE,
+                    sp.csr_matrix([], dtype=np.float32),
+                )
 
-                    loaded_baseline_recommender = cast(
-                        BaseSimilarityMatrixRecommender,
-                        loaded_baseline_recommender,
-                    )
+                user_profiles_recommender = user_profiles_class(
+                    urm_train=interaction_data_splits.sp_urm_train_validation,
+                    uim_train=sp.csr_matrix([[]]),
+                    trained_recommender=loaded_baseline_recommender,
+                )
 
-                    user_profiles_class = cast(
-                        Type[BaseWeightedUserProfileRecommender],
-                        user_profiles_experiment_recommender.recommender,
-                    )
-
-                    setattr(
-                        loaded_baseline_recommender,
-                        BaseWeightedUserProfileRecommender.ATTR_NAME_W_SPARSE,
-                        sp.csr_matrix([], dtype=np.float32),
-                    )
-
-                    user_profiles_recommender = user_profiles_class(
-                        urm_train=interaction_data_splits.sp_urm_train_validation,
-                        uim_train=sp.csr_matrix([[]]),
-                        trained_recommender=loaded_baseline_recommender,
-                    )
-
-                    base_algorithm_list.append(user_profiles_recommender)
+                base_algorithm_list.append(user_profiles_recommender)
 
     return generate_accuracy_and_beyond_metrics_pandas(
         experiments_folder_path=user_profiles_experiments_folder_path,
@@ -725,46 +660,44 @@ def _print_impressions_signal_analysis_re_ranking_metrics(
                 similarities = knn_similarity_list
 
             for similarity in similarities:
-                # TODO: REMOVE FOLDED RECOMMENDERS, IT WAS [True, False]
-                for try_folded_recommender in [False]:
-                    loaded_baseline_recommender = mock_trained_recommender(
-                        experiment_recommender=baseline_experiment_recommender,
-                        experiment_benchmark=experiment_benchmark,
-                        experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
-                        experiment_model_dir=baseline_experiments_folder_path,
-                        data_splits=interaction_data_splits,
-                        similarity=similarity,
-                        model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
-                        try_folded_recommender=try_folded_recommender,
+                
+                loaded_baseline_recommender = mock_trained_recommender(
+                    experiment_recommender=baseline_experiment_recommender,
+                    experiment_benchmark=experiment_benchmark,
+                    experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
+                    experiment_model_dir=baseline_experiments_folder_path,
+                    data_splits=interaction_data_splits,
+                    similarity=similarity,
+                    model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
+                )
+
+                if loaded_baseline_recommender is None:
+                    continue
+
+                signal_analysis_re_ranking_class = cast(
+                    Type[
+                        Union[CyclingRecommender, ImpressionsDiscountingRecommender, HardFrequencyCappingRecommender]
+                    ],
+                    signal_analysis_re_ranking_experiment_recommender.recommender,
+                )
+
+                signal_analysis_re_ranking_recommender = (
+                    signal_analysis_re_ranking_class(
+                        urm_train=interaction_data_splits.sp_urm_train_validation,
+                        uim_position=sp.csr_matrix([[]]),
+                        uim_frequency=sp.csr_matrix([[]]),
+                        uim_last_seen=sp.csr_matrix([[]]),
+                        trained_recommender=loaded_baseline_recommender,
                     )
+                )
 
-                    if loaded_baseline_recommender is None:
-                        continue
+                signal_analysis_re_ranking_recommender.RECOMMENDER_NAME = (
+                    f"{signal_analysis_re_ranking_class.RECOMMENDER_NAME}"
+                    f"_{loaded_baseline_recommender.RECOMMENDER_NAME}"
+                    f"_{signal_analysis_case}"
+                )
 
-                    signal_analysis_re_ranking_class = cast(
-                        Type[
-                            Union[CyclingRecommender, ImpressionsDiscountingRecommender]
-                        ],
-                        signal_analysis_re_ranking_experiment_recommender.recommender,
-                    )
-
-                    signal_analysis_re_ranking_recommender = (
-                        signal_analysis_re_ranking_class(
-                            urm_train=interaction_data_splits.sp_urm_train_validation,
-                            uim_position=sp.csr_matrix([[]]),
-                            uim_frequency=sp.csr_matrix([[]]),
-                            uim_last_seen=sp.csr_matrix([[]]),
-                            trained_recommender=loaded_baseline_recommender,
-                        )
-                    )
-
-                    signal_analysis_re_ranking_recommender.RECOMMENDER_NAME = (
-                        f"{signal_analysis_re_ranking_class.RECOMMENDER_NAME}"
-                        f"_{loaded_baseline_recommender.RECOMMENDER_NAME}"
-                        f"_{signal_analysis_case}"
-                    )
-
-                    base_algorithm_list.append(signal_analysis_re_ranking_recommender)
+                base_algorithm_list.append(signal_analysis_re_ranking_recommender)
 
     return generate_accuracy_and_beyond_metrics_pandas(
         experiments_folder_path=re_ranking_experiments_folder_path,
@@ -835,10 +768,6 @@ def _process_results_dataframe(
         if "Recency" in recommender_name:
             return "Recency"
 
-        # Folded must be last because we want to ensure that we went through all impression-aware recommenders first.
-        if "FoldedMF" in recommender_name:
-            recommender_name = recommender_name.replace("FoldedMF", "") + " Folded"
-
         # Covers framework recommenders and removes extra stuff.
         return (
             recommender_name
@@ -890,10 +819,6 @@ def _process_results_dataframe(
             return "IUP"
         if "UserWeightedUserProfile" in recommender_name:
             return "IUP"
-
-        # Folded must be last because we want to ensure that we went through all impression-aware recommenders first.
-        if "FoldedMF" in recommender_name:
-            return "Baseline"
 
         # Covers framework recommenders.
         return "Baseline"
@@ -997,9 +922,6 @@ def _process_results_dataframe(
             model_base_order += 0.4
         if "tversky" in model_base:
             model_base_order += 0.5
-
-        if "Folded" in model_base:
-            model_base_order += 1000.0
 
         return model_base_order
 

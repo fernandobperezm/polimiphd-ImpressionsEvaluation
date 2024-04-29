@@ -100,10 +100,6 @@ from impressions_evaluation.impression_recommenders.re_ranking.impressions_disco
     SearchHyperParametersImpressionsDiscountingRecommender,
     IMPRESSIONS_DISCOUNTING_HYPER_PARAMETER_SEARCH_CONFIGURATIONS,
 )
-from impressions_evaluation.impression_recommenders.user_profile.folding import (
-    FoldedMatrixFactorizationRecommender,
-    SearchHyperParametersFoldedMatrixFactorizationRecommender,
-)
 from impressions_evaluation.impression_recommenders.user_profile.weighted import (
     UserWeightedUserProfileRecommender,
     ItemWeightedUserProfileRecommender,
@@ -180,11 +176,6 @@ class RecommenderBaseline(Enum):
     MULT_VAE = "MULT_VAE"
     EASE_R = "EASE_R"
     LIGHT_GCN = "LIGHT_GCN"
-
-
-@attach_to_extended_json_decoder
-class RecommenderFolded(Enum):
-    FOLDED = "FOLDED"
 
 
 @attach_to_extended_json_decoder
@@ -392,7 +383,7 @@ class Experiment:
 
 
 T_RECOMMENDER = TypeVar(
-    "T_RECOMMENDER", RecommenderBaseline, RecommenderImpressions, RecommenderFolded
+    "T_RECOMMENDER", RecommenderBaseline, RecommenderImpressions,
 )
 
 
@@ -786,12 +777,6 @@ MAPPER_AVAILABLE_RECOMMENDERS = {
         use_gpu=True,
         do_early_stopping=True,
     ),
-    # IMPRESSIONS_FOLDING
-    RecommenderFolded.FOLDED: ExperimentRecommender(
-        recommender=FoldedMatrixFactorizationRecommender,
-        search_hyper_parameters=SearchHyperParametersFoldedMatrixFactorizationRecommender,
-        priority=400,
-    ),
     # IMPRESSIONS APPROACHES: HEURISTIC
     RecommenderImpressions.LAST_IMPRESSIONS: ExperimentRecommender(
         recommender=LastImpressionsRecommender,
@@ -1020,24 +1005,6 @@ def load_recommender_trained_baseline(
     return recommender_impressions
 
 
-def load_recommender_trained_folded(
-    *,
-    recommender_baseline_instance: _RecommenderInstance,
-    folder_path: str,
-    file_name_postfix: str,
-    urm_train: sp.csr_matrix,
-) -> Optional[FoldedMatrixFactorizationRecommender]:
-    recommender_impressions = load_extended_recommender(
-        recommender_class=FoldedMatrixFactorizationRecommender,
-        folder_path=folder_path,
-        file_name_postfix=file_name_postfix,
-        urm_train=urm_train,
-        trained_recommender=recommender_baseline_instance,
-    )
-
-    return recommender_impressions
-
-
 def load_recommender_trained_impressions(
     *,
     recommender_class_impressions: Type[AbstractExtendedBaseRecommender],
@@ -1049,9 +1016,7 @@ def load_recommender_trained_impressions(
     uim_position: sp.csr_matrix,
     uim_last_seen: sp.csr_matrix,
     uim_timestamp: sp.csr_matrix,
-    recommender_baseline: Union[
-        BaseRecommender, FoldedMatrixFactorizationRecommender, None
-    ],
+    recommender_baseline: Union[BaseRecommender, None],
 ) -> Optional[AbstractExtendedBaseRecommender]:
     if recommender_class_impressions == ItemWeightedUserProfileRecommender:
         recommender_impressions = load_extended_recommender(

@@ -180,7 +180,6 @@ def _run_signal_analysis_impressions_re_ranking_hyper_parameter_tuning(
         similarity=experiment_similarity,
         data_splits=interactions_data_splits,
         model_type=TrainedRecommenderType.TRAIN,
-        try_folded_recommender=False,  # TODO: Design so it works for folded recommenders as well.
     )
 
     baseline_recommender_trained_train_validation = load_trained_recommender(
@@ -190,7 +189,6 @@ def _run_signal_analysis_impressions_re_ranking_hyper_parameter_tuning(
         similarity=experiment_similarity,
         data_splits=interactions_data_splits,
         model_type=TrainedRecommenderType.TRAIN_VALIDATION,
-        try_folded_recommender=False,  # TODO: Design so it works for folded recommenders as well.
     )
 
     if (
@@ -528,7 +526,6 @@ def _run_signal_analysis_ablation_impressions_re_ranking_hyper_parameter_tuning(
         similarity=experiment_baseline_similarity,
         data_splits=interactions_data_splits,
         model_type=TrainedRecommenderType.TRAIN,
-        try_folded_recommender=try_folded_recommender,
     )
 
     baseline_recommender_trained_train_validation = load_trained_recommender(
@@ -538,7 +535,6 @@ def _run_signal_analysis_ablation_impressions_re_ranking_hyper_parameter_tuning(
         similarity=experiment_baseline_similarity,
         data_splits=interactions_data_splits,
         model_type=TrainedRecommenderType.TRAIN_VALIDATION,
-        try_folded_recommender=try_folded_recommender,
     )
 
     if (
@@ -854,7 +850,6 @@ def _run_ablation_impressions_re_ranking_hyper_parameter_tuning(
         similarity=experiment_baseline_similarity,
         data_splits=interactions_data_splits,
         model_type=TrainedRecommenderType.TRAIN,
-        try_folded_recommender=try_folded_recommender,
     )
 
     baseline_recommender_trained_train_validation = load_trained_recommender(
@@ -864,7 +859,6 @@ def _run_ablation_impressions_re_ranking_hyper_parameter_tuning(
         similarity=experiment_baseline_similarity,
         data_splits=interactions_data_splits,
         model_type=TrainedRecommenderType.TRAIN_VALIDATION,
-        try_folded_recommender=try_folded_recommender,
     )
 
     if (
@@ -1152,7 +1146,6 @@ def _run_impressions_re_ranking_hyper_parameter_tuning(
         similarity=experiment_baseline_similarity,
         data_splits=interactions_data_splits,
         model_type=TrainedRecommenderType.TRAIN,
-        try_folded_recommender=False,
     )
 
     baseline_recommender_trained_train_validation = load_trained_recommender(
@@ -1162,7 +1155,6 @@ def _run_impressions_re_ranking_hyper_parameter_tuning(
         similarity=experiment_baseline_similarity,
         data_splits=interactions_data_splits,
         model_type=TrainedRecommenderType.TRAIN_VALIDATION,
-        try_folded_recommender=False,
     )
 
     if (
@@ -1580,7 +1572,6 @@ def run_signal_analysis_impressions_re_ranking_experiments(
 
     Processes are always preferred than threads as the hyper-parameter tuning loop is probably not thread-safe.
     """
-    # TODO: Design for folded recommenders
     for (
         experiment_case
     ) in signal_analysis_re_ranking_experiment_cases_interface.experiment_cases:

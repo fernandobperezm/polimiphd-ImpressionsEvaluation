@@ -25,8 +25,6 @@ from impressions_evaluation.experiments.print_results import (
 
 from impressions_evaluation.experiments.baselines import (
     run_baselines_experiments,
-    run_baselines_folded,
-    _run_baselines_folded_hyper_parameter_tuning,
 )
 from impressions_evaluation.experiments.impression_aware.heuristics import (
     run_impressions_heuristics_experiments,
@@ -92,9 +90,6 @@ class ConsoleArguments(Tap):
 
     include_ablation_impressions_reranking: bool = False
     """If the flag is included, then the script tunes the hyper-parameter of re-ranking impressions recommenders: Impressions Discounting with only impressions frequency. These recommenders need base recommenders to be tuned, if they aren't then the method fails."""
-
-    include_folded: bool = False
-    """Folds the tuned matrix-factorization base recommenders. If the recommenders are not previously tuned, then this flag fails."""
 
     include_signal_analysis_reranking: bool = False
     """TODO: fernando-debugger"""
@@ -172,13 +167,6 @@ _TO_USE_RECOMMENDERS_BASELINE = [
     RecommenderBaseline.LIGHT_FM,
     # RecommenderBaseline.EASE_R,
     # RecommenderBaseline.MULT_VAE,
-]
-
-# TODO: REMOVE FOLDED.
-_TO_USE_RECOMMENDERS_BASELINE_FOLDED = [
-    RecommenderBaseline.PURE_SVD,
-    RecommenderBaseline.NMF,
-    # RecommenderBaseline.MF_BPR,
 ]
 
 _TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS = [
@@ -264,10 +252,6 @@ _TO_USE_TRAINING_FUNCTIONS_BASELINES = [
     _run_collaborative_filtering_hyper_parameter_tuning,
 ]
 
-_TO_USE_TRAINING_FUNCTIONS_BASELINES_FOLDED = [
-    _run_baselines_folded_hyper_parameter_tuning,
-]
-
 _TO_USE_TRAINING_FUNCTIONS_IMPRESSION_AWARE_HEURISTICS = [
     _run_impressions_heuristics_hyper_parameter_tuning,
 ]
@@ -308,14 +292,6 @@ if __name__ == "__main__":
         to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
         to_use_recommenders=_TO_USE_RECOMMENDERS_BASELINE,
         to_use_training_functions=_TO_USE_TRAINING_FUNCTIONS_BASELINES,
-    )
-
-    # TODO: REMOVE FOLDED.
-    experiments_interface_baselines_folded = ExperimentCasesInterface(
-        to_use_benchmarks=_TO_USE_BENCHMARKS,
-        to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
-        to_use_recommenders=_TO_USE_RECOMMENDERS_BASELINE_FOLDED,
-        to_use_training_functions=_TO_USE_TRAINING_FUNCTIONS_BASELINES_FOLDED,
     )
 
     experiments_impressions_heuristics_interface = ExperimentCasesInterface(
@@ -415,12 +391,6 @@ if __name__ == "__main__":
         run_baselines_experiments(
             dask_interface=dask_interface,
             experiment_cases_interface=experiments_interface_baselines,
-        )
-
-    if input_flags.include_folded:
-        run_baselines_folded(
-            dask_interface=dask_interface,
-            experiment_cases_interface=experiments_interface_baselines_folded,
         )
 
     if input_flags.include_impressions_heuristics:
