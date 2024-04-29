@@ -37,7 +37,6 @@ DIR_TRAINED_MODELS_BASELINES = os.path.join(
     commons.DIR_TRAINED_MODELS,
     "{benchmark}",
     "{evaluation_strategy}",
-    # "baselines",
     "",
 )
 
