@@ -62,6 +62,15 @@ DICT_SEARCH_CONFIGS = {
     ),
 }
 
+IMPRESSIONS_AS_USERS_PROFILES_HYPER_PARAMETER_SEARCH_CONFIGURATIONS = {
+    "SIGNAL_ANALYSIS_SIGN_POSITIVE": SearchHyperParametersWeightedUserProfileRecommender(
+        sign=Categorical(categories=[1]),
+    ),
+    "SIGNAL_ANALYSIS_SIGN_NEGATIVE": SearchHyperParametersWeightedUserProfileRecommender(
+        sign=Categorical(categories=[-1]),
+    ),
+}
+
 
 def compute_difference_between_impressions_and_interactions(
     uim: sp.csr_matrix,
