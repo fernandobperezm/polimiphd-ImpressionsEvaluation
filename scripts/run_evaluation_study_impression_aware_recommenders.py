@@ -123,19 +123,7 @@ _TO_USE_ALL_BENCHMARKS = [
     Benchmarks.FINNNoSlates,
 ]
 
-_TO_USE_BENCHMARKS = [
-    # Benchmarks.ContentWiseImpressions,
-    Benchmarks.MINDSmall,
-    # Benchmarks.FINNNoSlates,
-]
-
-_TO_USE_BENCHMARKS_RESULTS = [
-    Benchmarks.ContentWiseImpressions,
-    Benchmarks.MINDSmall,
-    Benchmarks.FINNNoSlates,
-]
-
-_TO_USE_RECOMMENDERS_BASELINE = [
+_TO_USE_RECOMMENDERS_ALL_BASELINES = [
     RecommenderBaseline.RANDOM,
     RecommenderBaseline.TOP_POPULAR,
     #
@@ -154,10 +142,39 @@ _TO_USE_RECOMMENDERS_BASELINE = [
     RecommenderBaseline.SLIM_BPR,
     #
     RecommenderBaseline.LIGHT_FM,
+    RecommenderBaseline.EASE_R,
+]
+
+_TO_USE_BENCHMARKS = [
+    # Benchmarks.ContentWiseImpressions,
+    # Benchmarks.MINDSmall,
+    Benchmarks.FINNNoSlates,
+]
+
+_TO_USE_RECOMMENDERS_BASELINE = [
+    # RecommenderBaseline.RANDOM,
+    # RecommenderBaseline.TOP_POPULAR,
+    #
+    # RecommenderBaseline.USER_KNN,
+    # RecommenderBaseline.ITEM_KNN,
+    # #
+    # RecommenderBaseline.P3_ALPHA,
+    # RecommenderBaseline.RP3_BETA,
+    # #
+    # RecommenderBaseline.PURE_SVD,
+    # RecommenderBaseline.NMF,
+    RecommenderBaseline.MF_BPR,
+    RecommenderBaseline.SVDpp,
+    #
+    # RecommenderBaseline.SLIM_ELASTIC_NET,
+    RecommenderBaseline.SLIM_BPR,
+    #
+    RecommenderBaseline.LIGHT_FM,
     # RecommenderBaseline.EASE_R,
     # RecommenderBaseline.MULT_VAE,
 ]
 
+# TODO: REMOVE FOLDED.
 _TO_USE_RECOMMENDERS_BASELINE_FOLDED = [
     RecommenderBaseline.PURE_SVD,
     RecommenderBaseline.NMF,
@@ -185,15 +202,9 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES = [
     RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE,
 ]
 
-_TO_USE_RECOMMENDERS_IMPRESSIONS_SIGNAL_ANALYSIS = [
-    (
-        RecommenderImpressions.HARD_FREQUENCY_CAPPING,
-        "SIGNAL_ANALYSIS_LESS_OR_EQUAL_THRESHOLD",
-    ),
-    (
-        RecommenderImpressions.HARD_FREQUENCY_CAPPING,
-        "SIGNAL_ANALYSIS_GREAT_OR_EQUAL_THRESHOLD",
-    ),
+_TO_USE_RECOMMENDERS_IMPRESSIONS_SIGNAL_ANALYSIS: list[
+    tuple[RecommenderImpressions, str]
+] = [
     (
         RecommenderImpressions.CYCLING,
         "SIGNAL_ANALYSIS_SIGN_POSITIVE",
@@ -203,12 +214,39 @@ _TO_USE_RECOMMENDERS_IMPRESSIONS_SIGNAL_ANALYSIS = [
         "SIGNAL_ANALYSIS_SIGN_NEGATIVE",
     ),
     (
+        RecommenderImpressions.HARD_FREQUENCY_CAPPING,
+        "SIGNAL_ANALYSIS_LESS_OR_EQUAL_THRESHOLD",
+    ),
+    (
+        RecommenderImpressions.HARD_FREQUENCY_CAPPING,
+        "SIGNAL_ANALYSIS_GREAT_OR_EQUAL_THRESHOLD",
+    ),
+    (
         RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
         "SIGNAL_ANALYSIS_SIGN_ALL_POSITIVE",
     ),
     (
         RecommenderImpressions.IMPRESSIONS_DISCOUNTING,
         "SIGNAL_ANALYSIS_SIGN_ALL_NEGATIVE",
+    ),
+]
+
+_TO_USE_RECOMMENDERS_IMPRESSIONS_SIGNAL_ANALYSIS_WEIGHTED_PROFILES = [
+    (
+        RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE,
+        "SIGNAL_ANALYSIS_SIGN_POSITIVE",
+    ),
+    (
+        RecommenderImpressions.ITEM_WEIGHTED_USER_PROFILE,
+        "SIGNAL_ANALYSIS_SIGN_NEGATIVE",
+    ),
+    (
+        RecommenderImpressions.USER_WEIGHTED_USER_PROFILE,
+        "SIGNAL_ANALYSIS_SIGN_POSITIVE",
+    ),
+    (
+        RecommenderImpressions.USER_WEIGHTED_USER_PROFILE,
+        "SIGNAL_ANALYSIS_SIGN_NEGATIVE",
     ),
 ]
 
@@ -272,6 +310,7 @@ if __name__ == "__main__":
         to_use_training_functions=_TO_USE_TRAINING_FUNCTIONS_BASELINES,
     )
 
+    # TODO: REMOVE FOLDED.
     experiments_interface_baselines_folded = ExperimentCasesInterface(
         to_use_benchmarks=_TO_USE_BENCHMARKS,
         to_use_hyper_parameter_tuning_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS,
@@ -335,21 +374,21 @@ if __name__ == "__main__":
             # RecommenderBaseline.RANDOM,
             # RecommenderBaseline.TOP_POPULAR,
             #
-            # RecommenderBaseline.USER_KNN,
+            RecommenderBaseline.USER_KNN,
             RecommenderBaseline.ITEM_KNN,
             #
-            # RecommenderBaseline.P3_ALPHA,
+            RecommenderBaseline.P3_ALPHA,
             RecommenderBaseline.RP3_BETA,
             #
             RecommenderBaseline.PURE_SVD,
             RecommenderBaseline.NMF,
-            # RecommenderBaseline.MF_BPR,
-            # RecommenderBaseline.SVDpp,
+            RecommenderBaseline.MF_BPR,
+            RecommenderBaseline.SVDpp,
             #
-            # RecommenderBaseline.SLIM_ELASTIC_NET,
-            # RecommenderBaseline.SLIM_BPR,
+            RecommenderBaseline.SLIM_ELASTIC_NET,
+            RecommenderBaseline.SLIM_BPR,
             #
-            # RecommenderBaseline.LIGHT_FM,
+            RecommenderBaseline.LIGHT_FM,
             # RecommenderBaseline.EASE_R,
         ],
         to_use_recommenders_impressions=[
@@ -390,8 +429,6 @@ if __name__ == "__main__":
             experiment_cases_interface=experiments_impressions_heuristics_interface,
         )
 
-    dask_interface.wait_for_jobs()
-
     if input_flags.include_impressions_reranking:
         run_impressions_re_ranking_experiments(
             dask_interface=dask_interface,
@@ -412,22 +449,23 @@ if __name__ == "__main__":
             signal_analysis_re_ranking_experiment_cases_interface=experiments_signal_analysis_impressions_re_ranking_interface,
         )
 
-    if input_flags.include_ablation_impressions_reranking:
-        run_ablation_impressions_re_ranking_experiments(
-            dask_interface=dask_interface,
-            ablation_re_ranking_experiment_cases_interface=experiments_ablation_impressions_re_ranking_interface,
-            baseline_experiment_cases_interface=experiments_interface_baselines,
-        )
+    # TODO: Remove this flag as it is outdated.
+    # if input_flags.include_ablation_impressions_reranking:
+    #     run_ablation_impressions_re_ranking_experiments(
+    #         dask_interface=dask_interface,
+    #         ablation_re_ranking_experiment_cases_interface=experiments_ablation_impressions_re_ranking_interface,
+    #         baseline_experiment_cases_interface=experiments_interface_baselines,
+    #     )
 
-    if input_flags.include_signal_analysis_reranking:
-        run_signal_analysis_ablation_impressions_re_ranking_experiments(
-            dask_interface=dask_interface,
-            ablation_re_ranking_experiment_cases_interface=experiments_signal_analysis_ablation_impressions_re_ranking_interface,
-            baseline_experiment_cases_interface=experiments_interface_baselines,
-        )
+    # TODO: Remove this flag as it is outdated.
+    # if input_flags.include_signal_analysis_reranking:
+    #     run_signal_analysis_ablation_impressions_re_ranking_experiments(
+    #         dask_interface=dask_interface,
+    #         ablation_re_ranking_experiment_cases_interface=experiments_signal_analysis_ablation_impressions_re_ranking_interface,
+    #         baseline_experiment_cases_interface=experiments_interface_baselines,
+    #     )
 
-    dask_interface.wait_for_jobs()
-
+    # TODO: Remove this flag as it is outdated.
     # if input_flags.compute_confidence_intervals:
     #     compute_confidence_intervals(
     #         dask_interface=dask_interface,
@@ -446,8 +484,6 @@ if __name__ == "__main__":
         export_statistical_tests(
             experiment_cases_statistical_tests_interface=experiments_statistical_tests_interface,
         )
-
-    dask_interface.wait_for_jobs()
 
     if input_flags.analyze_hyper_parameters:
         baseline_recommenders = [
@@ -490,13 +526,13 @@ if __name__ == "__main__":
         dir_parquet_results = DIR_PARQUET_RESULTS
 
         distribution_hyper_parameters_plug_in_impression_aware_recommenders(
-            benchmarks=_TO_USE_BENCHMARKS_RESULTS,
+            benchmarks=_TO_USE_ALL_BENCHMARKS,
             hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
             dir_parquet_results=dir_parquet_results,
             dir_analysis_hyper_parameters=dir_analysis_hyper_parameters,
         )
         plot_parallel_hyper_parameters_plug_in_impression_aware_recommenders(
-            benchmarks=_TO_USE_BENCHMARKS_RESULTS,
+            benchmarks=_TO_USE_ALL_BENCHMARKS,
             hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
             baseline_recommenders=baseline_recommenders,
             impression_aware_recommenders=impression_aware_recommenders,
@@ -507,17 +543,23 @@ if __name__ == "__main__":
 
     if input_flags.print_evaluation_results:
         process_evaluation_results(
-            baseline_experiment_cases_interface=experiments_interface_baselines,
-            impressions_heuristics_experiment_cases_interface=experiments_impressions_heuristics_interface,
-            ablation_re_ranking_experiment_cases_interface=experiments_ablation_impressions_re_ranking_interface,
-            re_ranking_experiment_cases_interface=experiments_impressions_re_ranking_interface,
-            user_profiles_experiment_cases_interface=experiments_impressions_user_profiles_interface,
+            benchmarks=_TO_USE_ALL_BENCHMARKS,
+            hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
+            recommenders_baselines=_TO_USE_RECOMMENDERS_ALL_BASELINES,
+            recommenders_impressions_heuristics=_TO_USE_RECOMMENDERS_IMPRESSIONS_HEURISTICS,
+            recommenders_impressions_re_ranking=_TO_USE_RECOMMENDERS_IMPRESSIONS_RE_RANKING,
+            recommenders_impressions_user_profiles=_TO_USE_RECOMMENDERS_IMPRESSIONS_USER_PROFILES,
+            recommenders_impressions_signal_analysis_re_ranking=_TO_USE_RECOMMENDERS_IMPRESSIONS_SIGNAL_ANALYSIS,
+            script_name=_TO_USE_SCRIPT_NAME,
         )
 
         export_evaluation_results(
-            benchmarks=_TO_USE_BENCHMARKS_RESULTS,
+            benchmarks=_TO_USE_ALL_BENCHMARKS,
             hyper_parameters=_TO_USE_HYPER_PARAMETER_TUNING_PARAMETERS_RESULTS,
+            script_name=_TO_USE_SCRIPT_NAME,
         )
+
+    dask_interface.wait_for_jobs()
 
     logger.info(
         "Finished running script: %(scriptname)s",
