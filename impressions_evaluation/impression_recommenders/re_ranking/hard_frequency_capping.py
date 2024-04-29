@@ -80,20 +80,11 @@ class HardFrequencyCappingRecommender(AbstractExtendedBaseRecommender):
         """
         This function computes the item scores using the definition of hard frequency capping.
 
-        Hard Frequency Capping holds two arrays `arr_scores_presentation` and `arr_scores_relevance`. The first tells how many times
+        Hard Frequency Capping holds two arrays `arr_frequency_mask` and `arr_scores_relevance`. The first tells how many times
         each item (columns) has been impressed to the users (rows). The second is the relevance score given by the
         trained recommender to each user-item pair (users in rows, items in columns).
 
-        The new relevance score is computed by assigning the rank (higher is more relevant) to each user-item pair. To
-        assign this rank for each user, items are sorted first by their presentation score `arr_scores_presentation`
-        in ascending order and then by their relevance score `arr_scores_relevance` in ascending order as well.
-
-        HardFrequencyCapping implies that items with fewer impressions will get low rank scores (therefore, highly unlikely to be
-        recommended)
-
-        This method assigns ranks (and does return sorted item indices) to comply with the `recommend` function in
-        BaseRecommender, i.e., the `recommend` function expects that each user-item pair holds a relevance score,
-        where items with the highest scores are recommended.
+        This method assigns -INF score to user-item pairs below or above a certain threshold.
 
         Returns
         -------
