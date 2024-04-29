@@ -1223,7 +1223,9 @@ def load_recommender_trained_impressions(
         )
 
     else:
-        raise NotImplementedError(f"Non-supported impressions recommender. Received {recommender_class_impressions}")
+        raise NotImplementedError(
+            f"Non-supported impressions recommender. Received {recommender_class_impressions}"
+        )
 
     return recommender_impressions
 
