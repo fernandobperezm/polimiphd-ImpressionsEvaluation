@@ -28,6 +28,9 @@ import impressions_evaluation.experiments.commons as commons
 import impressions_evaluation.experiments.impression_aware.heuristics as heuristics
 import impressions_evaluation.experiments.impression_aware.re_ranking as re_ranking
 import impressions_evaluation.experiments.impression_aware.user_profiles as user_profiles
+from impressions_evaluation.experiments.impression_aware import (
+    DIR_TRAINED_MODELS_IMPRESSION_AWARE,
+)
 from impressions_evaluation.impression_recommenders.re_ranking.cycling import (
     CyclingRecommender,
 )
@@ -51,15 +54,10 @@ logger = logging.getLogger(__name__)
 #                                REPRODUCIBILITY VARIABLES                            #
 ####################################################################################################
 ####################################################################################################
-DIR_RESULTS_MODEL_EVALUATION = os.path.join(
-    commons.DIR_RESULTS_EXPORT,
-    "model_evaluation",
-    "",
-)
-
 DIR_RESULTS_TO_EXPORT = os.path.join(
-    DIR_RESULTS_MODEL_EVALUATION,
-    "evaluation_impression_aware_recommenders",
+    commons.DIR_RESULTS_EXPORT,
+    "{script_name}",
+    "model_evaluation",
     "",
 )
 
@@ -86,7 +84,6 @@ DIR_LATEX_RESULTS = os.path.join(
 )
 
 
-commons.FOLDERS.add(DIR_RESULTS_MODEL_EVALUATION)
 commons.FOLDERS.add(DIR_RESULTS_TO_EXPORT)
 commons.FOLDERS.add(DIR_RESULTS_TO_PROCESS)
 commons.FOLDERS.add(DIR_CSV_RESULTS)
@@ -221,7 +218,8 @@ def mock_trained_recommender(
 ####################################################################################################
 ####################################################################################################
 def _print_baselines_metrics(
-    baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
+    *,
+    recommenders_baselines: list[commons.RecommenderBaseline],
     experiment_benchmark: commons.ExperimentBenchmark,
     experiment_hyper_parameters: commons.HyperParameterTuningParameters,
     interaction_data_splits: InteractionsDataSplits,
@@ -239,8 +237,7 @@ def _print_baselines_metrics(
     )
 
     baseline_experiment_recommenders = [
-        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec]
-        for rec in baseline_experiment_cases_interface.to_use_recommenders
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec] for rec in recommenders_baselines
     ]
 
     base_algorithm_list = []
@@ -294,7 +291,8 @@ def _print_baselines_metrics(
 
 
 def _print_impressions_heuristics_metrics(
-    heuristics_experiment_cases_interface: commons.ExperimentCasesInterface,
+    *,
+    recommenders_impressions_heuristics: list[commons.RecommenderImpressions],
     experiment_hyper_parameters: commons.HyperParameterTuningParameters,
     experiment_benchmark: commons.ExperimentBenchmark,
     num_test_users: int,
@@ -304,16 +302,14 @@ def _print_impressions_heuristics_metrics(
     cutoffs_list: list[int],
     export_experiments_folder_path: str,
 ) -> DataFrameResults:
-    experiments_folder_path = (
-        heuristics.DIR_TRAINED_MODELS_IMPRESSION_AWARE_HEURISTICS.format(
-            benchmark=experiment_benchmark.benchmark.value,
-            evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
-        )
+    experiments_folder_path = DIR_TRAINED_MODELS_IMPRESSION_AWARE.format(
+        benchmark=experiment_benchmark.benchmark.value,
+        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
 
     impressions_heuristics_recommenders = [
         commons.MAPPER_AVAILABLE_RECOMMENDERS[rec].recommender
-        for rec in heuristics_experiment_cases_interface.to_use_recommenders
+        for rec in recommenders_impressions_heuristics
     ]
 
     return generate_accuracy_and_beyond_metrics_pandas(
@@ -332,10 +328,11 @@ def _print_impressions_heuristics_metrics(
 
 
 def _print_impressions_re_ranking_metrics(
-    re_ranking_experiment_cases_interface: commons.ExperimentCasesInterface,
-    baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
-    baseline_experiment_benchmark: commons.ExperimentBenchmark,
-    baseline_experiment_hyper_parameters: commons.HyperParameterTuningParameters,
+    *,
+    recommenders_baselines: list[commons.RecommenderBaseline],
+    recommenders_impressions_re_ranking: list[commons.RecommenderImpressions],
+    experiment_benchmark: commons.ExperimentBenchmark,
+    experiment_hyper_parameters: commons.HyperParameterTuningParameters,
     interaction_data_splits: InteractionsDataSplits,
     num_test_users: int,
     accuracy_metrics_list: list[str],
@@ -346,23 +343,22 @@ def _print_impressions_re_ranking_metrics(
     export_experiments_folder_path: str,
 ) -> DataFrameResults:
     baseline_experiments_folder_path = baselines.DIR_TRAINED_MODELS_BASELINES.format(
-        benchmark=baseline_experiment_benchmark.benchmark.value,
-        evaluation_strategy=baseline_experiment_hyper_parameters.evaluation_strategy.value,
+        benchmark=experiment_benchmark.benchmark.value,
+        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
 
-    re_ranking_experiments_folder_path = re_ranking.DIR_TRAINED_MODELS_RE_RANKING.format(
-        benchmark=baseline_experiment_benchmark.benchmark.value,
-        evaluation_strategy=baseline_experiment_hyper_parameters.evaluation_strategy.value,
+    re_ranking_experiments_folder_path = DIR_TRAINED_MODELS_IMPRESSION_AWARE.format(
+        benchmark=experiment_benchmark.benchmark.value,
+        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
 
     baseline_experiment_recommenders = [
-        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec]
-        for rec in baseline_experiment_cases_interface.to_use_recommenders
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec] for rec in recommenders_baselines
     ]
 
     re_ranking_experiment_recommenders = [
         commons.MAPPER_AVAILABLE_RECOMMENDERS[rec]
-        for rec in re_ranking_experiment_cases_interface.to_use_recommenders
+        for rec in recommenders_impressions_re_ranking
     ]
 
     base_algorithm_list = []
@@ -380,8 +376,8 @@ def _print_impressions_re_ranking_metrics(
                 for try_folded_recommender in [False]:
                     loaded_baseline_recommender = mock_trained_recommender(
                         experiment_recommender=baseline_experiment_recommender,
-                        experiment_benchmark=baseline_experiment_benchmark,
-                        experiment_hyper_parameter_tuning_parameters=baseline_experiment_hyper_parameters,
+                        experiment_benchmark=experiment_benchmark,
+                        experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
                         experiment_model_dir=baseline_experiments_folder_path,
                         data_splits=interaction_data_splits,
                         similarity=similarity,
@@ -429,6 +425,7 @@ def _print_impressions_re_ranking_metrics(
     )
 
 
+# TODO: REMOVE?
 def _print_ablation_impressions_re_ranking_metrics(
     ablation_re_ranking_experiment_cases_interface: commons.ExperimentCasesInterface,
     baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
@@ -529,10 +526,11 @@ def _print_ablation_impressions_re_ranking_metrics(
 
 
 def _print_impressions_user_profiles_metrics(
-    baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
-    user_profiles_experiment_cases_interface: commons.ExperimentCasesInterface,
-    baseline_experiment_benchmark: commons.ExperimentBenchmark,
-    baseline_experiment_hyper_parameters: commons.HyperParameterTuningParameters,
+    *,
+    recommenders_baselines: list[commons.RecommenderBaseline],
+    recommenders_impressions_user_profiles: list[commons.RecommenderImpressions],
+    experiment_benchmark: commons.ExperimentBenchmark,
+    experiment_hyper_parameters: commons.HyperParameterTuningParameters,
     interaction_data_splits: InteractionsDataSplits,
     num_test_users: int,
     accuracy_metrics_list: list[str],
@@ -543,23 +541,22 @@ def _print_impressions_user_profiles_metrics(
     export_experiments_folder_path: str,
 ) -> DataFrameResults:
     baseline_experiments_folder_path = baselines.DIR_TRAINED_MODELS_BASELINES.format(
-        benchmark=baseline_experiment_benchmark.benchmark.value,
-        evaluation_strategy=baseline_experiment_hyper_parameters.evaluation_strategy.value,
+        benchmark=experiment_benchmark.benchmark.value,
+        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
 
-    user_profiles_experiments_folder_path = user_profiles.DIR_TRAINED_MODELS_USER_PROFILES.format(
-        benchmark=baseline_experiment_benchmark.benchmark.value,
-        evaluation_strategy=baseline_experiment_hyper_parameters.evaluation_strategy.value,
+    user_profiles_experiments_folder_path = DIR_TRAINED_MODELS_IMPRESSION_AWARE.format(
+        benchmark=experiment_benchmark.benchmark.value,
+        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
     )
 
     baseline_experiment_recommenders = [
-        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec]
-        for rec in baseline_experiment_cases_interface.to_use_recommenders
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec] for rec in recommenders_baselines
     ]
 
     user_profiles_experiment_recommenders = [
         commons.MAPPER_AVAILABLE_RECOMMENDERS[rec]
-        for rec in user_profiles_experiment_cases_interface.to_use_recommenders
+        for rec in recommenders_impressions_user_profiles
     ]
 
     base_algorithm_list = []
@@ -588,8 +585,8 @@ def _print_impressions_user_profiles_metrics(
                 for try_folded_recommender in [False]:
                     loaded_baseline_recommender = mock_trained_recommender(
                         experiment_recommender=baseline_experiment_recommender,
-                        experiment_benchmark=baseline_experiment_benchmark,
-                        experiment_hyper_parameter_tuning_parameters=baseline_experiment_hyper_parameters,
+                        experiment_benchmark=experiment_benchmark,
+                        experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
                         experiment_model_dir=baseline_experiments_folder_path,
                         data_splits=interaction_data_splits,
                         similarity=similarity,
@@ -600,7 +597,7 @@ def _print_impressions_user_profiles_metrics(
                     if loaded_baseline_recommender is None:
                         logger.warning(
                             f"The recommender {baseline_experiment_recommender.recommender} for the dataset "
-                            f"{baseline_experiment_benchmark} returned empty. Skipping."
+                            f"{experiment_benchmark} returned empty. Skipping."
                         )
                         continue
 
@@ -665,6 +662,112 @@ def _print_impressions_user_profiles_metrics(
 
     return generate_accuracy_and_beyond_metrics_pandas(
         experiments_folder_path=user_profiles_experiments_folder_path,
+        export_experiments_folder_path=export_experiments_folder_path,
+        num_test_users=num_test_users,
+        base_algorithm_list=base_algorithm_list,
+        knn_similarity_list=knn_similarity_list,
+        other_algorithm_list=None,
+        accuracy_metrics_list=accuracy_metrics_list,
+        beyond_accuracy_metrics_list=beyond_accuracy_metrics_list,
+        all_metrics_list=all_metrics_list,
+        cutoffs_list=cutoffs_list,
+        icm_names=None,
+    )
+
+
+def _print_impressions_signal_analysis_re_ranking_metrics(
+    *,
+    recommenders_baselines: list[commons.RecommenderBaseline],
+    recommenders_impressions_signal_analysis_re_ranking: list[
+        tuple[commons.RecommenderImpressions, str]
+    ],
+    experiment_benchmark: commons.ExperimentBenchmark,
+    experiment_hyper_parameters: commons.HyperParameterTuningParameters,
+    interaction_data_splits: InteractionsDataSplits,
+    num_test_users: int,
+    accuracy_metrics_list: list[str],
+    beyond_accuracy_metrics_list: list[str],
+    all_metrics_list: list[str],
+    cutoffs_list: list[int],
+    knn_similarity_list: list[commons.T_SIMILARITY_TYPE],
+    export_experiments_folder_path: str,
+) -> DataFrameResults:
+    baseline_experiments_folder_path = baselines.DIR_TRAINED_MODELS_BASELINES.format(
+        benchmark=experiment_benchmark.benchmark.value,
+        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+    )
+
+    re_ranking_experiments_folder_path = DIR_TRAINED_MODELS_IMPRESSION_AWARE.format(
+        benchmark=experiment_benchmark.benchmark.value,
+        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+    )
+
+    baseline_experiment_recommenders = [
+        commons.MAPPER_AVAILABLE_RECOMMENDERS[rec] for rec in recommenders_baselines
+    ]
+
+    signal_analysis_re_ranking_experiment_recommenders = [
+        (commons.MAPPER_AVAILABLE_RECOMMENDERS[rec], case)
+        for rec, case in recommenders_impressions_signal_analysis_re_ranking
+    ]
+
+    base_algorithm_list = []
+    for (
+        signal_analysis_re_ranking_experiment_recommender,
+        signal_analysis_case,
+    ) in signal_analysis_re_ranking_experiment_recommenders:
+        for baseline_experiment_recommender in baseline_experiment_recommenders:
+            similarities: list[commons.T_SIMILARITY_TYPE] = [None]  # type: ignore
+            if baseline_experiment_recommender.recommender in [
+                recommenders.ItemKNNCFRecommender,
+                recommenders.UserKNNCFRecommender,
+            ]:
+                similarities = knn_similarity_list
+
+            for similarity in similarities:
+                # TODO: REMOVE FOLDED RECOMMENDERS, IT WAS [True, False]
+                for try_folded_recommender in [False]:
+                    loaded_baseline_recommender = mock_trained_recommender(
+                        experiment_recommender=baseline_experiment_recommender,
+                        experiment_benchmark=experiment_benchmark,
+                        experiment_hyper_parameter_tuning_parameters=experiment_hyper_parameters,
+                        experiment_model_dir=baseline_experiments_folder_path,
+                        data_splits=interaction_data_splits,
+                        similarity=similarity,
+                        model_type=baselines.TrainedRecommenderType.TRAIN_VALIDATION,
+                        try_folded_recommender=try_folded_recommender,
+                    )
+
+                    if loaded_baseline_recommender is None:
+                        continue
+
+                    signal_analysis_re_ranking_class = cast(
+                        Type[
+                            Union[CyclingRecommender, ImpressionsDiscountingRecommender]
+                        ],
+                        signal_analysis_re_ranking_experiment_recommender.recommender,
+                    )
+
+                    signal_analysis_re_ranking_recommender = (
+                        signal_analysis_re_ranking_class(
+                            urm_train=interaction_data_splits.sp_urm_train_validation,
+                            uim_position=sp.csr_matrix([[]]),
+                            uim_frequency=sp.csr_matrix([[]]),
+                            uim_last_seen=sp.csr_matrix([[]]),
+                            trained_recommender=loaded_baseline_recommender,
+                        )
+                    )
+
+                    signal_analysis_re_ranking_recommender.RECOMMENDER_NAME = (
+                        f"{signal_analysis_re_ranking_class.RECOMMENDER_NAME}"
+                        f"_{loaded_baseline_recommender.RECOMMENDER_NAME}"
+                        f"_{signal_analysis_case}"
+                    )
+
+                    base_algorithm_list.append(signal_analysis_re_ranking_recommender)
+
+    return generate_accuracy_and_beyond_metrics_pandas(
+        experiments_folder_path=re_ranking_experiments_folder_path,
         export_experiments_folder_path=export_experiments_folder_path,
         num_test_users=num_test_users,
         base_algorithm_list=base_algorithm_list,
@@ -904,9 +1007,9 @@ def _process_results_dataframe(
         model_order = 100
         if model_type == "Baseline":
             model_order = 0
-        if model_type == "HFC":
-            model_order = 1
         if model_type == "Cycling":
+            model_order = 1
+        if model_type == "HFC":
             model_order = 2
         if model_type == "IDF":
             model_order = 3
@@ -1084,7 +1187,7 @@ def _export_results_accuracy_metrics(
     with pd.option_context("max_colwidth", 1000):
         df_results.to_csv(
             path_or_buf=os.path.join(folder_path_csv, f"{filename_export}.csv"),
-            index=True,
+            index=False,
             header=True,
             encoding="utf-8",
             na_rep="-",
@@ -1173,7 +1276,7 @@ def _export_results_time(
     with pd.option_context("max_colwidth", 1000):
         df_results.to_csv(
             path_or_buf=os.path.join(folder_path_csv, f"{filename_export}.csv"),
-            index=True,
+            index=False,
             header=True,
             encoding="utf-8",
             na_rep="-",
@@ -1258,7 +1361,7 @@ def _export_results_hyper_parameters(
     with pd.option_context("max_colwidth", 1000):
         df_results.to_csv(
             path_or_buf=os.path.join(folder_path_csv, f"{filename_export}.csv"),
-            index=True,
+            index=False,
             header=True,
             encoding="utf-8",
             na_rep="-",
@@ -1269,11 +1372,25 @@ def _export_results_hyper_parameters(
 
 
 def process_evaluation_results(
-    baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
-    impressions_heuristics_experiment_cases_interface: commons.ExperimentCasesInterface,
-    re_ranking_experiment_cases_interface: commons.ExperimentCasesInterface,
-    ablation_re_ranking_experiment_cases_interface: commons.ExperimentCasesInterface,
-    user_profiles_experiment_cases_interface: commons.ExperimentCasesInterface,
+    *,
+    benchmarks: list[commons.Benchmarks],
+    hyper_parameters: list[commons.EHyperParameterTuningParameters],
+    recommenders_baselines: list[commons.RecommenderBaseline],
+    recommenders_impressions_heuristics: list[commons.RecommenderImpressions],
+    recommenders_impressions_re_ranking: list[commons.RecommenderImpressions],
+    recommenders_impressions_user_profiles: list[commons.RecommenderImpressions],
+    recommenders_impressions_signal_analysis_re_ranking: list[
+        tuple[commons.RecommenderImpressions, str]
+    ],
+    script_name: str,
+    # TODO: INCLUDE signal analysis
+    # recommenders_impressions_signal_analysis: list[commons.RecommenderImpressions],
+    # baseline_experiment_cases_interface: commons.ExperimentCasesInterface,
+    # impressions_heuristics_experiment_cases_interface: commons.ExperimentCasesInterface,
+    # re_ranking_experiment_cases_interface: commons.ExperimentCasesInterface,
+    # TODO: REMOVE ABLATION.
+    # ablation_re_ranking_experiment_cases_interface: commons.ExperimentCasesInterface,
+    # user_profiles_experiment_cases_interface: commons.ExperimentCasesInterface,
 ) -> None:
     """
     Public method that exports into CSV and LaTeX tables the evaluation metrics, hyper-parameters, and times.
@@ -1282,22 +1399,15 @@ def process_evaluation_results(
         tuple[commons.Benchmarks, commons.EHyperParameterTuningParameters]
     ] = set()
 
-    baseline_benchmarks = baseline_experiment_cases_interface.to_use_benchmarks
-    baseline_hyper_parameters = (
-        baseline_experiment_cases_interface.to_use_hyper_parameter_tuning_parameters
-    )
-
-    for benchmark, hyper_parameters in itertools.product(
-        baseline_benchmarks, baseline_hyper_parameters
-    ):
-        if (benchmark, hyper_parameters) in printed_experiments:
+    for benchmark, hyper_parameter in itertools.product(benchmarks, hyper_parameters):
+        if (benchmark, hyper_parameter) in printed_experiments:
             continue
-        else:
-            printed_experiments.add((benchmark, hyper_parameters))
+
+        printed_experiments.add((benchmark, hyper_parameter))
 
         experiment_benchmark = commons.MAPPER_AVAILABLE_BENCHMARKS[benchmark]
         experiment_hyper_parameters = (
-            commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[hyper_parameters]
+            commons.MAPPER_AVAILABLE_HYPER_PARAMETER_TUNING_PARAMETERS[hyper_parameter]
         )
 
         data_reader = commons.get_reader_from_benchmark(
@@ -1314,14 +1424,17 @@ def process_evaluation_results(
         num_test_users = cast(int, np.sum(np.ediff1d(urm_test.indptr) >= 1))
 
         folder_path_export_latex = DIR_LATEX_RESULTS.format(
+            script_name=script_name,
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
         folder_path_export_csv = DIR_CSV_RESULTS.format(
+            script_name=script_name,
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
         folder_path_export_parquet = DIR_PARQUET_RESULTS.format(
+            script_name=script_name,
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
@@ -1333,7 +1446,7 @@ def process_evaluation_results(
         knn_similarity_list = experiment_hyper_parameters.knn_similarity_types
 
         results_baselines = _print_baselines_metrics(
-            baseline_experiment_cases_interface=baseline_experiment_cases_interface,
+            recommenders_baselines=recommenders_baselines,
             experiment_benchmark=experiment_benchmark,
             experiment_hyper_parameters=experiment_hyper_parameters,
             interaction_data_splits=interaction_data_splits,
@@ -1347,7 +1460,7 @@ def process_evaluation_results(
         )
 
         results_heuristics = _print_impressions_heuristics_metrics(
-            heuristics_experiment_cases_interface=impressions_heuristics_experiment_cases_interface,
+            recommenders_impressions_heuristics=recommenders_impressions_heuristics,
             experiment_hyper_parameters=experiment_hyper_parameters,
             experiment_benchmark=experiment_benchmark,
             num_test_users=num_test_users,
@@ -1359,10 +1472,10 @@ def process_evaluation_results(
         )
 
         results_re_ranking = _print_impressions_re_ranking_metrics(
-            re_ranking_experiment_cases_interface=re_ranking_experiment_cases_interface,
-            baseline_experiment_cases_interface=baseline_experiment_cases_interface,
-            baseline_experiment_benchmark=experiment_benchmark,
-            baseline_experiment_hyper_parameters=experiment_hyper_parameters,
+            recommenders_baselines=recommenders_baselines,
+            recommenders_impressions_re_ranking=recommenders_impressions_re_ranking,
+            experiment_benchmark=experiment_benchmark,
+            experiment_hyper_parameters=experiment_hyper_parameters,
             interaction_data_splits=interaction_data_splits,
             num_test_users=num_test_users,
             accuracy_metrics_list=ACCURACY_METRICS_LIST,
@@ -1374,10 +1487,10 @@ def process_evaluation_results(
         )
 
         results_user_profiles = _print_impressions_user_profiles_metrics(
-            user_profiles_experiment_cases_interface=user_profiles_experiment_cases_interface,
-            baseline_experiment_cases_interface=baseline_experiment_cases_interface,
-            baseline_experiment_hyper_parameters=experiment_hyper_parameters,
-            baseline_experiment_benchmark=experiment_benchmark,
+            recommenders_baselines=recommenders_baselines,
+            recommenders_impressions_user_profiles=recommenders_impressions_user_profiles,
+            experiment_hyper_parameters=experiment_hyper_parameters,
+            experiment_benchmark=experiment_benchmark,
             interaction_data_splits=interaction_data_splits,
             num_test_users=num_test_users,
             accuracy_metrics_list=ACCURACY_METRICS_LIST,
@@ -1388,11 +1501,11 @@ def process_evaluation_results(
             export_experiments_folder_path=folder_path_export_latex,
         )
 
-        results_ablation_re_ranking = _print_ablation_impressions_re_ranking_metrics(
-            ablation_re_ranking_experiment_cases_interface=ablation_re_ranking_experiment_cases_interface,
-            baseline_experiment_cases_interface=baseline_experiment_cases_interface,
-            baseline_experiment_benchmark=experiment_benchmark,
-            baseline_experiment_hyper_parameters=experiment_hyper_parameters,
+        results_signal_analysis_re_ranking = _print_impressions_signal_analysis_re_ranking_metrics(
+            recommenders_baselines=recommenders_baselines,
+            recommenders_impressions_signal_analysis_re_ranking=recommenders_impressions_signal_analysis_re_ranking,
+            experiment_benchmark=experiment_benchmark,
+            experiment_hyper_parameters=experiment_hyper_parameters,
             interaction_data_splits=interaction_data_splits,
             num_test_users=num_test_users,
             accuracy_metrics_list=ACCURACY_METRICS_LIST,
@@ -1402,6 +1515,22 @@ def process_evaluation_results(
             knn_similarity_list=knn_similarity_list,
             export_experiments_folder_path=folder_path_export_latex,
         )
+
+        # TODO: REMOVE ABLATION.
+        # results_ablation_re_ranking = _print_ablation_impressions_re_ranking_metrics(
+        #     ablation_re_ranking_experiment_cases_interface=ablation_re_ranking_experiment_cases_interface,
+        #     baseline_experiment_cases_interface=baseline_experiment_cases_interface,
+        #     baseline_experiment_benchmark=experiment_benchmark,
+        #     baseline_experiment_hyper_parameters=experiment_hyper_parameters,
+        #     interaction_data_splits=interaction_data_splits,
+        #     num_test_users=num_test_users,
+        #     accuracy_metrics_list=ACCURACY_METRICS_LIST,
+        #     beyond_accuracy_metrics_list=BEYOND_ACCURACY_METRICS_LIST,
+        #     all_metrics_list=ALL_METRICS_LIST,
+        #     cutoffs_list=RESULT_EXPORT_CUTOFFS,
+        #     knn_similarity_list=knn_similarity_list,
+        #     export_experiments_folder_path=folder_path_export_latex,
+        # )
 
         _process_results_dataframe(
             dfs=[
@@ -1409,7 +1538,8 @@ def process_evaluation_results(
                 results_heuristics.df_results,
                 results_re_ranking.df_results,
                 results_user_profiles.df_results,
-                # TODO: UNCOMMENT.
+                results_signal_analysis_re_ranking.df_results,
+                # TODO: REMOVE ABLATION.
                 # results_ablation_re_ranking.df_results,
             ],
             results_name="accuracy-metrics",
@@ -1424,7 +1554,8 @@ def process_evaluation_results(
                 results_heuristics.df_times,
                 results_re_ranking.df_times,
                 results_user_profiles.df_times,
-                # TODO: UNCOMMENT.
+                results_signal_analysis_re_ranking.df_times,
+                # TODO: REMOVE ABLATION.
                 # results_ablation_re_ranking.df_times,
             ],
             results_name="times",
@@ -1439,7 +1570,8 @@ def process_evaluation_results(
                 results_heuristics.df_hyper_params,
                 results_re_ranking.df_hyper_params,
                 results_user_profiles.df_hyper_params,
-                # TODO: UNCOMMENT
+                results_signal_analysis_re_ranking.df_hyper_params,
+                # TODO: REMOVE ABLATION
                 # results_ablation_re_ranking.df_hyper_params,
             ],
             results_name="hyper-parameters",
@@ -1449,17 +1581,19 @@ def process_evaluation_results(
         )
 
         logger.info(
-            f"Successfully finished exporting accuracy and beyond-accuracy results to LaTeX"
-            f"Files are located at three locations (CSV, latex, parquet):"
-            f"\n\t* {folder_path_export_csv}"
-            f"\n\t* {folder_path_export_latex}"
-            f"\n\t* {folder_path_export_parquet}"
+            "Successfully finished processing accuracy, beyond-accuracy, hyper-parameters, and time results to CSV and parquet. Files are located at two locations. \n\t* CSV path: %(csv_path)s. \n\t* Parquet path: %(parquet_path)s",
+            {
+                "csv_path": folder_path_export_csv,
+                "parquet_path": folder_path_export_parquet,
+            },
         )
 
 
 def export_evaluation_results(
+    *,
     benchmarks: list[commons.Benchmarks],
     hyper_parameters: list[commons.EHyperParameterTuningParameters],
+    script_name: str,
 ) -> None:
     results_accuracy_metrics: list[pd.DataFrame] = []
     results_times: list[pd.DataFrame] = []
@@ -1472,6 +1606,7 @@ def export_evaluation_results(
         )
 
         folder_path_results_to_load = DIR_PARQUET_RESULTS.format(
+            script_name=script_name,
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
         )
@@ -1499,24 +1634,26 @@ def export_evaluation_results(
         results_times.append(df_results_times)
         results_hyper_parameters.append(df_results_hyper_parameters)
 
-    folder_path_results_to_export = DIR_RESULTS_TO_EXPORT
-    os.makedirs(folder_path_results_to_export, exist_ok=True)
-
     df_results_accuracy = pd.concat(
         objs=results_accuracy_metrics,
         axis=0,
-        ignore_index=True,  # The index should be numeric and have no special meaning.
+        ignore_index=True,  # The index should be numeric and has no special meaning.
     )
     df_results_times = pd.concat(
         objs=results_times,
         axis=0,
-        ignore_index=True,  # The index should be numeric and have no special meaning.
+        ignore_index=True,  # The index should be numeric and has no special meaning.
     )
     df_results_hyper_parameters = pd.concat(
         objs=results_hyper_parameters,
         axis=0,
-        ignore_index=True,  # The index should be numeric and have no special meaning.
+        ignore_index=True,  # The index should be numeric and has no special meaning.
     )
+
+    folder_path_results_to_export = DIR_RESULTS_TO_EXPORT.format(
+        script_name=script_name
+    )
+    os.makedirs(folder_path_results_to_export, exist_ok=True)
 
     _export_results_accuracy_metrics(
         benchmarks=benchmarks,
