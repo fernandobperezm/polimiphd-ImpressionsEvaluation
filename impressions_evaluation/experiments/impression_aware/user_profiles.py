@@ -1,4 +1,4 @@
-import os
+import logging
 import uuid
 from typing import Optional, Sequence
 
@@ -11,7 +11,7 @@ from Recommenders.BaseSimilarityMatrixRecommender import (
     BaseUserSimilarityMatrixRecommender,
 )
 from recsys_framework_extensions.dask import DaskInterface
-import logging
+
 
 import impressions_evaluation.experiments.commons as commons
 from impressions_evaluation.experiments.baselines import (
@@ -30,16 +30,6 @@ from impressions_evaluation.impression_recommenders.user_profile.weighted import
 )
 
 logger = logging.getLogger(__name__)
-
-
-####################################################################################################
-####################################################################################################
-#                                FOLDERS VARIABLES                            #
-####################################################################################################
-####################################################################################################
-DIR_TRAINED_MODELS_USER_PROFILES = DIR_TRAINED_MODELS_IMPRESSION_AWARE
-
-commons.FOLDERS.add(DIR_TRAINED_MODELS_USER_PROFILES)
 
 
 ####################################################################################################
@@ -202,7 +192,7 @@ def _run_impressions_user_profiles_hyper_parameter_tuning(
             == baseline_recommender_trained_train_validation.RECOMMENDER_NAME
         )
 
-        experiments_folder_path = DIR_TRAINED_MODELS_USER_PROFILES.format(
+        experiments_folder_path = DIR_TRAINED_MODELS_IMPRESSION_AWARE.format(
             benchmark=experiment_user_profiles_benchmark.benchmark.value,
             evaluation_strategy=experiment_user_profiles_hyper_parameters.evaluation_strategy.value,
         )
