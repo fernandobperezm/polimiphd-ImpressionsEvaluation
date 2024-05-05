@@ -42,7 +42,6 @@ poetry run python scripts/run_evaluation_study_impression_aware_recommenders.py 
   --include_impressions_reranking \
   --include_impressions_profile \
   --include_signal_analysis \
-  --print_evaluation_results \
   &> "$OUT_FILE_EVALUATION"
 
 #poetry run python scripts/run_evaluation_study_impression_aware_recommenders.py \
@@ -51,8 +50,6 @@ poetry run python scripts/run_evaluation_study_impression_aware_recommenders.py 
 #  --include_impressions_heuristics \
 #  --include_impressions_reranking \
 #  --include_impressions_profile \
-#  --include_ablation_impressions_reranking \
-#  --include_signal_analysis_reranking \
 #  --include_signal_analysis \
 #  --print_evaluation_results \
 #  &> "$OUT_FILE_EVALUATION"
