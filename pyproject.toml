@@ -15,15 +15,11 @@ warn_unused_configs = true
 warn_unreachable = true
 warn_no_return = true
 
-# [email.gmail]
-# path_credential_json = "./credentials.json"
-# path_token_json = "./token.json"
-
 [tool.dask]
 use_processes = true
-num_workers = 6
+num_workers = 1
 threads_per_worker = 1
-memory_limit = 0 # "20GiB"
+memory_limit = "12GiB"
 dashboard_address = ":8787"
 scheduler_port = 8786
 
@@ -35,24 +31,24 @@ filename_logs = "impressions_evaluation.log"
 name = "impressions-evaluation"
 version = "1.0.0"
 description = ""
-authors = [
-    "Fernando Benjamin PEREZ MAURERA <fernandobenjamin.perez@polimi.it>"
-]
+authors = ["Fernando Benjamin PEREZ MAURERA <fernandobenjamin.perez@polimi.it>"]
 readme = "README.md"
-packages = [
-    { include = "impressions_evaluation" },
-]
+packages = [{ include = "impressions_evaluation" }]
 
 [tool.poetry.dependencies]
 python = "~3.10"
 typed-argument-parser = "^1.8.1"
-recsys-framework-public = { path = "../RecSysFramework_public/", develop = true }  # Use this when publishing the repo.
-recsys-framework-extensions = { path = "../recsys-framework-extensions/", develop = true, extras = ["email-gmail"] }  # Use this when publishing the repo.
+recsys-framework-public = { path = "../RecSysFramework_public/", develop = true } # Use this when publishing the repo.
+recsys-framework-extensions = { path = "../recsys-framework-extensions/", develop = true } # Use this when publishing the repo.
 numpy = "1.23.2"
 cython = "0.29.36"
 jax = [
-    {platform = 'darwin', extras = ["cpu"], version = "^0.4.13"},
-    {platform = 'linux', extras = ["cpu"], version = "^0.4.13"},
+    { platform = 'darwin', extras = [
+        "cpu",
+    ], version = "^0.4.13" },
+    { platform = 'linux', extras = [
+        "cpu",
+    ], version = "^0.4.13" },
 ]
 optax = "^0.1.5"
 python-dotenv = "^1.0.0"
@@ -64,7 +60,7 @@ matplotlib = "~3.7"
 
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.6.1"
-black = {extras = ["d"], version = "^23.10.1"}
+black = { extras = ["d"], version = "^23.10.1" }
 pytest = "^7.4.3"
 memory-profiler = "^0.61.0"
 types-toml = "^0.10.8.6"

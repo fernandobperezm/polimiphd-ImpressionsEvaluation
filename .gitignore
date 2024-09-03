@@ -141,3 +141,4 @@ result_experiments*/
 data/
 __*/
 trained_models/
+toignore.md
