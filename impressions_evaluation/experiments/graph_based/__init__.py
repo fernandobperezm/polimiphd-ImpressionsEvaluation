@@ -8,60 +8,9 @@ from recsys_framework_extensions.dask import DaskInterface
 from recsys_framework_extensions.hyper_parameter_search import (
     SearchBayesianSkopt,
 )
-from recsys_framework_extensions.recommenders.base import (
-    SearchHyperParametersBaseRecommender,
-)
-from recsys_framework_extensions.recommenders.graph_based.light_gcn import (
-    SearchHyperParametersLightGCNRecommender,
-    ExtendedLightGCNRecommender,
-)
-from recsys_framework_extensions.recommenders.graph_based.p3_alpha import (
-    ExtendedP3AlphaRecommender,
-    SearchHyperParametersP3AlphaRecommender,
-)
-from recsys_framework_extensions.recommenders.graph_based.rp3_beta import (
-    ExtendedRP3BetaRecommender,
-    SearchHyperParametersRP3BetaRecommender,
-)
-from recsys_framework_extensions.recommenders.mf.mf_bpr import (
-    FitParametersMFBPRRecommender,
-    SearchHyperParametersMFBPRRecommender,
-    ExtendedMFBPRRecommender,
-)
-from recsys_framework_extensions.recommenders.slim.slim_bpr import (
-    SearchHyperParametersSLIMBPRRecommender,
-    FitParametersSLIMBPRRecommenderAllowSparseTraining,
-    ExtendedSLIMBPRRecommender,
-)
-from recsys_framework_extensions.recommenders.slim.slim_elasticnet import (
-    ExtendedSLIMElasticNetRecommender,
-    SearchHyperParametersSLIMElasticNetRecommender,
-)
 
 from impressions_evaluation.experiments import commons
 from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASELINES
-from impressions_evaluation.experiments.commons import (
-    ExperimentRecommender,
-    RecommenderBaseline,
-    RecommenderImpressions,
-)
-from impressions_evaluation.impression_recommenders.graph_based.lightgcn import (
-    ImpressionsProfileLightGCNRecommender,
-    ImpressionsDirectedLightGCNRecommender,
-)
-from impressions_evaluation.impression_recommenders.graph_based.p3_alpha import (
-    ImpressionsProfileP3AlphaRecommender,
-    ImpressionsDirectedP3AlphaRecommender,
-)
-from impressions_evaluation.impression_recommenders.graph_based.rp3_beta import (
-    ImpressionsProfileRP3BetaRecommender,
-    ImpressionsDirectedRP3BetaRecommender,
-)
-from impressions_evaluation.impression_recommenders.matrix_factorization.sfc_jax import (
-    SoftFrequencyCappingRecommender,
-    SearchHyperParametersSFCRecommender,
-)
-from Recommenders.Recommender_import_list import Random, TopPop
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +130,10 @@ def _run_collaborative_filtering_hyper_parameter_tuning(
         "hyper_parameter_search_space": hyper_parameter_search_space,
     }
 
-    logger.info(f"Hyper-parameter tuning arguments:" f"\n\t* {logger_info}")
+    logger.info(
+        "Hyper-parameter tuning arguments:\n\t* %(logger_info)s",
+        {"logger_info": logger_info},
+    )
 
     search_bayesian_skopt = SearchBayesianSkopt(
         recommender_class=experiment_recommender.recommender,
@@ -312,7 +264,10 @@ def _run_pure_impressions_hyper_parameter_tuning(
         "hyper_parameter_search_space": hyper_parameter_search_space,
     }
 
-    logger.info(f"Hyper-parameter tuning arguments:" f"\n\t* {logger_info}")
+    logger.info(
+        "Hyper-parameter tuning arguments:\n\t* %(logger_info)s",
+        {"logger_info": logger_info},
+    )
 
     search_bayesian_skopt = SearchBayesianSkopt(
         recommender_class=experiment_recommender.recommender,
@@ -463,7 +418,10 @@ def _run_frequency_impressions_hyper_parameter_tuning(
         "hyper_parameter_search_space": hyper_parameter_search_space,
     }
 
-    logger.info(f"Hyper-parameter tuning arguments:" f"\n\t* {logger_info}")
+    logger.info(
+        "Hyper-parameter tuning arguments:\n\t* %(logger_info)s",
+        {"logger_info": logger_info},
+    )
 
     search_bayesian_skopt = SearchBayesianSkopt(
         recommender_class=experiment_recommender.recommender,
@@ -542,7 +500,10 @@ def run_experiments_sequentially(
     )
 
     for experiment_case in experiment_cases:
-        logger.info(f"Training recommender: \n {attrs.asdict(experiment_case)}")
+        logger.info(
+            "Training recommender: \n %(experiment_case)s",
+            {"experiment_case": attrs.asdict(experiment_case)},
+        )
         experiment_case.training_function(
             experiment_case=experiment_case,
         )

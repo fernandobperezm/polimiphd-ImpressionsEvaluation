@@ -16,9 +16,6 @@ from impressions_evaluation.experiments.baselines import DIR_TRAINED_MODELS_BASE
 from impressions_evaluation.experiments.graph_based import (
     DIR_TRAINED_MODELS_IMPRESSION_AWARE,
 )
-from impressions_evaluation.experiments.print_results import (
-    DIR_RESULTS_MODEL_EVALUATION,
-)
 
 logger = logging.getLogger(__file__)
 
@@ -56,7 +53,6 @@ DIR_LATEX_RESULTS = os.path.join(
     "",
 )
 
-commons.FOLDERS.add(DIR_RESULTS_MODEL_EVALUATION)
 commons.FOLDERS.add(DIR_RESULTS_TO_EXPORT)
 commons.FOLDERS.add(DIR_RESULTS_TO_PROCESS)
 commons.FOLDERS.add(DIR_CSV_RESULTS)
@@ -226,11 +222,6 @@ def _print_plugin_impression_aware_metrics(
     knn_similarity_list: list[commons.T_SIMILARITY_TYPE],
     export_experiments_folder_path: str,
 ) -> DataFrameResults:
-    experiments_baseline_folder_path = DIR_TRAINED_MODELS_BASELINES.format(
-        benchmark=experiment_benchmark.benchmark.value,
-        evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
-    )
-
     experiments_impression_folder_path = DIR_TRAINED_MODELS_IMPRESSION_AWARE.format(
         benchmark=experiment_benchmark.benchmark.value,
         evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
@@ -1077,6 +1068,7 @@ def export_evaluation_results(
         folder_path_results_to_load = DIR_PARQUET_RESULTS.format(
             benchmark=experiment_benchmark.benchmark.value,
             evaluation_strategy=experiment_hyper_parameters.evaluation_strategy.value,
+            script_name=script_name,
         )
 
         df_results_accuracy = pd.read_parquet(

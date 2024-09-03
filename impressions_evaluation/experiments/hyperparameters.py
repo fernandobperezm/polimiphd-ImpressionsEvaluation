@@ -1,6 +1,6 @@
 import itertools
 import os
-from typing import Optional, Any
+from typing import Optional, Any, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -311,7 +311,7 @@ def distribution_hyper_parameters_plug_in_impression_aware_recommenders(
 
             continue
         else:
-            print(f"FERNANDO-DEBUGGER|COMPLETE THIS - ELSE.")
+            print("FERNANDO-DEBUGGER|COMPLETE THIS - ELSE.")
             continue
 
 
@@ -459,7 +459,7 @@ def distribution_hyper_parameters_graph_based_impression_aware_recommenders(
 
             continue
         else:
-            print(f"FERNANDO-DEBUGGER|COMPLETE THIS - ELSE.")
+            print("FERNANDO-DEBUGGER|COMPLETE THIS - ELSE.")
             continue
 
 
@@ -586,7 +586,7 @@ def _prepare_recommender_data_for_parallel_plot(
 
 def _create_dict_mapping(
     recommender: str,
-) -> dict[str, dict[str, int]]:
+) -> dict[str, dict[Union[str, bool], int]]:
     if "p3alpha" in recommender.casefold() or "rp3beta" in recommender.casefold():
         return {"normalize_similarity": {False: 0, True: 1}}
 
