@@ -1,39 +1,10 @@
-[tool.mypy]
-python_version = "3.10"
-allow_redefinition = false
-check_untyped_defs = true
-ignore_errors = false
-ignore_missing_imports = true
-implicit_reexport = false
-local_partial_types = true
-strict_optional = true
-strict_equality = true
-no_implicit_optional = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-warn_unused_configs = true
-warn_unreachable = true
-warn_no_return = true
-
-[tool.dask]
-use_processes = true
-num_workers = 1
-threads_per_worker = 1
-memory_limit = "12GiB"
-dashboard_address = ":8787"
-scheduler_port = 8786
-
-[tool.logging]
-dir_logs = ".logs"
-filename_logs = "impressions_evaluation.log"
-
 [tool.poetry]
 name = "impressions-evaluation"
 version = "1.0.0"
 description = ""
-authors = ["Fernando Benjamin PEREZ MAURERA <fernandobenjamin.perez@polimi.it>"]
+authors = ["Fernando B Pérez Maurera <fperezmaurera@gmail.com>"]
 readme = "README.md"
-packages = [{ include = "impressions_evaluation" }]
+packages = [{ include = "impressions_evaluation" }, { include = "impressions_evaluation/py.typed" }]
 
 [tool.poetry.dependencies]
 python = "~3.10"
@@ -61,17 +32,19 @@ paxplot = "^0.1.4b2"
 [tool.poetry.group.dev.dependencies]
 mypy = "^1.11.2"
 ruff = "^0.6.5"
-pytest = "^7.4.3"
 line-profiler = "^4.1.3"
 memory-profiler = "^0.61.0"
-Faker = "^28.4.1"
-mock = "^5.1.0"
 jupyterlab = "^4.0.2"
 gpustat = "^1.1.1"
 
 [tool.poetry.group.typing.dependencies]
 types-mock = "^5.1.0.20240425"
 types-toml = "^0.10.8.20240310"
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.3.3"
+faker = "^28.4.1"
+mock = "^5.1.0"
 
 # How to include a script to build the package can be seen here: https://github.com/python-poetry/poetry/issues/11#issuecomment-379484540
 # example pyproject.toml: https://github.com/sdispater/pendulum/blob/master/pyproject.toml
@@ -84,3 +57,32 @@ script = "build.py"
 # IMPORTANT: numpy and Cython versions in the `build-system` MUST match the ones used in the `dependencies` section.
 requires = ["setuptools", "numpy==1.23.2", "Cython==0.29.36", "poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.dask]
+use_processes = true
+num_workers = 1
+threads_per_worker = 1
+memory_limit = "12GiB"
+dashboard_address = ":8787"
+scheduler_port = 8786
+
+[tool.logging]
+dir_logs = ".logs"
+filename_logs = "impressions_evaluation.log"
+
+[tool.mypy]
+python_version = "3.10"
+allow_redefinition = false
+check_untyped_defs = true
+ignore_errors = false
+ignore_missing_imports = true
+implicit_reexport = false
+local_partial_types = true
+strict_optional = true
+strict_equality = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_unreachable = true
+warn_no_return = true
