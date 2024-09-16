@@ -2,7 +2,7 @@
 name = "impressions-evaluation"
 version = "1.0.0"
 description = ""
-authors = ["Fernando B Pérez Maurera <fperezmaurera@gmail.com>"]
+authors = ["Fernando B PÉREZ MAURERA <fperezmaurera@gmail.com>"]
 readme = "README.md"
 packages = [{ include = "impressions_evaluation" }, { include = "impressions_evaluation/py.typed" }]
 
