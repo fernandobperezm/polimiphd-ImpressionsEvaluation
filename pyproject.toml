@@ -37,6 +37,7 @@ packages = [{ include = "impressions_evaluation" }]
 
 [tool.poetry.dependencies]
 python = "~3.10"
+matplotlib = "~3.7"
 typed-argument-parser = "^1.8.1"
 recsys-framework-public = { path = "../RecSysFramework_public/", develop = true } # Use this when publishing the repo.
 recsys-framework-extensions = { path = "../recsys-framework-extensions/", develop = true } # Use this when publishing the repo.
@@ -56,20 +57,21 @@ lightgbm = "^4.0.0"
 tikzplotlib = "^0.10.1"
 powerlaw = "^1.5"
 paxplot = "^0.1.4b2"
-matplotlib = "~3.7"
 
 [tool.poetry.group.dev.dependencies]
-mypy = "^1.6.1"
-black = { extras = ["d"], version = "^23.10.1" }
+mypy = "^1.11.2"
+ruff = "^0.6.5"
 pytest = "^7.4.3"
+line-profiler = "^4.1.3"
 memory-profiler = "^0.61.0"
-types-toml = "^0.10.8.6"
-pylint = "^3.0.2"
-Faker = "^19.13.0"
+Faker = "^28.4.1"
 mock = "^5.1.0"
-types-mock = "^5.0.0.7"
 jupyterlab = "^4.0.2"
 gpustat = "^1.1.1"
+
+[tool.poetry.group.typing.dependencies]
+types-mock = "^5.1.0.20240425"
+types-toml = "^0.10.8.20240310"
 
 # How to include a script to build the package can be seen here: https://github.com/python-poetry/poetry/issues/11#issuecomment-379484540
 # example pyproject.toml: https://github.com/sdispater/pendulum/blob/master/pyproject.toml
